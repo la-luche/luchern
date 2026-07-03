@@ -1,6 +1,7 @@
 import { Linking, ScrollView, Text, View } from 'react-native';
 
 import { Header } from '../components/Header';
+import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
 
@@ -27,6 +28,10 @@ export default function AboutScreen() {
       <ScrollView contentContainerClassName="px-6 pb-10">
         <Text className="mt-2 text-[28px] font-bold text-ink">{t.common.appName}</Text>
         <Text className="mt-1 text-[14px] text-ink-muted">{t.about.subtitle}</Text>
+
+        <Section title={t.about.languageTitle}>
+          <LanguagePicker />
+        </Section>
 
         <Section title={t.about.disclaimerTitle}>
           <Text className="text-[15px] leading-6 text-ink/70">{t.about.disclaimerBody}</Text>
