@@ -10,7 +10,7 @@ type MCIName = ComponentProps<typeof MaterialCommunityIcons>['name'];
  * modelInputFrames, etc.) — those now live server-side. What remains is the
  * user-facing metadata: name, UPDRS item, icon, and the instruction guide.
  */
-export type TestId = 'gait' | 'arisingFromChair' | 'fingerTapping' | 'freezingOfGait';
+export type TestId = 'gait' | 'arisingFromChair' | 'fingerTapping';
 
 export interface TestConfig {
   id: TestId;
@@ -45,18 +45,6 @@ export const TESTS: TestConfig[] = [
       'Cross your arms over your chest',
       'Stand up without using your hands',
       'Repeat 3 times',
-      "Tap Start when you're ready to begin",
-    ],
-  },
-  {
-    id: 'freezingOfGait',
-    displayName: 'Freezing of Gait',
-    updrsItem: 'MDS-UPDRS 3.11',
-    icon: 'rotate-3d-variant',
-    instructionTitle: 'Turn around in place',
-    instructionSteps: [
-      'Point the camera at your feet',
-      'Do one full 360° turn in place',
       "Tap Start when you're ready to begin",
     ],
   },
