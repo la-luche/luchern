@@ -1,98 +1,58 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Button } from '../components/Button';
+import { Screen } from '../components/Screen';
+import { TestRow } from '../components/TestRow';
+import { TESTS } from '../lib/tests';
+import { COLORS } from '../lib/theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+/** Menu: title + the four test rows + navigation to previous recordings. */
+export default function MenuScreen() {
+  const router = useRouter();
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <Screen>
+      {/* Top bar — About/info button only. */}
+      <View className="h-12 flex-row items-center justify-end px-[18px]">
+        <Pressable
+          onPress={() => router.push('/about')}
+          accessibilityRole="button"
+          accessibilityLabel="About and privacy"
+          className="h-9 w-9 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
+        >
+          <Ionicons name="information" size={18} color={COLORS.ink} />
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerClassName="px-6 pb-8">
+        {/* Title block. */}
+        <View className="items-center pt-3">
+          <Text className="text-[28px] font-bold text-ink">Luche</Text>
+          <Text className="mt-1 text-[15px] font-medium text-ink-muted">Choose a test</Text>
+        </View>
+
+        {/* Test rows. */}
+        <View className="mt-6 gap-3.5">
+          {TESTS.map((test) => (
+            <TestRow
+              key={test.id}
+              test={test}
+              onPress={() => router.push({ pathname: '/test/[id]', params: { id: test.id } })}
+            />
+          ))}
+        </View>
+
+        {/* Previous recordings. */}
+        <View className="mt-8">
+          <Button
+            title="Previous recordings"
+            variant="secondary"
+            onPress={() => router.push('/results')}
+          />
+        </View>
+      </ScrollView>
+    </Screen>
   );
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});

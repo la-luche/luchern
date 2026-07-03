@@ -1,0 +1,164 @@
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+
+import { Button } from '../../components/Button';
+import { Header } from '../../components/Header';
+import { Screen } from '../../components/Screen';
+import { StatusPill } from '../../components/StatusPill';
+import { useRecordings } from '../../lib/storage';
+import { getTest } from '../../lib/tests';
+import { COLORS } from '../../lib/theme';
+
+/** Detail for one recording: video playback + placeholder cloud-analysis panel. */
+export default function ResultDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { recordings, loading, remove } = useRecordings();
+  const recording = recordings.find((r) => r.id === id);
+
+  // Hook must run unconditionally — source is null until the recording loads.
+  const player = useVideoPlayer(recording ? { uri: recording.videoUri } : null, (p) => {
+    p.loop = true;
+  });
+
+  if (loading) {
+    return (
+      <Screen>
+        <Header title="Result" />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color={COLORS.ink} />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (!recording) return <Redirect href="/results" />;
+
+  const test = getTest(recording.testId);
+
+  const shareVideo = async () => {
+    if (!(await Sharing.isAvailableAsync())) {
+      Alert.alert('Sharing unavailable', 'This device can’t share files.');
+      return;
+    }
+    try {
+      // The clip lives locally at recording.videoUri — opens the iOS share sheet
+      // (AirDrop, Save to Files, Save to Photos, …).
+      await Sharing.shareAsync(recording.videoUri, {
+        mimeType: 'video/mp4',
+        dialogTitle: 'Save or share recording',
+        UTI: 'public.movie',
+      });
+    } catch (e) {
+      Alert.alert('Could not share', String(e));
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert('Delete recording?', 'This removes the clip from this device.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await remove(recording.id);
+          router.back();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <Screen>
+      <Header
+        title={test?.displayName ?? 'Result'}
+        right={
+          <Pressable
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Delete recording"
+            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          >
+            <Ionicons name="trash-outline" size={18} color={COLORS.inkMuted} />
+          </Pressable>
+        }
+      />
+
+      <ScrollView contentContainerClassName="px-6 pb-10">
+        {/* Video playback. */}
+        <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
+          <VideoView
+            player={player}
+            style={{ flex: 1 }}
+            nativeControls
+            contentFit="contain"
+          />
+        </View>
+
+        <View className="mt-4">
+          <StatusPill status={recording.status} />
+        </View>
+
+        {/* Cloud analysis panel — placeholder until the real API lands. */}
+        <View className="mt-4 rounded-2xl border border-ink-faint p-5">
+          <View className="flex-row items-center gap-2">
+            <MaterialCommunityIcons name="cloud-outline" size={18} color={COLORS.ink} />
+            <Text className="text-[15px] font-semibold text-ink">Cloud analysis</Text>
+          </View>
+
+          {recording.status === 'done' && recording.result ? (
+            <View className="mt-4 items-center">
+              <Text className="text-[44px] font-bold text-ink">
+                {recording.result.updrsGrade != null
+                  ? recording.result.updrsGrade
+                  : recording.result.score.toFixed(2)}
+              </Text>
+              <Text className="text-[15px] font-medium text-ink-muted">
+                {recording.result.updrsGrade != null
+                  ? `MDS-UPDRS grade · ${recording.result.label}`
+                  : recording.result.label}
+              </Text>
+              {recording.result.isEstimate && !recording.result.isDemo && (
+                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
+                  <Text className="text-[11px] font-semibold text-amber-700">
+                    ESTIMATE — automated screening, not a diagnosis
+                  </Text>
+                </View>
+              )}
+              {recording.result.isDemo && (
+                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
+                  <Text className="text-[11px] font-semibold text-amber-700">
+                    SAMPLE — placeholder result, not real analysis
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : recording.status === 'failed' ? (
+            <Text className="mt-3 text-[14px] text-red-600">
+              Analysis failed. Please try recording again.
+            </Text>
+          ) : (
+            <View className="mt-4 flex-row items-center gap-3">
+              <ActivityIndicator color={COLORS.ink} />
+              <Text className="text-[14px] text-ink-muted">
+                {recording.status === 'uploading'
+                  ? 'Uploading to server…'
+                  : 'Processing on server…'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View className="mt-8">
+          <Button title="Save / share video" variant="secondary" onPress={shareVideo} />
+          <View className="mt-3">
+            <Button title="Back to menu" onPress={() => router.navigate('/')} />
+          </View>
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}

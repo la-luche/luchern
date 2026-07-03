@@ -1,56 +1,116 @@
-# Welcome to your Expo app 👋
+# Luche RN
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+React Native + Expo rebuild of the Luche motor-test app (the Swift original lives
+in `../v2/Luche/`). This version does **all inference in the cloud** — per-test
+recordings are just video captures that get sent to a server for analysis. No
+Core ML, no on-device model, no frame buffering.
 
-## Get started
+> Status: **Live cloud pipeline (2026-07-03).** `src/lib/cloud.ts` now talks to
+> `feral-api`: presigned R2 upload → Sapiens2 keypoints (serve_luche/RunPod) →
+> kinematic MDS-UPDRS heuristic → real score (0–1 severity + 0–4 grade, flagged
+> `isEstimate`). Auth is anonymous device-token (`src/lib/api.ts`, no sign-in UI,
+> Expo Go-safe); Clerk can replace it later without touching the rest of the app.
+> Finger tapping is high-confidence; gait / chair / freezing are best-effort from
+> handheld video. Backend design: `$FERAL_SHARED_DOCS/raw/plans/2026-07-02-luche-keypoint-updrs-backend.md`.
 
-1. Install dependencies
+## Stack
 
-   ```bash
-   npm install
-   ```
+| Concern | Choice |
+| --- | --- |
+| Framework | Expo SDK 57 (RN 0.86, React 19.2), TypeScript |
+| Navigation | expo-router (file-based, `src/app/`) |
+| Styling | NativeWind (Tailwind) — **Tailwind pinned to v3**, see below |
+| Camera | `expo-camera` (`CameraView`, video mode) |
+| Video playback | `expo-video` |
+| Persistence | `@react-native-async-storage/async-storage` |
+| Icons | `@expo/vector-icons` (MaterialCommunityIcons / Ionicons) |
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+npm install
+npx expo start        # then press i (iOS) / a (Android)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Camera recording requires a **real device or a config-dev-client build** — the
+simulator has no camera feed. Capture works on device via Expo Go.
 
-### Other setup steps
+Useful checks:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npx tsc --noEmit                    # typecheck
+npx expo export --platform ios      # bundle smoke test (no device needed)
+```
 
-## Learn more
+## Architecture
 
-To learn more about developing your project with Expo, look at the following resources:
+### Screen flow (mirrors the Swift app, minus local inference)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+Menu ──select test──▶ Instructions ──Continue──▶ Recording ──Start/End──▶ Result detail
+ (/)                   (/test/[id])              (/record/[id])            (/results/[id])
+  │                                                                              ▲
+  └───────────────────── Previous recordings (/results) ─────────────────────────┘
+```
 
-## Join the community
+A first-launch **medical disclaimer** gate (`DisclaimerGate`) wraps everything;
+an **About/Privacy** screen (`/about`) is reachable from the menu.
 
-Join our community of developers creating universal apps.
+### Directory map
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+src/
+  app/                     # expo-router screens (one file = one route)
+    _layout.tsx            # Stack + DisclaimerGate + global.css import
+    index.tsx              # Menu
+    test/[id].tsx          # Instructions
+    record/[id].tsx        # Camera + Start/End
+    results/index.tsx      # Recording cards list
+    results/[id].tsx       # Playback + cloud-analysis panel
+    about.tsx              # Privacy & disclaimer (modal)
+  components/              # hand-built, ~8 small pieces (no UI kit)
+  lib/
+    tests.ts               # the 4 tests (ported from Evaluation.swift)
+    types.ts               # Recording / CloudResult / status
+    cloud.ts               # <- THE PLACEHOLDER SEAM (replace for real API)
+    storage.ts             # AsyncStorage store + lifecycle driver + hooks
+    theme.ts               # raw color values for icon/overlay props
+```
+
+### The cloud seam (`src/lib/cloud.ts`)
+
+The only module that knows about "the cloud". Today it fakes the lifecycle:
+
+```ts
+uploadRecording(uri)      -> Promise<{ jobId }>   // fake delay
+pollResult(jobId, testId) -> Promise<CloudResult> // fake delay + sample score
+```
+
+`storage.ts` drives a recording through `uploading -> processing -> done`,
+persisting each transition. When the real API lands, reimplement these two
+functions (multipart POST + poll) and drop the `isDemo` sample labeling. The UI,
+persistence, and status pills stay untouched.
+
+### Data model
+
+One `Recording` per captured test, persisted locally:
+
+```ts
+{ id, testId, createdAt, videoUri, status, jobId?, result? }
+```
+
+`useRecordings()` (in `storage.ts`) exposes the list + `addRecording` + `remove`,
+backed by a single shared in-memory cache so every screen stays in sync.
+
+## Tailwind v3 pin — do not "upgrade"
+
+NativeWind 4.x targets **Tailwind v3**. `tailwindcss` latest is v4 (breaking,
+CSS-first config) and will break NativeWind. `package.json` pins
+`tailwindcss@3.4.x` on purpose. Leave it until NativeWind v5 ships stable.
+
+## What's intentionally NOT here
+
+Present in the Swift app, out of scope for this scaffold: real auth (Clerk),
+real upload/inference, Core ML, the observer/data-sharing surface, PDF export,
+landscape recording. See `STORE_SUBMISSION.md` for the path to a submittable
+build.
