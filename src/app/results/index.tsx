@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 
 import { Header } from '../../components/Header';
 import { RecordingCard } from '../../components/RecordingCard';
+import { ResultsTrends } from '../../components/ResultsTrends';
 import { Screen } from '../../components/Screen';
 import { useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
@@ -38,6 +39,7 @@ export default function ResultsScreen() {
           data={recordings}
           keyExtractor={(r) => r.id}
           contentContainerClassName="px-6 pb-8 gap-3"
+          ListHeaderComponent={<ResultsTrends recordings={recordings} />}
           renderItem={({ item }) => (
             <RecordingCard
               recording={item}
