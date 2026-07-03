@@ -8,6 +8,7 @@ import {
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
@@ -38,6 +39,8 @@ export default function RecordScreen() {
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [facing, setFacing] = useState<CameraType>('back');
+  const [zoom, setZoom] = useState(0);
+  const zoomBase = useRef(0);
 
   // Recording timer.
   useEffect(() => {
@@ -81,6 +84,19 @@ export default function RecordScreen() {
     cameraRef.current?.stopRecording();
   };
 
+  // Pinch-to-zoom. Disabled while recording so zoom is frozen for the clip.
+  // runOnJS(true) lets the callbacks call React setState directly.
+  const pinch = Gesture.Pinch()
+    .enabled(!isRecording)
+    .runOnJS(true)
+    .onStart(() => {
+      zoomBase.current = zoom;
+    })
+    .onUpdate((e) => {
+      const next = Math.min(Math.max(zoomBase.current + (e.scale - 1) * 0.4, 0), 1);
+      setZoom(next);
+    });
+
   // --- Permission gate ---------------------------------------------------------
   if (!permissionsGranted) {
     const permanentlyDenied =
@@ -112,7 +128,9 @@ export default function RecordScreen() {
 
   // --- Camera --------------------------------------------------------------------
   return (
-    <View className="flex-1 bg-black">
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureDetector gesture={pinch}>
+        <View className="flex-1 bg-black">
       {/* No audio (mute), 720p, and a 3 Mbps HEVC cap. The keypoint model only
           sees ~768px so higher res/bitrate is wasted upload; 3 Mbps HEVC keeps
           keypoint quality (old app tracked fine at 2 Mbps H.264). NB: videoQuality
@@ -123,6 +141,7 @@ export default function RecordScreen() {
         style={{ flex: 1 }}
         mode="video"
         facing={facing}
+        zoom={zoom}
         mute
         videoQuality="720p"
         videoBitrate={3000000}
@@ -166,7 +185,13 @@ export default function RecordScreen() {
           </View>
         </View>
 
-        <View className="flex-1" />
+        <View className="flex-1 items-center justify-end pb-4" pointerEvents="none">
+          {!isRecording && zoom === 0 && (
+            <View className="rounded-full bg-black/40 px-3 py-1.5">
+              <Text className="text-[12px] font-medium text-white/80">Pinch to zoom</Text>
+            </View>
+          )}
+        </View>
 
         {/* Bottom control — Start / End. */}
         <View className="items-center pb-8">
@@ -196,6 +221,8 @@ export default function RecordScreen() {
           </Text>
         </View>
       </SafeAreaView>
-    </View>
+        </View>
+      </GestureDetector>
+    </GestureHandlerRootView>
   );
 }
