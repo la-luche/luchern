@@ -1,5 +1,7 @@
-import { useAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
-import { useEffect, useRef, useState } from 'react';
+import { useAuth, useSSO, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,6 +14,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensurePatientOnboarded } from '../lib/api';
 import { Button } from './Button';
+import { SocialButton } from './SocialButton';
+
+// Required so the OAuth browser redirect can resolve back into the app.
+WebBrowser.maybeCompleteAuthSession();
+
+/** Warm up / cool down the in-app browser — smooths the Android OAuth cold start. */
+function useWarmUpBrowser() {
+  useEffect(() => {
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <View className="flex-1 items-center justify-center bg-white">{children}</View>;
@@ -22,6 +38,8 @@ function SignInScreen() {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
+  const { startSSOFlow } = useSSO();
+  useWarmUpBrowser();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
@@ -91,6 +109,35 @@ function SignInScreen() {
     }
   }
 
+  const onSSO = useCallback(
+    async (strategy: 'oauth_apple' | 'oauth_google') => {
+      if (busy) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const { createdSessionId, setActive, authSessionResult } = await startSSOFlow({
+          strategy,
+          redirectUrl: AuthSession.makeRedirectUri(),
+        });
+        // User backed out of the browser → silent no-op, stay on the screen.
+        if (authSessionResult?.type === 'cancel' || authSessionResult?.type === 'dismiss') {
+          return;
+        }
+        if (createdSessionId) {
+          await setActive!({ session: createdSessionId });
+          return; // AuthGate's isSignedIn effect runs onboarding.
+        }
+        // Only reached on an unexpected incomplete/transfer state.
+        throw new Error('Sign-in did not complete.');
+      } catch (e: any) {
+        setError(e?.errors?.[0]?.message ?? e?.message ?? 'Could not sign in. Please try again.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, startSSOFlow],
+  );
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -106,6 +153,28 @@ function SignInScreen() {
             ? 'Enter your email — we’ll send a one-time code.'
             : `Enter the code we sent to ${email}.`}
         </Text>
+
+        {step === 'email' && (
+          <View className="mt-6">
+            <SocialButton
+              provider="apple"
+              onPress={() => onSSO('oauth_apple')}
+              disabled={busy || !ready}
+            />
+            <View className="mt-3">
+              <SocialButton
+                provider="google"
+                onPress={() => onSSO('oauth_google')}
+                disabled={busy || !ready}
+              />
+            </View>
+            <View className="mt-6 flex-row items-center">
+              <View className="h-px flex-1 bg-ink-faint" />
+              <Text className="mx-3 text-[13px] text-ink-muted">or continue with email</Text>
+              <View className="h-px flex-1 bg-ink-faint" />
+            </View>
+          </View>
+        )}
 
         {step === 'email' ? (
           <TextInput
