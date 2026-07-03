@@ -19,6 +19,8 @@ export interface TestConfig {
   icon: MCIName;
   instructionTitle: string;
   instructionSteps: string[];
+  /** Looping demo clip shown on the instruction screen. require()'d mp4 in assets/demos/. */
+  demoVideo: number;
 }
 
 export const TESTS: TestConfig[] = [
@@ -33,6 +35,7 @@ export const TESTS: TestConfig[] = [
       'Turn around and walk 10 steps back',
       "Tap Start when you're ready to begin",
     ],
+    demoVideo: require('../../assets/demos/WalkingDemo.mp4'),
   },
   {
     id: 'arisingFromChair',
@@ -47,6 +50,7 @@ export const TESTS: TestConfig[] = [
       'Repeat 3 times',
       "Tap Start when you're ready to begin",
     ],
+    demoVideo: require('../../assets/demos/ChairDemo.mp4'),
   },
   {
     id: 'fingerTapping',
@@ -60,6 +64,7 @@ export const TESTS: TestConfig[] = [
       'About 30 taps',
       "Tap Start when you're ready to begin",
     ],
+    demoVideo: require('../../assets/demos/FingerTappingDemo.mp4'),
   },
 ];
 
