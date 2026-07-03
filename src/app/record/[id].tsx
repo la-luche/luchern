@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   CameraView,
+  CameraType,
   useCameraPermissions,
   useMicrophonePermissions,
 } from 'expo-camera';
@@ -36,6 +37,7 @@ export default function RecordScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [facing, setFacing] = useState<CameraType>('back');
 
   // Recording timer.
   useEffect(() => {
@@ -120,7 +122,7 @@ export default function RecordScreen() {
         ref={cameraRef}
         style={{ flex: 1 }}
         mode="video"
-        facing="back"
+        facing={facing}
         mute
         videoQuality="720p"
         videoBitrate={3000000}
@@ -147,8 +149,20 @@ export default function RecordScreen() {
               </Text>
             </View>
           )}
-          <View className="rounded-full bg-black/40 px-3 py-1.5">
-            <Text className="text-[13px] font-semibold text-white">{test.displayName}</Text>
+          <View className="flex-row items-center gap-2">
+            {!isRecording && (
+              <Pressable
+                onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                accessibilityRole="button"
+                accessibilityLabel="Flip camera"
+                className="h-[38px] w-[38px] items-center justify-center rounded-full bg-black/40 active:opacity-70"
+              >
+                <Ionicons name="camera-reverse-outline" size={18} color={COLORS.white} />
+              </Pressable>
+            )}
+            <View className="rounded-full bg-black/40 px-3 py-1.5">
+              <Text className="text-[13px] font-semibold text-white">{test.displayName}</Text>
+            </View>
           </View>
         </View>
 
