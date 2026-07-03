@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensurePatientOnboarded } from '../lib/api';
+import { useT } from '../lib/i18n';
 import { Button } from './Button';
 import { SocialButton } from './SocialButton';
 
@@ -40,6 +41,7 @@ function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { startSSOFlow } = useSSO();
   useWarmUpBrowser();
+  const t = useT();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
@@ -82,7 +84,7 @@ function SignInScreen() {
       }
       setStep('code');
     } catch (e: any) {
-      setError(e?.errors?.[0]?.message ?? e?.message ?? 'Could not send a code to that email.');
+      setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.sendCodeError);
     } finally {
       setBusy(false);
     }
@@ -95,15 +97,15 @@ function SignInScreen() {
     try {
       if (mode === 'signIn') {
         const res = await signIn!.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
-        if (res.status !== 'complete') throw new Error('Sign-in incomplete.');
+        if (res.status !== 'complete') throw new Error(t.auth.signInIncomplete);
         await setActiveSignIn!({ session: res.createdSessionId });
       } else {
         const res = await signUp!.attemptEmailAddressVerification({ code: code.trim() });
-        if (res.status !== 'complete') throw new Error('Sign-up incomplete.');
+        if (res.status !== 'complete') throw new Error(t.auth.signUpIncomplete);
         await setActiveSignUp!({ session: res.createdSessionId });
       }
     } catch (e: any) {
-      setError(e?.errors?.[0]?.message ?? e?.message ?? 'That code was not valid.');
+      setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.invalidCode);
     } finally {
       setBusy(false);
     }
@@ -128,14 +130,14 @@ function SignInScreen() {
           return; // AuthGate's isSignedIn effect runs onboarding.
         }
         // Only reached on an unexpected incomplete/transfer state.
-        throw new Error('Sign-in did not complete.');
+        throw new Error(t.auth.genericError);
       } catch (e: any) {
-        setError(e?.errors?.[0]?.message ?? e?.message ?? 'Could not sign in. Please try again.');
+        setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.genericError);
       } finally {
         setBusy(false);
       }
     },
-    [busy, startSSOFlow],
+    [busy, startSSOFlow, t],
   );
 
   return (
@@ -147,11 +149,9 @@ function SignInScreen() {
         className="flex-1 justify-center px-7"
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <Text className="text-[28px] font-bold text-ink">Sign in to Luche</Text>
+        <Text className="text-[28px] font-bold text-ink">{t.auth.signInTitle}</Text>
         <Text className="mt-2 text-[15px] text-ink-muted">
-          {step === 'email'
-            ? 'Enter your email — we’ll send a one-time code.'
-            : `Enter the code we sent to ${email}.`}
+          {step === 'email' ? t.auth.emailSubtitle : t.auth.codeSubtitle(email)}
         </Text>
 
         {step === 'email' && (
@@ -170,7 +170,7 @@ function SignInScreen() {
             </View>
             <View className="mt-6 flex-row items-center">
               <View className="h-px flex-1 bg-ink-faint" />
-              <Text className="mx-3 text-[13px] text-ink-muted">or continue with email</Text>
+              <Text className="mx-3 text-[13px] text-ink-muted">{t.auth.orContinueWithEmail}</Text>
               <View className="h-px flex-1 bg-ink-faint" />
             </View>
           </View>
@@ -179,7 +179,7 @@ function SignInScreen() {
         {step === 'email' ? (
           <TextInput
             className="mt-6 h-[52px] rounded-2xl border border-ink-faint px-4 text-[17px] text-ink"
-            placeholder="you@example.com"
+            placeholder={t.auth.emailPlaceholder}
             placeholderTextColor="#9ca3af"
             autoCapitalize="none"
             autoCorrect={false}
@@ -194,7 +194,7 @@ function SignInScreen() {
         ) : (
           <TextInput
             className="mt-6 h-[52px] rounded-2xl border border-ink-faint px-4 text-[22px] tracking-[8px] text-ink"
-            placeholder="000000"
+            placeholder={t.auth.codePlaceholder}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
             textContentType="oneTimeCode"
@@ -211,13 +211,13 @@ function SignInScreen() {
 
         <View className="mt-6">
           {step === 'email' ? (
-            <Button title={busy ? 'Sending…' : 'Send code'} onPress={sendCode} disabled={busy || !ready} />
+            <Button title={busy ? t.auth.sending : t.auth.sendCode} onPress={sendCode} disabled={busy || !ready} />
           ) : (
             <>
-              <Button title={busy ? 'Verifying…' : 'Verify'} onPress={verify} disabled={busy || !ready} />
+              <Button title={busy ? t.auth.verifying : t.auth.verify} onPress={verify} disabled={busy || !ready} />
               <View className="mt-3">
                 <Button
-                  title="Use a different email"
+                  title={t.auth.useDifferentEmail}
                   variant="secondary"
                   onPress={() => {
                     setStep('email');

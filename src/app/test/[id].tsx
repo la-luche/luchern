@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { StepList } from '../../components/StepList';
+import { useT } from '../../lib/i18n';
 import { getTest } from '../../lib/tests';
 
 /** Per-test instruction guide. Continue → recording screen. */
@@ -13,6 +14,7 @@ export default function InstructionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const test = getTest(id);
+  const t = useT();
 
   const player = useVideoPlayer(test?.demoVideo ?? null, (p) => {
     p.loop = true;
@@ -33,20 +35,20 @@ export default function InstructionScreen() {
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
             nativeControls={false}
-            accessibilityLabel={`${test.displayName} demonstration video`}
+            accessibilityLabel={`${t.tests[test.id].name} demonstration video`}
           />
         </View>
 
-        <Text className="mt-6 text-[28px] font-bold text-ink">{test.instructionTitle}</Text>
+        <Text className="mt-6 text-[28px] font-bold text-ink">{t.tests[test.id].title}</Text>
         <Text className="mt-1 text-[13px] font-medium text-ink-muted">{test.updrsItem}</Text>
 
         <View className="mt-6">
-          <StepList steps={test.instructionSteps} />
+          <StepList steps={t.tests[test.id].steps} />
         </View>
 
         <View className="mt-8">
           <Button
-            title="Continue"
+            title={t.common.continue}
             onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
           />
         </View>

@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 import { Header } from '../../components/Header';
 import { RecordingCard } from '../../components/RecordingCard';
 import { Screen } from '../../components/Screen';
+import { useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
 import { COLORS } from '../../lib/theme';
 
@@ -12,10 +13,11 @@ import { COLORS } from '../../lib/theme';
 export default function ResultsScreen() {
   const router = useRouter();
   const { recordings, loading } = useRecordings();
+  const t = useT();
 
   return (
     <Screen>
-      <Header title="Previous recordings" />
+      <Header title={t.resultsList.title} />
 
       {loading ? (
         <View className="flex-1 items-center justify-center">
@@ -25,10 +27,10 @@ export default function ResultsScreen() {
         <View className="flex-1 items-center justify-center px-10">
           <MaterialCommunityIcons name="video-off-outline" size={52} color={COLORS.inkFaint} />
           <Text className="mt-4 text-center text-[17px] font-semibold text-ink">
-            No recordings yet
+            {t.resultsList.emptyTitle}
           </Text>
           <Text className="mt-1 text-center text-[14px] text-ink-muted">
-            Complete a test and it will show up here.
+            {t.resultsList.emptyBody}
           </Text>
         </View>
       ) : (

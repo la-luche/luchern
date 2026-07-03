@@ -103,6 +103,7 @@ export const it: Dict = {
     verifying: 'Verifica…',
     verify: 'Verifica',
     useDifferentEmail: 'Usa un’altra email',
+    orContinueWithEmail: 'oppure continua con l’email',
     genericError: 'Impossibile accedere. Riprova.',
   },
   severity: {

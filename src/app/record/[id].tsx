@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
+import { useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -29,6 +30,7 @@ export default function RecordScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const test = getTest(id);
+  const t = useT();
 
   const [camPerm, requestCam] = useCameraPermissions();
   const [micPerm, requestMic] = useMicrophonePermissions();
@@ -108,18 +110,17 @@ export default function RecordScreen() {
         <View className="flex-1 items-center justify-center px-8">
           <MaterialCommunityIcons name="camera-off-outline" size={56} color={COLORS.ink} />
           <Text className="mt-5 text-center text-[22px] font-bold text-ink">
-            Camera access needed
+            {t.record.cameraAccessNeeded}
           </Text>
           <Text className="mt-2 text-center text-[15px] leading-6 text-ink/60">
-            Luche records a short video of the {test.displayName.toLowerCase()} test to analyze it.
-            The camera and microphone are used only while you record.
+            {t.record.cameraAccessBody(t.tests[test.id].name)}
           </Text>
           <View className="mt-8 w-full gap-3">
             <Button
-              title={permanentlyDenied ? 'Open Settings' : 'Grant camera access'}
+              title={permanentlyDenied ? t.record.openSettings : t.record.grantAccess}
               onPress={permanentlyDenied ? () => Linking.openSettings() : requestAll}
             />
-            <Button title="Back" variant="secondary" onPress={() => router.back()} />
+            <Button title={t.common.back} variant="secondary" onPress={() => router.back()} />
           </View>
         </View>
       </Screen>
@@ -155,7 +156,7 @@ export default function RecordScreen() {
             <Pressable
               onPress={() => router.back()}
               accessibilityRole="button"
-              accessibilityLabel="Back"
+              accessibilityLabel={t.common.back}
               className="h-[38px] w-[38px] items-center justify-center rounded-full bg-black/40 active:opacity-70"
             >
               <Ionicons name="chevron-back" size={18} color={COLORS.white} />
@@ -173,14 +174,14 @@ export default function RecordScreen() {
               <Pressable
                 onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
                 accessibilityRole="button"
-                accessibilityLabel="Flip camera"
+                accessibilityLabel={t.record.flipCamera}
                 className="h-[38px] w-[38px] items-center justify-center rounded-full bg-black/40 active:opacity-70"
               >
                 <Ionicons name="camera-reverse-outline" size={18} color={COLORS.white} />
               </Pressable>
             )}
             <View className="rounded-full bg-black/40 px-3 py-1.5">
-              <Text className="text-[13px] font-semibold text-white">{test.displayName}</Text>
+              <Text className="text-[13px] font-semibold text-white">{t.tests[test.id].name}</Text>
             </View>
           </View>
         </View>
@@ -188,7 +189,7 @@ export default function RecordScreen() {
         <View className="flex-1 items-center justify-end pb-4" pointerEvents="none">
           {!isRecording && zoom === 0 && (
             <View className="rounded-full bg-black/40 px-3 py-1.5">
-              <Text className="text-[12px] font-medium text-white/80">Pinch to zoom</Text>
+              <Text className="text-[12px] font-medium text-white/80">{t.record.pinchToZoom}</Text>
             </View>
           )}
         </View>
@@ -196,12 +197,12 @@ export default function RecordScreen() {
         {/* Bottom control — Start / End. */}
         <View className="items-center pb-8">
           {saving ? (
-            <Text className="text-[15px] font-semibold text-white">Saving…</Text>
+            <Text className="text-[15px] font-semibold text-white">{t.record.saving}</Text>
           ) : !isRecording ? (
             <Pressable
               onPress={startRecording}
               accessibilityRole="button"
-              accessibilityLabel="Start recording"
+              accessibilityLabel={t.record.startA11y}
               className="h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
             >
               <View className="h-6 w-6 rounded-md bg-red-500" />
@@ -210,14 +211,14 @@ export default function RecordScreen() {
             <Pressable
               onPress={stopRecording}
               accessibilityRole="button"
-              accessibilityLabel="End recording"
+              accessibilityLabel={t.record.endA11y}
               className="h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
             >
               <View className="h-7 w-7 rounded-lg bg-ink" />
             </Pressable>
           )}
           <Text className="mt-3 text-[13px] font-medium text-white/80">
-            {isRecording ? 'Tap to end' : 'Tap to start'}
+            {isRecording ? t.record.tapToEnd : t.record.tapToStart}
           </Text>
         </View>
       </SafeAreaView>

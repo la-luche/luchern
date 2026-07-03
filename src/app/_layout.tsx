@@ -7,6 +7,7 @@ import '../global.css';
 import { AuthGate } from '../components/AuthGate';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
+import { LanguageProvider } from '../lib/i18n';
 
 // Single stack for the whole app. Headers are hidden — each screen draws its
 // own minimal top bar to match the Luche look. App is portrait-locked and
@@ -18,7 +19,8 @@ import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={clerkTokenCache}>
-      <SafeAreaProvider>
+      <LanguageProvider>
+        <SafeAreaProvider>
         <StatusBar style="dark" />
         <DisclaimerGate>
           <AuthGate>
@@ -32,7 +34,8 @@ export default function RootLayout() {
             </Stack>
           </AuthGate>
         </DisclaimerGate>
-      </SafeAreaProvider>
+        </SafeAreaProvider>
+      </LanguageProvider>
     </ClerkProvider>
   );
 }

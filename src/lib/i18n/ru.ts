@@ -103,6 +103,7 @@ export const ru: Dict = {
     verifying: 'Проверка…',
     verify: 'Подтвердить',
     useDifferentEmail: 'Использовать другую почту',
+    orContinueWithEmail: 'или продолжите с почтой',
     genericError: 'Не удалось войти. Попробуйте снова.',
   },
   severity: {

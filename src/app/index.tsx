@@ -5,12 +5,14 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
 import { TestRow } from '../components/TestRow';
+import { useT } from '../lib/i18n';
 import { TESTS } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 
-/** Menu: title + the four test rows + navigation to previous recordings. */
+/** Menu: title + the test rows + navigation to previous recordings. */
 export default function MenuScreen() {
   const router = useRouter();
+  const t = useT();
 
   return (
     <Screen>
@@ -19,7 +21,7 @@ export default function MenuScreen() {
         <Pressable
           onPress={() => router.push('/about')}
           accessibilityRole="button"
-          accessibilityLabel="About and privacy"
+          accessibilityLabel={t.menu.aboutA11y}
           className="h-9 w-9 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
         >
           <Ionicons name="information" size={18} color={COLORS.ink} />
@@ -29,8 +31,8 @@ export default function MenuScreen() {
       <ScrollView contentContainerClassName="px-6 pb-8">
         {/* Title block. */}
         <View className="items-center pt-3">
-          <Text className="text-[28px] font-bold text-ink">Luche</Text>
-          <Text className="mt-1 text-[15px] font-medium text-ink-muted">Choose a test</Text>
+          <Text className="text-[28px] font-bold text-ink">{t.common.appName}</Text>
+          <Text className="mt-1 text-[15px] font-medium text-ink-muted">{t.menu.chooseTest}</Text>
         </View>
 
         {/* Test rows. */}
@@ -47,7 +49,7 @@ export default function MenuScreen() {
         {/* Previous recordings. */}
         <View className="mt-8">
           <Button
-            title="Previous recordings"
+            title={t.menu.previousRecordings}
             variant="secondary"
             onPress={() => router.push('/results')}
           />

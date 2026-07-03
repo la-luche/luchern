@@ -58,3 +58,21 @@ export function useLang(): { lang: Lang; setLang: (l: Lang) => void } {
   const { lang, setLang } = useCtx();
   return { lang, setLang };
 }
+
+const SEVERITY_MAP: Record<string, keyof Dict['severity']> = {
+  Normal: 'normal',
+  Slight: 'slight',
+  Mild: 'mild',
+  Moderate: 'moderate',
+  Severe: 'severe',
+};
+
+/**
+ * Localize a severity word ("Mild") coming from the server or the local
+ * heuristic fallback — both emit the same five English words. Unrecognized
+ * labels pass through unchanged.
+ */
+export function localizeSeverity(t: Dict, label: string): string {
+  const k = SEVERITY_MAP[label];
+  return k ? t.severity[k] : label;
+}

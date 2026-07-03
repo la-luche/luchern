@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
 
 /**
@@ -12,13 +13,14 @@ import { COLORS } from '../lib/theme';
  */
 export function Header({ title, right }: { title?: string; right?: ReactNode }) {
   const router = useRouter();
+  const t = useT();
   return (
     <View className="h-12 flex-row items-center justify-between px-[18px]">
       <View className="w-10">
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t.common.back}
           className="h-[38px] w-[38px] items-center justify-center rounded-full bg-ink-faint active:opacity-70"
         >
           <Ionicons name="chevron-back" size={18} color={COLORS.ink} />

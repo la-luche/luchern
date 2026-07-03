@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
+import { localizeSeverity, useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -18,6 +19,7 @@ export default function ResultDetailScreen() {
   const router = useRouter();
   const { recordings, loading, remove } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
+  const t = useT();
 
   // Hook must run unconditionally — source is null until the recording loads.
   const player = useVideoPlayer(recording ? { uri: recording.videoUri } : null, (p) => {
@@ -27,7 +29,7 @@ export default function ResultDetailScreen() {
   if (loading) {
     return (
       <Screen>
-        <Header title="Result" />
+        <Header title={t.result.fallbackTitle} />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color={COLORS.ink} />
         </View>
@@ -41,7 +43,7 @@ export default function ResultDetailScreen() {
 
   const shareVideo = async () => {
     if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert('Sharing unavailable', 'This device can’t share files.');
+      Alert.alert(t.result.sharingUnavailableTitle, t.result.sharingUnavailableBody);
       return;
     }
     try {
@@ -49,19 +51,19 @@ export default function ResultDetailScreen() {
       // (AirDrop, Save to Files, Save to Photos, …).
       await Sharing.shareAsync(recording.videoUri, {
         mimeType: 'video/mp4',
-        dialogTitle: 'Save or share recording',
+        dialogTitle: t.result.shareDialogTitle,
         UTI: 'public.movie',
       });
     } catch (e) {
-      Alert.alert('Could not share', String(e));
+      Alert.alert(t.result.couldNotShare, String(e));
     }
   };
 
   const confirmDelete = () => {
-    Alert.alert('Delete recording?', 'This removes the clip from this device.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.result.deleteTitle, t.result.deleteBody, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: t.common.delete,
         style: 'destructive',
         onPress: async () => {
           await remove(recording.id);
@@ -74,12 +76,12 @@ export default function ResultDetailScreen() {
   return (
     <Screen>
       <Header
-        title={test?.displayName ?? 'Result'}
+        title={test ? t.tests[test.id].name : t.result.fallbackTitle}
         right={
           <Pressable
             onPress={confirmDelete}
             accessibilityRole="button"
-            accessibilityLabel="Delete recording"
+            accessibilityLabel={t.result.deleteA11y}
             className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
           >
             <Ionicons name="trash-outline" size={18} color={COLORS.inkMuted} />
@@ -106,7 +108,7 @@ export default function ResultDetailScreen() {
         <View className="mt-4 rounded-2xl border border-ink-faint p-5">
           <View className="flex-row items-center gap-2">
             <MaterialCommunityIcons name="cloud-outline" size={18} color={COLORS.ink} />
-            <Text className="text-[15px] font-semibold text-ink">Cloud analysis</Text>
+            <Text className="text-[15px] font-semibold text-ink">{t.result.cloudAnalysis}</Text>
           </View>
 
           {recording.status === 'done' && recording.result ? (
@@ -118,44 +120,40 @@ export default function ResultDetailScreen() {
               </Text>
               <Text className="text-[15px] font-medium text-ink-muted">
                 {recording.result.updrsGrade != null
-                  ? `MDS-UPDRS grade · ${recording.result.label}`
-                  : recording.result.label}
+                  ? t.result.gradeLabel(localizeSeverity(t, recording.result.label))
+                  : localizeSeverity(t, recording.result.label)}
               </Text>
               {recording.result.isEstimate && !recording.result.isDemo && (
                 <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
                   <Text className="text-[11px] font-semibold text-amber-700">
-                    ESTIMATE — automated screening, not a diagnosis
+                    {t.result.estimatePill}
                   </Text>
                 </View>
               )}
               {recording.result.isDemo && (
                 <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
                   <Text className="text-[11px] font-semibold text-amber-700">
-                    SAMPLE — placeholder result, not real analysis
+                    {t.result.samplePill}
                   </Text>
                 </View>
               )}
             </View>
           ) : recording.status === 'failed' ? (
-            <Text className="mt-3 text-[14px] text-red-600">
-              Analysis failed. Please try recording again.
-            </Text>
+            <Text className="mt-3 text-[14px] text-red-600">{t.result.analysisFailed}</Text>
           ) : (
             <View className="mt-4 flex-row items-center gap-3">
               <ActivityIndicator color={COLORS.ink} />
               <Text className="text-[14px] text-ink-muted">
-                {recording.status === 'uploading'
-                  ? 'Uploading to server…'
-                  : 'Processing on server…'}
+                {recording.status === 'uploading' ? t.result.uploading : t.result.processing}
               </Text>
             </View>
           )}
         </View>
 
         <View className="mt-8">
-          <Button title="Save / share video" variant="secondary" onPress={shareVideo} />
+          <Button title={t.result.saveShare} variant="secondary" onPress={shareVideo} />
           <View className="mt-3">
-            <Button title="Back to menu" onPress={() => router.navigate('/')} />
+            <Button title={t.result.backToMenu} onPress={() => router.navigate('/')} />
           </View>
         </View>
       </ScrollView>

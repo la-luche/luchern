@@ -106,6 +106,7 @@ export const en = {
     verifying: 'Verifying…',
     verify: 'Verify',
     useDifferentEmail: 'Use a different email',
+    orContinueWithEmail: 'or continue with email',
     genericError: 'Could not sign in. Please try again.',
   },
   severity: {

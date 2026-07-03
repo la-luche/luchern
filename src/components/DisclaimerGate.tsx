@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
 import { Button } from './Button';
 
@@ -17,6 +18,7 @@ const ACCEPTED_KEY = 'luche.disclaimerAccepted.v1';
  * risk. Acceptance is persisted so it only shows once.
  */
 export function DisclaimerGate({ children }: { children: ReactNode }) {
+  const t = useT();
   // undefined = still loading, true/false = resolved
   const [accepted, setAccepted] = useState<boolean | undefined>(undefined);
 
@@ -42,17 +44,18 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
           <View className="mb-6 items-center">
             <MaterialCommunityIcons name="shield-alert-outline" size={56} color={COLORS.ink} />
           </View>
-          <Text className="mb-4 text-center text-[26px] font-bold text-ink">Before you start</Text>
+          <Text className="mb-4 text-center text-[26px] font-bold text-ink">
+            {t.disclaimer.title}
+          </Text>
           <Text className="mb-3 text-center text-[16px] leading-6 text-ink/70">
-            Luche is a research and wellness tool. It is{' '}
-            <Text className="font-semibold text-ink">not a medical device</Text> and does not
-            provide a diagnosis.
+            {t.disclaimer.body1lead}
+            <Text className="font-semibold text-ink">{t.disclaimer.notMedicalDevice}</Text>
+            {t.disclaimer.body1tail}
           </Text>
           <Text className="mb-8 text-center text-[16px] leading-6 text-ink/70">
-            Results are for informational purposes only. Always consult a qualified clinician about
-            your health. Do not use Luche to make medical decisions.
+            {t.disclaimer.body2}
           </Text>
-          <Button title="I understand" onPress={accept} />
+          <Button title={t.common.iUnderstand} onPress={accept} />
         </ScrollView>
       </SafeAreaView>
     </View>
