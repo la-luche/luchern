@@ -66,4 +66,16 @@ describe('driveOnce', () => {
     expect(patch.status).toBe('done');
     expect(patch.result?.score).toBe(0.4);
   });
+
+  it('calls onUploaded with the jobId after upload, before polling', async () => {
+    (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
+    const seen: string[] = [];
+    const patch = await driveOnce(baseRec(), {
+      maxBackoffs: 0,
+      onUploaded: (jobId) => { seen.push(jobId); },
+    });
+    expect(seen).toEqual(['99']);
+    expect(patch.status).toBe('done');
+  });
 });

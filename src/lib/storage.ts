@@ -85,13 +85,17 @@ async function patch(id: string, partial: Partial<Recording>) {
  *  lets tests disable backoff. */
 async function driveOnce(
   rec: Recording,
-  opts: { maxBackoffs?: number } = {},
+  opts: { maxBackoffs?: number; onUploaded?: (jobId: string) => Promise<void> | void } = {},
 ): Promise<Partial<Recording>> {
   let jobId = rec.jobId;
   let phase: 'upload' | 'poll' = 'upload';
   try {
     if (rec.status === 'uploading' || !jobId) {
       jobId = await serialUpload(() => uploadWithRetry(rec, opts.maxBackoffs));
+      // Persist the upload→processing transition NOW: the byte-upload is done
+      // (app no longer needs to stay open) and jobId must survive a kill during
+      // the poll so resume re-polls instead of re-uploading.
+      await opts.onUploaded?.(jobId);
     }
     phase = 'poll';
     const result = await pollResult(jobId, rec.testId);
@@ -117,7 +121,9 @@ async function drive(rec: Recording) {
   if (inFlight.has(rec.id)) return;
   inFlight.add(rec.id);
   try {
-    const patch_ = await driveOnce(rec);
+    const patch_ = await driveOnce(rec, {
+      onUploaded: (jobId) => patch(rec.id, { status: 'processing', jobId }),
+    });
     await patch(rec.id, patch_);
   } finally {
     inFlight.delete(rec.id);
