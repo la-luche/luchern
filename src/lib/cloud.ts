@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { apiFetch } from './api';
 import type { CloudResult } from './types';
 import type { TestId } from './tests';
+import { PollTimeoutError } from './uploadRetry';
 
 /**
  * Cloud client — the ONE module that talks to the backend. Real pipeline:
@@ -20,7 +21,9 @@ import type { TestId } from './tests';
 // Poll cadence + ceiling. Warm jobs finish in ~1 min; a cold GPU worker can take
 // up to ~13 min, so we poll patiently. Interrupted polls resume on relaunch.
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_MS = 20 * 60 * 1000;
+// Must exceed the worker's WORKER_JOB_TIMEOUT_SECONDS (25 min) so a cold GPU
+// job that finishes late isn't turned into a false client-side failure.
+const POLL_MAX_MS = 30 * 60 * 1000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -108,7 +111,7 @@ export async function pollResult(jobId: string, _testId: TestId): Promise<CloudR
     }
     await delay(POLL_INTERVAL_MS);
   }
-  throw new Error('analysis timed out');
+  throw new PollTimeoutError();
 }
 
 const LABELS = ['Normal', 'Slight', 'Mild', 'Moderate', 'Severe'];
