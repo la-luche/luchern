@@ -118,21 +118,24 @@ export default function ResultDetailScreen() {
                   ? recording.result.updrsGrade
                   : recording.result.score.toFixed(2)}
               </Text>
-              <Text className="text-[15px] font-medium text-ink-muted">
+              <Text className="text-[16px] font-medium text-ink-muted">
                 {recording.result.updrsGrade != null
                   ? t.result.gradeLabel(localizeSeverity(t, recording.result.label))
                   : localizeSeverity(t, recording.result.label)}
               </Text>
+              <Text className="mt-2 text-center text-[15px] leading-5 text-ink-muted">
+                {t.result.scoreHint}
+              </Text>
               {recording.result.isEstimate && !recording.result.isDemo && (
-                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
-                  <Text className="text-[11px] font-semibold text-amber-700">
+                <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
+                  <Text className="text-center text-[14px] font-semibold text-amber-700">
                     {t.result.estimatePill}
                   </Text>
                 </View>
               )}
               {recording.result.isDemo && (
-                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
-                  <Text className="text-[11px] font-semibold text-amber-700">
+                <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
+                  <Text className="text-center text-[14px] font-semibold text-amber-700">
                     {t.result.samplePill}
                   </Text>
                 </View>

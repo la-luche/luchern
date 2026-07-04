@@ -54,7 +54,7 @@ export const it: Dict = {
     title: 'Registrazioni precedenti',
     emptyTitle: 'Nessuna registrazione',
     emptyBody: 'Completa un test e apparirà qui.',
-    trendsTitle: 'Tendenze',
+    trendsTitle: 'I tuoi progressi',
   },
   result: {
     fallbackTitle: 'Risultato',
@@ -65,8 +65,9 @@ export const it: Dict = {
     deleteTitle: 'Eliminare la registrazione?',
     deleteBody: 'Rimuove il video da questo dispositivo.',
     deleteA11y: 'Elimina registrazione',
-    cloudAnalysis: 'Analisi nel cloud',
-    gradeLabel: (label: string) => `Grado MDS-UPDRS · ${label}`,
+    cloudAnalysis: 'Il tuo risultato',
+    scoreHint: 'Più basso è meglio. È una stima automatica, non una diagnosi.',
+    gradeLabel: (label: string) => `Gravità · ${label}`,
     estimatePill: 'STIMA — screening automatico, non una diagnosi',
     samplePill: 'ESEMPIO — risultato fittizio, non un’analisi reale',
     analysisFailed: 'Analisi non riuscita. Riprova a registrare.',
@@ -116,6 +117,7 @@ export const it: Dict = {
   tests: {
     gait: {
       name: 'Camminata',
+      descriptor: 'Cammina verso la fotocamera',
       title: 'Cammina davanti alla fotocamera',
       steps: [
         'Cammina 10 passi allontanandoti dalla fotocamera',
@@ -125,6 +127,7 @@ export const it: Dict = {
     },
     arisingFromChair: {
       name: 'Alzarsi dalla sedia',
+      descriptor: 'Alzati da una sedia',
       title: 'Alzati da una sedia',
       steps: [
         'Siediti su una sedia con schienale rigido',
@@ -136,6 +139,7 @@ export const it: Dict = {
     },
     fingerTapping: {
       name: 'Tapping delle dita',
+      descriptor: 'Tocca indice e pollice',
       title: 'Batti le dita',
       steps: [
         'Batti l’indice contro il pollice',

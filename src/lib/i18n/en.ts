@@ -57,7 +57,7 @@ export const en = {
     title: 'Previous recordings',
     emptyTitle: 'No recordings yet',
     emptyBody: 'Complete a test and it will show up here.',
-    trendsTitle: 'Trends',
+    trendsTitle: 'Your progress',
   },
   result: {
     fallbackTitle: 'Result',
@@ -68,8 +68,9 @@ export const en = {
     deleteTitle: 'Delete recording?',
     deleteBody: 'This removes the clip from this device.',
     deleteA11y: 'Delete recording',
-    cloudAnalysis: 'Cloud analysis',
-    gradeLabel: (label: string) => `MDS-UPDRS grade · ${label}`,
+    cloudAnalysis: 'Your result',
+    scoreHint: 'Lower is better. This is an automated estimate, not a diagnosis.',
+    gradeLabel: (label: string) => `Severity · ${label}`,
     estimatePill: 'ESTIMATE — automated screening, not a diagnosis',
     samplePill: 'SAMPLE — placeholder result, not real analysis',
     analysisFailed: 'Analysis failed. Please try recording again.',
@@ -119,6 +120,7 @@ export const en = {
   tests: {
     gait: {
       name: 'Walking',
+      descriptor: 'Walk toward the camera',
       title: 'Walk in front of the camera',
       steps: [
         'Walk 10 steps away from the camera',
@@ -127,7 +129,8 @@ export const en = {
       ],
     },
     arisingFromChair: {
-      name: 'Arising from Chair',
+      name: 'Standing Up from a Chair',
+      descriptor: 'Stand up from a chair',
       title: 'Stand up from a chair',
       steps: [
         'Sit in a straight-back chair',
@@ -139,6 +142,7 @@ export const en = {
     },
     fingerTapping: {
       name: 'Finger Tapping',
+      descriptor: 'Tap finger and thumb',
       title: 'Tap your fingers',
       steps: [
         'Tap your index finger against your thumb',

@@ -10,7 +10,8 @@ module.exports = {
         // Ported from the Swift Luche app (`lucheInk` = #080616). The RN app
         // mirrors that white + near-black palette.
         ink: '#080616',
-        'ink-muted': 'rgba(8, 6, 22, 0.55)',
+        // Muted text darkened 0.55 -> 0.65 for older-eye contrast (accessibility pass).
+        'ink-muted': 'rgba(8, 6, 22, 0.65)',
         'ink-faint': 'rgba(8, 6, 22, 0.06)',
       },
     },

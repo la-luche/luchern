@@ -45,8 +45,8 @@ export function RecordingCard({
       </View>
 
       <View className="ml-4 flex-1 gap-1">
-        <Text className="text-[16px] font-semibold text-ink">{name}</Text>
-        <Text className="text-[12px] text-ink-muted">{formatDate(recording.createdAt)}</Text>
+        <Text className="text-[17px] font-semibold text-ink">{name}</Text>
+        <Text className="text-[15px] text-ink-muted">{formatDate(recording.createdAt)}</Text>
         <StatusPill status={recording.status} />
       </View>
 
@@ -55,7 +55,7 @@ export function RecordingCard({
           <Text className="text-[20px] font-bold text-ink">
             {recording.result.score.toFixed(2)}
           </Text>
-          <Text className="text-[11px] text-ink-muted">
+          <Text className="text-[14px] text-ink-muted">
             {localizeSeverity(t, recording.result.label)}
           </Text>
         </View>
