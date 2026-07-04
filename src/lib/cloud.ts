@@ -95,7 +95,15 @@ export async function uploadRecording(
 export async function pollResult(jobId: string, _testId: TestId): Promise<CloudResult> {
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
-    const t = await apiFetch<TrialDetail>(`/trials/${jobId}`);
+    let t: TrialDetail;
+    try {
+      t = await apiFetch<TrialDetail>(`/trials/${jobId}`);
+    } catch {
+      // Transient poll error (e.g. 5xx during GPU cold start): keep polling
+      // until the real deadline rather than collapsing a blip into a failure.
+      await delay(POLL_INTERVAL_MS);
+      continue;
+    }
     if (t.analysis_status === 'done' && t.score != null) {
       return {
         score: t.score,

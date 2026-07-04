@@ -19,6 +19,12 @@ describe('classifyUploadError', () => {
   it('retryable for a network error string', () => {
     expect(classifyUploadError(new Error('Network request failed'))).toBe('retryable');
   });
+  it('retryable for a transient poll error whose trial id contains 413', () => {
+    expect(classifyUploadError(new Error('GET /trials/41300 → 500 internal'))).toBe('retryable');
+  });
+  it('permanent for an upload-failed 413', () => {
+    expect(classifyUploadError(new Error('upload failed (413)'))).toBe('permanent');
+  });
 });
 
 describe('UPLOAD_BACKOFFS_MS', () => {

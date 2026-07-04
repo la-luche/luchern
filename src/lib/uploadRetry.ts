@@ -20,7 +20,8 @@ export function classifyUploadError(e: unknown): 'retryable' | 'permanent' {
   if (
     msg.includes('recording file missing') ||
     msg.includes('too_large') ||
-    msg.includes('413')
+    msg.includes('(413)') ||
+    msg.includes('→ 413')
   ) {
     return 'permanent';
   }
