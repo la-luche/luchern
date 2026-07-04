@@ -40,7 +40,7 @@ export default function InstructionScreen() {
         </View>
 
         <Text className="mt-6 text-[28px] font-bold text-ink">{t.tests[test.id].title}</Text>
-        <Text className="mt-1 text-[13px] font-medium text-ink-muted">{test.updrsItem}</Text>
+        <Text className="mt-1 text-[16px] font-medium text-ink-muted">{t.tests[test.id].descriptor}</Text>
 
         <View className="mt-6">
           <StepList steps={t.tests[test.id].steps} />

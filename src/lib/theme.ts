@@ -5,7 +5,7 @@
  */
 export const COLORS = {
   ink: '#080616',
-  inkMuted: 'rgba(8, 6, 22, 0.55)',
+  inkMuted: 'rgba(8, 6, 22, 0.65)',
   inkFaint: 'rgba(8, 6, 22, 0.35)',
   white: '#FFFFFF',
 } as const;

@@ -40,4 +40,10 @@ export interface Recording {
   jobId?: string;
   /** Populated when status === 'done'. */
   result?: CloudResult;
+  /** Set when status === 'failed': the raw error message, for display/debug. */
+  failReason?: string;
+  /** Failed and NOT worth auto/manual retrying (file gone or over size cap). */
+  permanent?: boolean;
+  /** Failed in the upload phase and safe to auto-resume on next launch. */
+  resumable?: boolean;
 }

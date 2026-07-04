@@ -54,7 +54,7 @@ export const ru: Dict = {
     title: 'Предыдущие записи',
     emptyTitle: 'Пока нет записей',
     emptyBody: 'Завершите тест, и он появится здесь.',
-    trendsTitle: 'Динамика',
+    trendsTitle: 'Ваш прогресс',
   },
   result: {
     fallbackTitle: 'Результат',
@@ -65,11 +65,15 @@ export const ru: Dict = {
     deleteTitle: 'Удалить запись?',
     deleteBody: 'Видео будет удалено с этого устройства.',
     deleteA11y: 'Удалить запись',
-    cloudAnalysis: 'Облачный анализ',
-    gradeLabel: (label: string) => `Оценка MDS-UPDRS · ${label}`,
+    cloudAnalysis: 'Ваш результат',
+    scoreHint: 'Чем ниже, тем лучше. Это автоматическая оценка, а не диагноз.',
+    gradeLabel: (label: string) => `Степень · ${label}`,
     estimatePill: 'ОЦЕНКА — автоматический скрининг, не диагноз',
     samplePill: 'ПРИМЕР — тестовый результат, не настоящий анализ',
     analysisFailed: 'Анализ не удался. Попробуйте записать снова.',
+    retry: 'Повторить',
+    failedRetry: 'Что-то пошло не так. Приложение продолжит попытки — или нажмите «Повторить».',
+    permanentFailed: 'Не удалось загрузить эту запись. Пожалуйста, запишите заново.',
     uploading: 'Загрузка на сервер…',
     processing: 'Обработка на сервере…',
     saveShare: 'Сохранить / поделиться видео',
@@ -80,6 +84,10 @@ export const ru: Dict = {
     processing: 'Обработка…',
     done: 'Готово',
     failed: 'Ошибка',
+  },
+  uploadBanner: {
+    keepOpen: (n: number) =>
+      `Загрузка ${n} ${n === 1 ? 'записи' : 'записей'} — не закрывайте приложение`,
   },
   recordingCard: {
     fallback: 'Запись',
@@ -116,6 +124,7 @@ export const ru: Dict = {
   tests: {
     gait: {
       name: 'Ходьба',
+      descriptor: 'Идите к камере',
       title: 'Пройдите перед камерой',
       steps: [
         'Пройдите 10 шагов от камеры',
@@ -125,6 +134,7 @@ export const ru: Dict = {
     },
     arisingFromChair: {
       name: 'Вставание со стула',
+      descriptor: 'Встаньте со стула',
       title: 'Встаньте со стула',
       steps: [
         'Сядьте на стул с прямой спинкой',
@@ -136,6 +146,7 @@ export const ru: Dict = {
     },
     fingerTapping: {
       name: 'Постукивание пальцами',
+      descriptor: 'Касайтесь большого пальца указательным',
       title: 'Постукивайте пальцами',
       steps: [
         'Постукивайте указательным пальцем по большому',

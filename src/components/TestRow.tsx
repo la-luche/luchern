@@ -5,7 +5,7 @@ import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
 import type { TestConfig } from '../lib/tests';
 
-/** A single test row on the menu: ink icon tile + name + UPDRS item + chevron. */
+/** A single test row on the menu: ink icon tile + name + plain descriptor + chevron. */
 export function TestRow({ test, onPress }: { test: TestConfig; onPress: () => void }) {
   const t = useT();
   return (
@@ -21,10 +21,10 @@ export function TestRow({ test, onPress }: { test: TestConfig; onPress: () => vo
 
       <View className="ml-4 flex-1">
         <Text className="text-[18px] font-semibold text-ink">{t.tests[test.id].name}</Text>
-        <Text className="text-[12px] text-ink-muted">{test.updrsItem}</Text>
+        <Text className="text-[16px] text-ink-muted">{t.tests[test.id].descriptor}</Text>
       </View>
 
-      <Ionicons name="chevron-forward" size={16} color={COLORS.inkFaint} />
+      <Ionicons name="chevron-forward" size={20} color={COLORS.inkMuted} />
     </Pressable>
   );
 }

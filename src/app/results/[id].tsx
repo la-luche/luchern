@@ -17,7 +17,7 @@ import { COLORS } from '../../lib/theme';
 export default function ResultDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { recordings, loading, remove } = useRecordings();
+  const { recordings, loading, remove, retry } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
 
@@ -118,28 +118,38 @@ export default function ResultDetailScreen() {
                   ? recording.result.updrsGrade
                   : recording.result.score.toFixed(2)}
               </Text>
-              <Text className="text-[15px] font-medium text-ink-muted">
+              <Text className="text-[16px] font-medium text-ink-muted">
                 {recording.result.updrsGrade != null
                   ? t.result.gradeLabel(localizeSeverity(t, recording.result.label))
                   : localizeSeverity(t, recording.result.label)}
               </Text>
+              <Text className="mt-2 text-center text-[15px] leading-5 text-ink-muted">
+                {t.result.scoreHint}
+              </Text>
               {recording.result.isEstimate && !recording.result.isDemo && (
-                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
-                  <Text className="text-[11px] font-semibold text-amber-700">
+                <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
+                  <Text className="text-center text-[14px] font-semibold text-amber-700">
                     {t.result.estimatePill}
                   </Text>
                 </View>
               )}
               {recording.result.isDemo && (
-                <View className="mt-3 rounded-full bg-amber-100 px-3 py-1">
-                  <Text className="text-[11px] font-semibold text-amber-700">
+                <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
+                  <Text className="text-center text-[14px] font-semibold text-amber-700">
                     {t.result.samplePill}
                   </Text>
                 </View>
               )}
             </View>
           ) : recording.status === 'failed' ? (
-            <Text className="mt-3 text-[14px] text-red-600">{t.result.analysisFailed}</Text>
+            <View className="mt-3 gap-3">
+              <Text className="text-[14px] text-red-600">
+                {recording.permanent ? t.result.permanentFailed : t.result.failedRetry}
+              </Text>
+              {!recording.permanent && (
+                <Button title={t.result.retry} variant="secondary" onPress={() => retry(recording.id)} />
+              )}
+            </View>
           ) : (
             <View className="mt-4 flex-row items-center gap-3">
               <ActivityIndicator color={COLORS.ink} />

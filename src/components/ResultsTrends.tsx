@@ -32,15 +32,15 @@ export function ResultsTrends({ recordings }: { recordings: Recording[] }) {
 
   return (
     <View className="gap-3 pb-4">
-      <Text className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
+      <Text className="text-[16px] font-semibold text-ink">
         {t.resultsList.trendsTitle}
       </Text>
 
       {sections.map(({ test, points }) => (
         <View key={test.id} className="rounded-2xl border border-ink-faint bg-white p-4">
           <View className="mb-1 flex-row items-baseline justify-between">
-            <Text className="text-[15px] font-semibold text-ink">{t.tests[test.id].name}</Text>
-            <Text className="text-[12px] text-ink-muted">{test.updrsItem}</Text>
+            <Text className="text-[16px] font-semibold text-ink">{t.tests[test.id].name}</Text>
+            <Text className="text-[14px] text-ink-muted">{t.tests[test.id].descriptor}</Text>
           </View>
           <TrendChart
             points={points}
