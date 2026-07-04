@@ -75,7 +75,7 @@ export const en = {
     analysisFailed: 'Analysis failed. Please try recording again.',
     retry: 'Retry',
     failedRetry: 'Something went wrong. It will keep trying — or tap Retry.',
-    permanentFailed: 'This recording can\'t be uploaded. Please record it again.',
+    permanentFailed: 'This recording can’t be uploaded. Please record it again.',
     uploading: 'Uploading to server…',
     processing: 'Processing on server…',
     saveShare: 'Save / share video',

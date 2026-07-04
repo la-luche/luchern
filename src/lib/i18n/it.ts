@@ -86,7 +86,7 @@ export const it: Dict = {
   },
   uploadBanner: {
     keepOpen: (n: number) =>
-      `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'} — tieni l'app aperta`,
+      `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'} — tieni l’app aperta`,
   },
   recordingCard: {
     fallback: 'Registrazione',
