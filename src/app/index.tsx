@@ -22,9 +22,10 @@ export default function MenuScreen() {
           onPress={() => router.push('/about')}
           accessibilityRole="button"
           accessibilityLabel={t.menu.aboutA11y}
-          className="h-9 w-9 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
+          className="h-11 flex-row items-center gap-1.5 rounded-full bg-ink-faint px-4 active:opacity-70"
         >
-          <Ionicons name="information" size={18} color={COLORS.ink} />
+          <Ionicons name="information-circle-outline" size={20} color={COLORS.ink} />
+          <Text className="text-[16px] font-medium text-ink">{t.about.title}</Text>
         </Pressable>
       </View>
 

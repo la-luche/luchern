@@ -157,14 +157,14 @@ export default function RecordScreen() {
               onPress={() => router.back()}
               accessibilityRole="button"
               accessibilityLabel={t.common.back}
-              className="h-[38px] w-[38px] items-center justify-center rounded-full bg-black/40 active:opacity-70"
+              className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
             >
-              <Ionicons name="chevron-back" size={18} color={COLORS.white} />
+              <Ionicons name="chevron-back" size={22} color={COLORS.white} />
             </Pressable>
           ) : (
             <View className="flex-row items-center gap-2 rounded-full bg-black/40 px-3 py-1.5">
               <View className="h-2.5 w-2.5 rounded-full bg-red-500" />
-              <Text className="text-[13px] font-semibold text-white">
+              <Text className="text-[15px] font-semibold text-white">
                 {formatElapsed(elapsed)}
               </Text>
             </View>
@@ -175,13 +175,13 @@ export default function RecordScreen() {
                 onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
                 accessibilityRole="button"
                 accessibilityLabel={t.record.flipCamera}
-                className="h-[38px] w-[38px] items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
               >
-                <Ionicons name="camera-reverse-outline" size={18} color={COLORS.white} />
+                <Ionicons name="camera-reverse-outline" size={22} color={COLORS.white} />
               </Pressable>
             )}
             <View className="rounded-full bg-black/40 px-3 py-1.5">
-              <Text className="text-[13px] font-semibold text-white">{t.tests[test.id].name}</Text>
+              <Text className="text-[15px] font-semibold text-white">{t.tests[test.id].name}</Text>
             </View>
           </View>
         </View>
@@ -189,7 +189,7 @@ export default function RecordScreen() {
         <View className="flex-1 items-center justify-end pb-4" pointerEvents="none">
           {!isRecording && zoom === 0 && (
             <View className="rounded-full bg-black/40 px-3 py-1.5">
-              <Text className="text-[12px] font-medium text-white/80">{t.record.pinchToZoom}</Text>
+              <Text className="text-[15px] font-medium text-white/80">{t.record.pinchToZoom}</Text>
             </View>
           )}
         </View>
@@ -217,7 +217,7 @@ export default function RecordScreen() {
               <View className="h-7 w-7 rounded-lg bg-ink" />
             </Pressable>
           )}
-          <Text className="mt-3 text-[13px] font-medium text-white/80">
+          <Text className="mt-3 text-[16px] font-medium text-white/90">
             {isRecording ? t.record.tapToEnd : t.record.tapToStart}
           </Text>
         </View>

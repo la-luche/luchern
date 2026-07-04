@@ -21,9 +21,9 @@ export function Header({ title, right }: { title?: string; right?: ReactNode }) 
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel={t.common.back}
-          className="h-[38px] w-[38px] items-center justify-center rounded-full bg-ink-faint active:opacity-70"
+          className="h-11 w-11 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
         >
-          <Ionicons name="chevron-back" size={18} color={COLORS.ink} />
+          <Ionicons name="chevron-back" size={22} color={COLORS.ink} />
         </Pressable>
       </View>
 
