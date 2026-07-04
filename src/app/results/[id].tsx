@@ -17,7 +17,7 @@ import { COLORS } from '../../lib/theme';
 export default function ResultDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { recordings, loading, remove } = useRecordings();
+  const { recordings, loading, remove, retry } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
 
@@ -139,7 +139,14 @@ export default function ResultDetailScreen() {
               )}
             </View>
           ) : recording.status === 'failed' ? (
-            <Text className="mt-3 text-[14px] text-red-600">{t.result.analysisFailed}</Text>
+            <View className="mt-3 gap-3">
+              <Text className="text-[14px] text-red-600">
+                {recording.permanent ? t.result.permanentFailed : t.result.failedRetry}
+              </Text>
+              {!recording.permanent && (
+                <Button title={t.result.retry} variant="secondary" onPress={() => retry(recording.id)} />
+              )}
+            </View>
           ) : (
             <View className="mt-4 flex-row items-center gap-3">
               <ActivityIndicator color={COLORS.ink} />
