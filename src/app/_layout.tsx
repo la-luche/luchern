@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
 import { AuthGate } from '../components/AuthGate';
 import { DisclaimerGate } from '../components/DisclaimerGate';
+import { UploadBanner } from '../components/UploadBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 import { LanguageProvider } from '../lib/i18n';
 
@@ -24,6 +25,7 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <DisclaimerGate>
           <AuthGate>
+            <UploadBanner />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="test/[id]" />
