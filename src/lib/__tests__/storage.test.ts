@@ -67,6 +67,15 @@ describe('driveOnce', () => {
     expect(patch.result?.score).toBe(0.4);
   });
 
+  it('resumed processing record re-polls without re-uploading', async () => {
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
+    const rec = { ...baseRec(), status: 'processing' as const, jobId: '99' };
+    const patch = await driveOnce(rec, { maxBackoffs: 0 });
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(pollResult).toHaveBeenCalledWith('99', 'gait');
+    expect(patch.status).toBe('done');
+  });
+
   it('calls onUploaded with the jobId after upload, before polling', async () => {
     (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
     (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
