@@ -73,6 +73,9 @@ export const en = {
     estimatePill: 'ESTIMATE — automated screening, not a diagnosis',
     samplePill: 'SAMPLE — placeholder result, not real analysis',
     analysisFailed: 'Analysis failed. Please try recording again.',
+    retry: 'Retry',
+    failedRetry: 'Something went wrong. It will keep trying — or tap Retry.',
+    permanentFailed: 'This recording can\'t be uploaded. Please record it again.',
     uploading: 'Uploading to server…',
     processing: 'Processing on server…',
     saveShare: 'Save / share video',
@@ -83,6 +86,10 @@ export const en = {
     processing: 'Processing…',
     done: 'Done',
     failed: 'Failed',
+  },
+  uploadBanner: {
+    keepOpen: (n: number) =>
+      `Uploading ${n} recording${n === 1 ? '' : 's'} — keep the app open`,
   },
   recordingCard: {
     fallback: 'Recording',

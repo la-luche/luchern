@@ -70,6 +70,9 @@ export const it: Dict = {
     estimatePill: 'STIMA — screening automatico, non una diagnosi',
     samplePill: 'ESEMPIO — risultato fittizio, non un’analisi reale',
     analysisFailed: 'Analisi non riuscita. Riprova a registrare.',
+    retry: 'Riprova',
+    failedRetry: 'Qualcosa è andato storto. Riproverà da solo — oppure tocca Riprova.',
+    permanentFailed: 'Impossibile caricare questa registrazione. Registrala di nuovo.',
     uploading: 'Caricamento sul server…',
     processing: 'Elaborazione sul server…',
     saveShare: 'Salva / condividi video',
@@ -80,6 +83,10 @@ export const it: Dict = {
     processing: 'Elaborazione…',
     done: 'Completato',
     failed: 'Non riuscito',
+  },
+  uploadBanner: {
+    keepOpen: (n: number) =>
+      `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'} — tieni l'app aperta`,
   },
   recordingCard: {
     fallback: 'Registrazione',
