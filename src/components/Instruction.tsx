@@ -70,7 +70,7 @@ export function SectionLabel({ icon, children }: { icon?: MCIName; children: Rea
   return (
     <View className="mb-2 flex-row items-center gap-2">
       {icon ? (
-        <MaterialCommunityIcons name={icon} size={18} color={COLORS.inkFaint} />
+        <MaterialCommunityIcons name={icon} size={20} color={COLORS.inkMuted} />
       ) : null}
       <Text className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
         {children}
