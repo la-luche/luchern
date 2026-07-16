@@ -171,8 +171,8 @@ export const en = {
       setup:
         'Ask another person to hold the phone and point it at your legs and lower body while you walk. A phone propped upright can’t see your legs.',
       steps: [
-        'Walk away from the phone, about 10 steps.',
-        'Turn around and walk back.',
+        'Ask another person to hold the phone and point it at your legs.',
+        'Walk about 10 steps away, then turn and walk back.',
         'Do this twice if you can.',
       ],
       goodTip: 'Your legs and feet stay clearly in view, in good light.',
@@ -189,10 +189,9 @@ export const en = {
       setup:
         'Prop your phone about 2–3 steps away so it can see all of you sitting in the chair.',
       steps: [
-        'Sit in a firm chair with a straight back.',
-        'Cross your arms over your chest.',
-        'Stand up without using your hands.',
-        'Sit back down and repeat, 3 times.',
+        'Put the phone where it can see all of you on the chair.',
+        'Sit down and cross your arms.',
+        'Stand up without using your hands, 3 times.',
       ],
       goodTip: 'Your whole body and the chair stay in view.',
       avoidTip: 'Using your hands, or sitting out of frame.',
@@ -208,9 +207,9 @@ export const en = {
       setup:
         'Hold your phone, or prop it close, so it clearly sees your hand. You can flip to the front camera to watch yourself.',
       steps: [
-        'Tap your index finger on your thumb.',
-        'As big and as fast as you can.',
-        'Keep going for about 30 taps.',
+        'Hold the phone close so it clearly sees your hand.',
+        'Tap your finger and thumb together.',
+        'As big and fast as you can, about 30 times.',
       ],
       goodTip: 'Your hand fills the frame, in good light.',
       avoidTip: 'Hand too far away, or out of view.',

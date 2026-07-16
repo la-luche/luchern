@@ -166,8 +166,8 @@ export const it: Dict = {
       setup:
         'Chiedi a un’altra persona di tenere il telefono e puntarlo verso le gambe e la parte inferiore del corpo mentre cammini. Un telefono appoggiato in verticale non riesce a inquadrare le gambe.',
       steps: [
-        'Allontanati dal telefono, circa 10 passi.',
-        'Girati e torna indietro.',
+        'Chiedi a un’altra persona di tenere il telefono e puntarlo verso le tue gambe.',
+        'Cammina circa 10 passi in avanti, poi girati e torna indietro.',
         'Ripeti due volte se puoi.',
       ],
       goodTip: 'Le gambe e i piedi restano ben visibili, con buona luce.',
@@ -184,10 +184,9 @@ export const it: Dict = {
       setup:
         'Sistema il telefono a circa 2–3 passi di distanza, così da inquadrarti tutto mentre sei seduto sulla sedia.',
       steps: [
-        'Siediti su una sedia stabile con schienale rigido.',
-        'Incrocia le braccia sul petto.',
-        'Alzati senza usare le mani.',
-        'Rimettiti seduto e ripeti, 3 volte.',
+        'Metti il telefono in modo che ti inquadri tutto sulla sedia.',
+        'Siediti e incrocia le braccia.',
+        'Alzati senza usare le mani, 3 volte.',
       ],
       goodTip: 'Tutto il corpo e la sedia restano inquadrati.',
       avoidTip: 'Usare le mani o restare fuori inquadratura.',
@@ -203,9 +202,9 @@ export const it: Dict = {
       setup:
         'Tieni il telefono, o appoggialo vicino, così da inquadrare bene la mano. Puoi passare alla fotocamera frontale per guardarti.',
       steps: [
-        'Batti l’indice contro il pollice.',
-        'Più ampio e più veloce che puoi.',
-        'Continua per circa 30 tocchi.',
+        'Tieni il telefono vicino così da inquadrare bene la mano.',
+        'Batti insieme indice e pollice.',
+        'Il più ampio e veloce possibile, circa 30 volte.',
       ],
       goodTip: 'La mano riempie l’inquadratura, con buona luce.',
       avoidTip: 'Mano troppo lontana o fuori dall’inquadratura.',

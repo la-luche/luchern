@@ -108,16 +108,16 @@ export function SetupCard({ text }: { text: string }) {
   );
 }
 
-/** Numbered "what to do" steps with filled ink badges. */
+/** Numbered "what to do" steps with filled ink badges. Large + airy for older eyes. */
 export function NumberedSteps({ steps }: { steps: readonly string[] }) {
   return (
-    <View className="gap-3.5">
+    <View className="gap-5">
       {steps.map((step, i) => (
-        <View key={i} className="flex-row items-center gap-3">
-          <View className="h-8 w-8 items-center justify-center rounded-full bg-ink">
-            <Text className="text-[15px] font-bold text-white">{i + 1}</Text>
+        <View key={i} className="flex-row items-center gap-3.5">
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-ink">
+            <Text className="text-[17px] font-bold text-white">{i + 1}</Text>
           </View>
-          <Text className="flex-1 text-[17px] leading-6 text-ink">{step}</Text>
+          <Text className="flex-1 text-[19px] leading-7 text-ink">{step}</Text>
         </View>
       ))}
     </View>
