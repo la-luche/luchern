@@ -63,6 +63,12 @@ export const ru: Dict = {
     cameraFailedBody: 'Luche не удалось запустить камеру. Закройте этот экран и попробуйте снова.',
     recordingFailedTitle: 'Запись не сохранена',
     recordingFailedBody: 'Тест не был загружен. Проверьте свободное место и попробуйте снова.',
+    // TODO(i18n): translate the capture-review strings below (English-first).
+    getReady: 'Get ready…',
+    reviewTitle: 'How does it look?',
+    reviewHint: 'Play it back — could you see the movement clearly, in good light?',
+    submit: 'Looks good — submit',
+    retake: 'Retake',
   },
   resultsList: {
     title: 'Предыдущие записи',
@@ -164,6 +170,7 @@ export const ru: Dict = {
       ],
       goodTip: 'Ноги и стопы хорошо видны, при хорошем освещении.',
       avoidTip: 'Телефон, поставленный вертикально, или ноги вне кадра.',
+      frameHint: 'Keep the legs and feet inside the frame', // TODO(i18n)
     },
     arisingFromChair: {
       name: 'Вставание со стула',
@@ -181,6 +188,7 @@ export const ru: Dict = {
       ],
       goodTip: 'Всё тело и стул остаются в кадре.',
       avoidTip: 'Помогать руками или выходить из кадра.',
+      frameHint: 'Fit your whole body and the chair', // TODO(i18n)
     },
     fingerTapping: {
       name: 'Постукивание пальцами',
@@ -197,6 +205,7 @@ export const ru: Dict = {
       ],
       goodTip: 'Рука заполняет кадр, при хорошем освещении.',
       avoidTip: 'Рука слишком далеко или вне кадра.',
+      frameHint: 'Your hand should fill the frame', // TODO(i18n)
     },
   },
 };

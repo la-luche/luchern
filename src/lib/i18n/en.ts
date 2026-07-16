@@ -66,6 +66,11 @@ export const en = {
     cameraFailedBody: 'Luche could not start the camera. Close this screen and try again.',
     recordingFailedTitle: 'Recording not saved',
     recordingFailedBody: 'No test was uploaded. Check available storage and try again.',
+    getReady: 'Get ready…',
+    reviewTitle: 'How does it look?',
+    reviewHint: 'Play it back — could you see the movement clearly, in good light?',
+    submit: 'Looks good — submit',
+    retake: 'Retake',
   },
   resultsList: {
     title: 'Previous recordings',
@@ -169,6 +174,7 @@ export const en = {
       ],
       goodTip: 'Your legs and feet stay clearly in view, in good light.',
       avoidTip: 'A propped-up phone, or your legs leaving the frame.',
+      frameHint: 'Keep the legs and feet inside the frame',
     },
     arisingFromChair: {
       name: 'Standing Up from a Chair',
@@ -186,6 +192,7 @@ export const en = {
       ],
       goodTip: 'Your whole body and the chair stay in view.',
       avoidTip: 'Using your hands, or sitting out of frame.',
+      frameHint: 'Fit your whole body and the chair',
     },
     fingerTapping: {
       name: 'Finger Tapping',
@@ -202,6 +209,7 @@ export const en = {
       ],
       goodTip: 'Your hand fills the frame, in good light.',
       avoidTip: 'Hand too far away, or out of view.',
+      frameHint: 'Your hand should fill the frame',
     },
   },
 };
