@@ -13,7 +13,7 @@ import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
-/** Detail for one recording: video playback + placeholder cloud-analysis panel. */
+/** Detail for one recording: video playback + experimental cloud-analysis panel. */
 export default function ResultDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -66,8 +66,12 @@ export default function ResultDetailScreen() {
         text: t.common.delete,
         style: 'destructive',
         onPress: async () => {
-          await remove(recording.id);
-          router.back();
+          try {
+            await remove(recording.id);
+            router.back();
+          } catch {
+            Alert.alert(t.result.deleteFailedTitle, t.result.deleteFailedBody);
+          }
         },
       },
     ]);
@@ -104,7 +108,7 @@ export default function ResultDetailScreen() {
           <StatusPill status={recording.status} />
         </View>
 
-        {/* Cloud analysis panel — placeholder until the real API lands. */}
+        {/* Experimental cloud analysis panel. */}
         <View className="mt-4 rounded-2xl border border-ink-faint p-5">
           <View className="flex-row items-center gap-2">
             <MaterialCommunityIcons name="cloud-outline" size={18} color={COLORS.ink} />
@@ -144,9 +148,13 @@ export default function ResultDetailScreen() {
           ) : recording.status === 'failed' ? (
             <View className="mt-3 gap-3">
               <Text className="text-[14px] text-red-600">
-                {recording.permanent ? t.result.permanentFailed : t.result.failedRetry}
+                {recording.permanent
+                  ? t.result.permanentFailed
+                  : recording.resumable
+                    ? t.result.failedRetry
+                    : t.result.analysisFailed}
               </Text>
-              {!recording.permanent && (
+              {recording.resumable && (
                 <Button title={t.result.retry} variant="secondary" onPress={() => retry(recording.id)} />
               )}
             </View>
@@ -154,7 +162,11 @@ export default function ResultDetailScreen() {
             <View className="mt-4 flex-row items-center gap-3">
               <ActivityIndicator color={COLORS.ink} />
               <Text className="text-[14px] text-ink-muted">
-                {recording.status === 'uploading' ? t.result.uploading : t.result.processing}
+                {recording.status === 'uploading'
+                  ? recording.uploadRetrying
+                    ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
+                    : t.result.uploading
+                  : t.result.processing}
               </Text>
             </View>
           )}

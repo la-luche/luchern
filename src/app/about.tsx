@@ -1,13 +1,24 @@
-import { Linking, ScrollView, Text, View } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import Constants from 'expo-constants';
+import { Alert, Linking, ScrollView, Text, View } from 'react-native';
 
+import { Button } from '../components/Button';
 import { Header } from '../components/Header';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
+import { exportDiagnostics } from '../lib/diagnostics';
 
 // TODO(store): this must point at a live privacy policy before submission —
 // both App Store and Play require one for a camera app. Placeholder for now.
 const PRIVACY_URL = 'https://getferal.ai/luche-privacy';
+
+type GitCommit = {
+  message: string;
+  sha: string;
+  url: string;
+};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -22,6 +33,25 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function AboutScreen() {
   const t = useT();
+  const gitCommit = Constants.expoConfig?.extra?.gitCommit as GitCommit | null | undefined;
+
+  const shareDiagnostics = async () => {
+    try {
+      if (!FileSystem.cacheDirectory || !(await Sharing.isAvailableAsync())) {
+        throw new Error('sharing unavailable');
+      }
+      const uri = `${FileSystem.cacheDirectory}luche-diagnostics.json`;
+      await FileSystem.writeAsStringAsync(uri, await exportDiagnostics());
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/json',
+        dialogTitle: t.about.diagnosticsShareTitle,
+        UTI: 'public.json',
+      });
+    } catch {
+      Alert.alert(t.about.diagnosticsFailedTitle, t.about.diagnosticsFailedBody);
+    }
+  };
+
   return (
     <Screen>
       <Header title={t.about.title} />
@@ -47,8 +77,33 @@ export default function AboutScreen() {
           </Text>
         </Section>
 
+        <Section title={t.about.supportTitle}>
+          <Text className="mb-3 text-[15px] leading-6 text-ink/70">
+            {t.about.diagnosticsBody}
+          </Text>
+          <Button title={t.about.exportDiagnostics} variant="secondary" onPress={shareDiagnostics} />
+        </Section>
+
         <Section title={t.about.versionTitle}>
           <Text className="text-[15px] text-ink/70">{t.about.versionValue}</Text>
+        </Section>
+
+        <Section title={t.about.commitTitle}>
+          {gitCommit ? (
+            <>
+              <Text className="text-[15px] leading-6 text-ink/70">{gitCommit.message}</Text>
+              <Text
+                accessibilityRole="link"
+                onPress={() => Linking.openURL(gitCommit.url)}
+                selectable
+                className="mt-2 font-mono text-[13px] leading-5 text-blue-600"
+              >
+                {gitCommit.sha}
+              </Text>
+            </>
+          ) : (
+            <Text className="text-[15px] text-ink/70">{t.about.commitUnavailable}</Text>
+          )}
         </Section>
       </ScrollView>
     </Screen>

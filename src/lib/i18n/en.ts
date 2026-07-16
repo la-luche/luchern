@@ -25,11 +25,20 @@ export const en = {
       'Luche is a research and wellness tool. It is not a medical device and does not provide a diagnosis. Results are for informational purposes only — always consult a qualified clinician about your health.',
     privacyTitle: 'Privacy',
     privacyBody:
-      'Recordings are stored on your device. Analysis is performed in the cloud only when you record a test. Nothing else is collected.',
+      'Recordings are saved on this device and uploaded securely to our cloud for analysis. Uploaded video, derived keypoints, analysis results, and account identifiers may be retained until you delete the recording. Deleting a completed recording removes the local copy and requests deletion from our server.',
     privacyLink: 'Privacy policy →',
     versionTitle: 'Version',
     versionValue: '1.0.0 (beta)',
+    commitTitle: 'Latest GitHub commit',
+    commitUnavailable: 'Commit information unavailable',
     languageTitle: 'Language',
+    supportTitle: 'Support',
+    diagnosticsBody:
+      'Export the last 200 technical events to help diagnose recording, upload, or analysis failures. The file excludes video, keypoints, email, authentication tokens, and signed URLs.',
+    exportDiagnostics: 'Export diagnostics',
+    diagnosticsShareTitle: 'Share Luche diagnostics',
+    diagnosticsFailedTitle: 'Could not export diagnostics',
+    diagnosticsFailedBody: 'Please try again.',
   },
   disclaimer: {
     title: 'Before you start',
@@ -42,7 +51,7 @@ export const en = {
   record: {
     cameraAccessNeeded: 'Camera access needed',
     cameraAccessBody: (name: string) =>
-      `Luche records a short video of the ${name} test to analyze it. The camera and microphone are used only while you record.`,
+      `Luche uses the camera to record a short video of the ${name} test for analysis. Videos are recorded without audio.`,
     openSettings: 'Open Settings',
     grantAccess: 'Grant camera access',
     saving: 'Saving…',
@@ -52,6 +61,11 @@ export const en = {
     endA11y: 'End recording',
     flipCamera: 'Flip camera',
     pinchToZoom: 'Pinch to zoom',
+    preparing: 'Preparing camera…',
+    cameraFailedTitle: 'Camera unavailable',
+    cameraFailedBody: 'Luche could not start the camera. Close this screen and try again.',
+    recordingFailedTitle: 'Recording not saved',
+    recordingFailedBody: 'No test was uploaded. Check available storage and try again.',
   },
   resultsList: {
     title: 'Previous recordings',
@@ -66,8 +80,10 @@ export const en = {
     shareDialogTitle: 'Save or share recording',
     couldNotShare: 'Could not share',
     deleteTitle: 'Delete recording?',
-    deleteBody: 'This removes the clip from this device.',
+    deleteBody: 'This removes the clip from this device and deletes its uploaded video, keypoints, and result from the server.',
     deleteA11y: 'Delete recording',
+    deleteFailedTitle: 'Could not delete recording',
+    deleteFailedBody: 'Nothing was removed. Check your connection and try again.',
     cloudAnalysis: 'Your result',
     scoreHint: 'Lower is better. This is an automated estimate, not a diagnosis.',
     gradeLabel: (label: string) => `Severity · ${label}`,
@@ -90,7 +106,9 @@ export const en = {
   },
   uploadBanner: {
     keepOpen: (n: number) =>
-      `Uploading ${n} recording${n === 1 ? '' : 's'} — keep the app open`,
+      `Uploading ${n} recording${n === 1 ? '' : 's'}`,
+    retrying: 'Upload failed — retrying',
+    attempt: (n: number) => `attempt ${n}`,
   },
   recordingCard: {
     fallback: 'Recording',

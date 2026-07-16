@@ -1,6 +1,7 @@
 import { ClerkProvider } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '../global.css';
@@ -25,15 +26,17 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <DisclaimerGate>
           <AuthGate>
-            <UploadBanner />
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="test/[id]" />
-              <Stack.Screen name="record/[id]" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="results/index" />
-              <Stack.Screen name="results/[id]" />
-              <Stack.Screen name="about" options={{ presentation: 'modal' }} />
-            </Stack>
+            <View className="flex-1 bg-white">
+              <UploadBanner />
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="test/[id]" />
+                <Stack.Screen name="record/[id]" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="results/index" />
+                <Stack.Screen name="results/[id]" />
+                <Stack.Screen name="about" options={{ presentation: 'modal' }} />
+              </Stack>
+            </View>
           </AuthGate>
         </DisclaimerGate>
         </SafeAreaProvider>

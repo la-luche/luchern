@@ -5,19 +5,18 @@ in `../v2/Luche/`). This version does **all inference in the cloud** — per-tes
 recordings are just video captures that get sent to a server for analysis. No
 Core ML, no on-device model, no frame buffering.
 
-> Status: **Live cloud pipeline (2026-07-03).** `src/lib/cloud.ts` now talks to
+> Status: **Experimental cloud pipeline (2026-07-13).** `src/lib/cloud.ts` talks to
 > `feral-api`: presigned R2 upload → Sapiens2 keypoints (serve_luche/RunPod) →
-> kinematic MDS-UPDRS heuristic → real score (0–1 severity + 0–4 grade, flagged
-> `isEstimate`). Auth is anonymous device-token (`src/lib/api.ts`, no sign-in UI,
-> Expo Go-safe); Clerk can replace it later without touching the rest of the app.
-> Finger tapping is high-confidence; gait / chair / freezing are best-effort from
-> handheld video. Backend design: `$FERAL_SHARED_DOCS/raw/plans/2026-07-02-luche-keypoint-updrs-backend.md`.
+> hand-written kinematic heuristic. These scores are uncalibrated estimates, not
+> trained/validated keypoints→UPDRS models. Auth uses Clerk sign-in with a legacy
+> anonymous device-token fallback. Finger keypoints are the most usable signal;
+> none of the patient-facing grades should be treated as clinically validated.
 
 ## Stack
 
 | Concern | Choice |
 | --- | --- |
-| Framework | Expo SDK 57 (RN 0.86, React 19.2), TypeScript |
+| Framework | Expo SDK 54 (RN 0.81, React 19.1), TypeScript |
 | Navigation | expo-router (file-based, `src/app/`) |
 | Styling | NativeWind (Tailwind) — **Tailwind pinned to v3**, see below |
 | Camera | `expo-camera` (`CameraView`, video mode) |
@@ -70,7 +69,7 @@ src/
     about.tsx              # Privacy & disclaimer (modal)
   components/              # hand-built, ~8 small pieces (no UI kit)
   lib/
-    tests.ts               # the 4 tests (ported from Evaluation.swift)
+    tests.ts               # the 3 movement tests currently exposed
     types.ts               # Recording / CloudResult / status
     cloud.ts               # <- THE PLACEHOLDER SEAM (replace for real API)
     storage.ts             # AsyncStorage store + lifecycle driver + hooks
@@ -79,24 +78,25 @@ src/
 
 ### The cloud seam (`src/lib/cloud.ts`)
 
-The only module that knows about "the cloud". Today it fakes the lifecycle:
+The only module that knows about the cloud. It separates the expensive byte
+upload from the small idempotent trial-creation call:
 
 ```ts
-uploadRecording(uri)      -> Promise<{ jobId }>   // fake delay
-pollResult(jobId, testId) -> Promise<CloudResult> // fake delay + sample score
+uploadRecording(uri, testId)       -> Promise<{ uploadId }>
+createAnalysisTrial(uploadId, ...) -> Promise<{ jobId }>
+pollResult(jobId, testId)          -> Promise<CloudResult>
 ```
 
-`storage.ts` drives a recording through `uploading -> processing -> done`,
-persisting each transition. When the real API lands, reimplement these two
-functions (multipart POST + poll) and drop the `isDemo` sample labeling. The UI,
-persistence, and status pills stay untouched.
+`storage.ts` drives `uploading -> processing -> done`, persists the upload ID
+immediately after the video reaches R2, and persists the job ID before polling.
+This makes relaunch/retry avoid retransmitting a completed upload.
 
 ### Data model
 
 One `Recording` per captured test, persisted locally:
 
 ```ts
-{ id, testId, createdAt, videoUri, status, jobId?, result? }
+{ id, testId, createdAt, videoUri, status, uploadId?, jobId?, result? }
 ```
 
 `useRecordings()` (in `storage.ts`) exposes the list + `addRecording` + `remove`,
@@ -110,7 +110,6 @@ CSS-first config) and will break NativeWind. `package.json` pins
 
 ## What's intentionally NOT here
 
-Present in the Swift app, out of scope for this scaffold: real auth (Clerk),
-real upload/inference, Core ML, the observer/data-sharing surface, PDF export,
-landscape recording. See `STORE_SUBMISSION.md` for the path to a submittable
-build.
+Still out of scope: a trained/calibrated keypoints→UPDRS model, Core ML, the
+observer/data-sharing surface in this RN client, PDF export, and landscape
+recording. See `STORE_SUBMISSION.md` for the remaining submission work.

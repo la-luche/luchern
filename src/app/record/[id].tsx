@@ -3,17 +3,17 @@ import {
   CameraView,
   CameraType,
   useCameraPermissions,
-  useMicrophonePermissions,
 } from 'expo-camera';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
 import { useT } from '../../lib/i18n';
+import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -24,8 +24,8 @@ function formatElapsed(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** Recording screen: live camera + Start/End. On End the clip is handed to the
- *  (placeholder) cloud pipeline and we jump to its result card. */
+/** Recording screen: live camera + Start/End. On End the clip is moved into
+ *  durable storage, handed to the cloud pipeline, and opened as a result card. */
 export default function RecordScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -33,12 +33,12 @@ export default function RecordScreen() {
   const t = useT();
 
   const [camPerm, requestCam] = useCameraPermissions();
-  const [micPerm, requestMic] = useMicrophonePermissions();
   const cameraRef = useRef<CameraView>(null);
   const { addRecording } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [facing, setFacing] = useState<CameraType>('back');
   const [zoom, setZoom] = useState(0);
@@ -56,29 +56,28 @@ export default function RecordScreen() {
 
   if (!test) return <Redirect href="/" />;
 
-  const permissionsGranted = camPerm?.granted && micPerm?.granted;
-
-  const requestAll = async () => {
-    await requestCam();
-    await requestMic();
-  };
+  const permissionsGranted = camPerm?.granted;
 
   const startRecording = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current || !cameraReady) return;
     setIsRecording(true);
     try {
       // recordAsync resolves only once stopRecording() is called.
       // codec must be set on iOS for the videoBitrate cap (below) to apply.
       const video = await cameraRef.current.recordAsync({ codec: 'hvc1' });
       setIsRecording(false);
-      if (video?.uri) {
-        setSaving(true);
-        const rec = await addRecording(test.id, video.uri);
-        router.replace({ pathname: '/results/[id]', params: { id: rec.id } });
-      }
-    } catch {
+      if (!video?.uri) throw new Error('camera returned no recording');
+      setSaving(true);
+      const rec = await addRecording(test.id, video.uri);
+      router.replace({ pathname: '/results/[id]', params: { id: rec.id } });
+    } catch (error) {
       setIsRecording(false);
       setSaving(false);
+      recordDiagnostic('recording_failed', {
+        testId: test.id,
+        ...diagnosticErrorData(error),
+      });
+      Alert.alert(t.record.recordingFailedTitle, t.record.recordingFailedBody);
     }
   };
 
@@ -101,9 +100,7 @@ export default function RecordScreen() {
 
   // --- Permission gate ---------------------------------------------------------
   if (!permissionsGranted) {
-    const permanentlyDenied =
-      (camPerm && !camPerm.granted && !camPerm.canAskAgain) ||
-      (micPerm && !micPerm.granted && !micPerm.canAskAgain);
+    const permanentlyDenied = camPerm && !camPerm.granted && !camPerm.canAskAgain;
 
     return (
       <Screen>
@@ -118,7 +115,7 @@ export default function RecordScreen() {
           <View className="mt-8 w-full gap-3">
             <Button
               title={permanentlyDenied ? t.record.openSettings : t.record.grantAccess}
-              onPress={permanentlyDenied ? () => Linking.openSettings() : requestAll}
+              onPress={permanentlyDenied ? () => Linking.openSettings() : requestCam}
             />
             <Button title={t.common.back} variant="secondary" onPress={() => router.back()} />
           </View>
@@ -146,6 +143,12 @@ export default function RecordScreen() {
         mute
         videoQuality="720p"
         videoBitrate={3000000}
+        onCameraReady={() => setCameraReady(true)}
+        onMountError={({ message }) => {
+          setCameraReady(false);
+          recordDiagnostic('camera_mount_failed', { testId: test.id, message });
+          Alert.alert(t.record.cameraFailedTitle, t.record.cameraFailedBody);
+        }}
       />
 
       {/* Overlay chrome. pointerEvents box-none so the preview shows through. */}
@@ -201,9 +204,12 @@ export default function RecordScreen() {
           ) : !isRecording ? (
             <Pressable
               onPress={startRecording}
+              disabled={!cameraReady}
               accessibilityRole="button"
               accessibilityLabel={t.record.startA11y}
-              className="h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
+              className={`h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80 ${
+                cameraReady ? '' : 'opacity-40'
+              }`}
             >
               <View className="h-6 w-6 rounded-md bg-red-500" />
             </Pressable>
@@ -218,7 +224,7 @@ export default function RecordScreen() {
             </Pressable>
           )}
           <Text className="mt-3 text-[16px] font-medium text-white/90">
-            {isRecording ? t.record.tapToEnd : t.record.tapToStart}
+            {isRecording ? t.record.tapToEnd : cameraReady ? t.record.tapToStart : t.record.preparing}
           </Text>
         </View>
       </SafeAreaView>

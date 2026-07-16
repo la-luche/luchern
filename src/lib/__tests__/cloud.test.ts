@@ -1,7 +1,18 @@
 import { PollTimeoutError } from '../uploadRetry';
 
 jest.mock('../api', () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(status: number) {
+      super(`HTTP ${status}`);
+      this.status = status;
+    }
+  },
   apiFetch: jest.fn(),
+}));
+jest.mock('../diagnostics', () => ({
+  recordDiagnostic: jest.fn(),
+  diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
 }));
 import { apiFetch } from '../api';
 import { pollResult } from '../cloud';

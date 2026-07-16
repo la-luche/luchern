@@ -2,13 +2,31 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-import { PollTimeoutError } from '../uploadRetry';
+jest.mock('../diagnostics', () => ({
+  recordDiagnostic: jest.fn(),
+  diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
+}));
+jest.mock('../api', () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(status: number) {
+      super(`HTTP ${status}`);
+      this.status = status;
+    }
+  },
+}));
+
+import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
 
 jest.mock('../cloud', () => ({
+  UploadIntentExpiredError: class UploadIntentExpiredError extends Error {},
   uploadRecording: jest.fn(),
+  createAnalysisTrial: jest.fn(),
+  deleteRemoteRecording: jest.fn(),
+  deleteRemoteUpload: jest.fn(),
   pollResult: jest.fn(),
 }));
-import { uploadRecording, pollResult } from '../cloud';
+import { createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
 import { __testing } from '../storage';
 
 const { driveOnce } = __testing;
@@ -23,6 +41,10 @@ const baseRec = () => ({
 
 describe('driveOnce', () => {
   beforeEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   it('retryable upload error → failed + resumable', async () => {
     (uploadRecording as jest.Mock).mockRejectedValue(new Error('upload failed (403)'));
@@ -43,7 +65,8 @@ describe('driveOnce', () => {
   });
 
   it('poll timeout → stays processing (NOT failed)', async () => {
-    (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
     (pollResult as jest.Mock).mockRejectedValue(new PollTimeoutError());
     const patch = await driveOnce(baseRec(), { maxBackoffs: 0 });
     expect(patch.status).toBe('processing');
@@ -51,7 +74,8 @@ describe('driveOnce', () => {
   });
 
   it('server analysis failure → failed, not resumable (manual retry only)', async () => {
-    (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
     (pollResult as jest.Mock).mockRejectedValue(new Error('analysis failed'));
     const patch = await driveOnce(baseRec(), { maxBackoffs: 0 });
     expect(patch.status).toBe('failed');
@@ -60,7 +84,8 @@ describe('driveOnce', () => {
   });
 
   it('happy path → done with result', async () => {
-    (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
     (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
     const patch = await driveOnce(baseRec(), { maxBackoffs: 0 });
     expect(patch.status).toBe('done');
@@ -76,15 +101,60 @@ describe('driveOnce', () => {
     expect(patch.status).toBe('done');
   });
 
-  it('calls onUploaded with the jobId after upload, before polling', async () => {
-    (uploadRecording as jest.Mock).mockResolvedValue({ jobId: '99' });
+  it('persists the upload id and job id at their crash-safe boundaries', async () => {
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
     (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
     const seen: string[] = [];
     const patch = await driveOnce(baseRec(), {
       maxBackoffs: 0,
-      onUploaded: (jobId) => { seen.push(jobId); },
+      onBytesUploaded: (uploadId) => { seen.push(`upload:${uploadId}`); },
+      onTrialCreated: (jobId) => { seen.push(`trial:${jobId}`); },
     });
-    expect(seen).toEqual(['99']);
+    expect(seen).toEqual(['upload:up-1', 'trial:99']);
     expect(patch.status).toBe('done');
+  });
+
+  it('resumes trial submission from uploadId without resending video bytes', async () => {
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
+    const rec = { ...baseRec(), status: 'processing' as const, uploadId: 'up-1' };
+    const patch = await driveOnce(rec, { maxBackoffs: 0 });
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0);
+    expect(patch.status).toBe('done');
+  });
+
+  it('keeps uploadId when the small trial request fails', async () => {
+    (createAnalysisTrial as jest.Mock).mockRejectedValue(new Error('network down'));
+    const rec = { ...baseRec(), status: 'processing' as const, uploadId: 'up-1' };
+    const patch = await driveOnce(rec, { maxBackoffs: 0 });
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(patch).toMatchObject({
+      status: 'failed',
+      uploadId: 'up-1',
+      resumable: true,
+    });
+  });
+
+  it('reports the failed backoff and the currently running retry attempt', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    (uploadRecording as jest.Mock)
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValueOnce({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.4, label: 'Mild', isDemo: false });
+    const attempts: number[] = [];
+    const retries: number[] = [];
+    const result = driveOnce(baseRec(), {
+      maxBackoffs: 1,
+      onUploadAttempt: (attempt) => attempts.push(attempt),
+      onUploadRetry: (attempt) => retries.push(attempt),
+    });
+    await jest.advanceTimersByTimeAsync(UPLOAD_BACKOFFS_MS[0]);
+    await expect(result).resolves.toMatchObject({ status: 'done' });
+    expect(attempts).toEqual([1, 2]);
+    expect(retries).toEqual([2]);
   });
 });

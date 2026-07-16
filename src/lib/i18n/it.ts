@@ -22,11 +22,20 @@ export const it: Dict = {
       'Luche è uno strumento di ricerca e benessere. Non è un dispositivo medico e non fornisce una diagnosi. I risultati sono solo a scopo informativo — consulta sempre un medico qualificato per la tua salute.',
     privacyTitle: 'Privacy',
     privacyBody:
-      'Le registrazioni sono salvate sul tuo dispositivo. L’analisi viene eseguita nel cloud solo quando registri un test. Nient’altro viene raccolto.',
+      'Le registrazioni vengono salvate su questo dispositivo e caricate in modo sicuro nel cloud per l’analisi. Il video caricato, i keypoint derivati, i risultati e gli identificatori dell’account possono essere conservati finché non elimini la registrazione. L’eliminazione di una registrazione completata rimuove la copia locale e ne richiede l’eliminazione dal server.',
     privacyLink: 'Informativa sulla privacy →',
     versionTitle: 'Versione',
     versionValue: '1.0.0 (beta)',
+    commitTitle: 'Ultimo commit GitHub',
+    commitUnavailable: 'Informazioni sul commit non disponibili',
     languageTitle: 'Lingua',
+    supportTitle: 'Assistenza',
+    diagnosticsBody:
+      'Esporta gli ultimi 200 eventi tecnici per diagnosticare problemi di registrazione, caricamento o analisi. Il file non include video, keypoint, email, token di autenticazione o URL firmati.',
+    exportDiagnostics: 'Esporta diagnostica',
+    diagnosticsShareTitle: 'Condividi diagnostica Luche',
+    diagnosticsFailedTitle: 'Impossibile esportare la diagnostica',
+    diagnosticsFailedBody: 'Riprova.',
   },
   disclaimer: {
     title: 'Prima di iniziare',
@@ -39,7 +48,7 @@ export const it: Dict = {
   record: {
     cameraAccessNeeded: 'Accesso alla fotocamera necessario',
     cameraAccessBody: (name: string) =>
-      `Luche registra un breve video del test ${name} per analizzarlo. La fotocamera e il microfono sono usati solo durante la registrazione.`,
+      `Luche usa la fotocamera per registrare un breve video del test ${name} da analizzare. I video vengono registrati senza audio.`,
     openSettings: 'Apri Impostazioni',
     grantAccess: 'Consenti l’accesso alla fotocamera',
     saving: 'Salvataggio…',
@@ -49,6 +58,11 @@ export const it: Dict = {
     endA11y: 'Termina registrazione',
     flipCamera: 'Cambia fotocamera',
     pinchToZoom: 'Pizzica per lo zoom',
+    preparing: 'Preparazione fotocamera…',
+    cameraFailedTitle: 'Fotocamera non disponibile',
+    cameraFailedBody: 'Luche non ha potuto avviare la fotocamera. Chiudi questa schermata e riprova.',
+    recordingFailedTitle: 'Registrazione non salvata',
+    recordingFailedBody: 'Nessun test è stato caricato. Controlla lo spazio disponibile e riprova.',
   },
   resultsList: {
     title: 'Registrazioni precedenti',
@@ -63,8 +77,10 @@ export const it: Dict = {
     shareDialogTitle: 'Salva o condividi la registrazione',
     couldNotShare: 'Impossibile condividere',
     deleteTitle: 'Eliminare la registrazione?',
-    deleteBody: 'Rimuove il video da questo dispositivo.',
+    deleteBody: 'Rimuove il video dal dispositivo ed elimina dal server il video caricato, i keypoint e il risultato.',
     deleteA11y: 'Elimina registrazione',
+    deleteFailedTitle: 'Impossibile eliminare la registrazione',
+    deleteFailedBody: 'Non è stato rimosso nulla. Controlla la connessione e riprova.',
     cloudAnalysis: 'Il tuo risultato',
     scoreHint: 'Più basso è meglio. È una stima automatica, non una diagnosi.',
     gradeLabel: (label: string) => `Gravità · ${label}`,
@@ -87,7 +103,9 @@ export const it: Dict = {
   },
   uploadBanner: {
     keepOpen: (n: number) =>
-      `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'} — tieni l’app aperta`,
+      `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'}`,
+    retrying: 'Caricamento non riuscito — nuovo tentativo',
+    attempt: (n: number) => `tentativo ${n}`,
   },
   recordingCard: {
     fallback: 'Registrazione',

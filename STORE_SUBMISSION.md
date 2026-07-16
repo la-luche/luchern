@@ -11,27 +11,26 @@ so both stores will scrutinize permissions, privacy, and medical claims.
 
 | Item | Where |
 | --- | --- |
-| iOS camera/mic permission usage strings | `app.json` → `plugins.expo-camera.{cameraPermission,microphonePermission}` |
-| Android `RECORD_AUDIO` opt-in | `app.json` → `expo-camera.recordAudioAndroid: true` |
+| Camera permission usage string | `app.json` → `plugins.expo-camera.cameraPermission` |
+| Audio disabled | `microphonePermission: false`, `recordAudioAndroid: false`, camera `mute` |
 | Runtime permission request + graceful "denied" screen | `src/app/record/[id].tsx` (permission gate, Open-Settings fallback) |
 | Export-compliance (skip encryption questionnaire) | `app.json` → `ios.infoPlist.ITSAppUsesNonExemptEncryption: false` |
 | iPhone-only (no broken iPad review) | `app.json` → `ios.supportsTablet: false` |
 | Bundle identifiers | `ai.getferal.luche` (iOS + Android) |
 | First-launch medical disclaimer | `src/components/DisclaimerGate.tsx` |
 | In-app privacy/about screen | `src/app/about.tsx` |
-| Placeholder results labeled **SAMPLE** (not misleading) | `src/app/results/[id].tsx`, `src/lib/cloud.ts` (`isDemo`) |
+| Automated results labeled **ESTIMATE** | `src/app/results/[id].tsx`, `src/lib/cloud.ts` (`isEstimate`) |
+| Durable local recording + local/server deletion flow | `src/lib/recordingFiles.ts`, `feral-api DELETE /trials/<id>` |
 
 ---
 
 ## ⛔ Blockers you must clear before submitting
 
-### 1. Real functionality (the big one)
-Both stores reject apps that present **fake data as real** (Apple 2.1/4.2, Play
-"minimum functionality" / deceptive-behavior). Two acceptable paths:
-- **Ship the real cloud** — replace `src/lib/cloud.ts` with the real upload +
-  poll, remove the `isDemo` SAMPLE badge. **← preferred.**
-- **Or** submit with results still visibly labeled "Sample / Demo" AND make sure
-  no medical claim is implied. Riskier for a health app; only for a beta.
+### 1. Unvalidated automated grades
+The keypoint extraction is real, but keypoints→UPDRS uses hand-written,
+uncalibrated thresholds. Keep estimates explicitly experimental and avoid store
+copy implying clinical validation. Prefer exposing measured movement features
+until a labeled evaluation exists.
 
 ### 2. Live privacy policy
 Required by **both** stores for any app that uses the camera. Currently a
@@ -42,15 +41,16 @@ https://getferal.ai/luche-privacy   ← must be a real, reachable page
 Host it (getferal.ai is already CNAME-served) and confirm the same URL is entered
 in App Store Connect + Play Console listings.
 
+The source copy is maintained in `PRIVACY.md`.
+
 ### 3. App Store Privacy "nutrition label" (App Store Connect)
-Declare data collection. For the scaffold today: **camera/video** used for app
-functionality, not linked to identity, not used for tracking. Update when the
-real cloud stores video server-side (then it's "collected").
+Declare account identifiers, uploaded user video, derived keypoints/results, and
+diagnostics shared voluntarily by the user. Video is linked to the signed-in
+account for ownership/access control. It is not used for tracking.
 
 ### 4. Play Data Safety form (Play Console)
-Same content as #3, different form. Declare camera/mic + whether video leaves the
-device. With the real cloud, video **is** collected → declare it and mark
-encryption in transit.
+Same content as #3, different form. Declare camera (not microphone), account
+identifiers, and that video leaves the device over encrypted transport.
 
 ### 5. Health app declarations
 - **Apple:** be ready for a 1.4.1 / medical-claims prompt. The in-app disclaimer
@@ -61,7 +61,7 @@ encryption in transit.
   & wellness," not "diagnose."
 
 ### 6. Assets & metadata (not code)
-- Real app icon + splash (currently Expo placeholders in `assets/`).
+- Confirm the final app icon + splash and produce store screenshots.
 - Screenshots per device size, description, keywords, support URL, age rating.
 
 ---
@@ -79,19 +79,18 @@ eas submit -p android
 ```
 
 ### Node version note
-`react-native@0.86` / `@react-native/codegen` want Node **≥ 20.19.4**; this
-machine has 20.19.2. JS bundling and `expo export` work fine, but bump Node
-(`nvm install 20.19.4` or newer) before native/EAS builds to avoid engine
-failures.
+Use the Node version supported by the current Expo SDK 54 toolchain. This app is
+intentionally not being upgraded to SDK 57 until the required iOS Expo client is
+available.
 
 ---
 
 ## Quick pre-flight
 
-- [ ] `src/lib/cloud.ts` points at the real API (or SAMPLE labels are intact + honest)
+- [ ] Experimental result labeling is intact and honest
+- [ ] Matching `feral-api` deletion endpoints are deployed and tested
 - [ ] Privacy policy URL live and matches store listings
 - [ ] App Store Privacy label + Play Data Safety filled
-- [ ] Real icon/splash, screenshots, description (no diagnostic claims)
-- [ ] Node ≥ 20.19.4 for EAS build
+- [ ] Final icon/splash, screenshots, description (no diagnostic claims)
 - [ ] `npx tsc --noEmit` clean · `npx expo export` succeeds
 - [ ] Tested capture → result on a **physical device** (iOS + Android)

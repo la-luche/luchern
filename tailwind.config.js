@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   // NativeWind v4 requires the preset. Content globs cover the src/ layout
-  // the SDK 57 template uses.
+  // used by this Expo Router app.
   content: ['./src/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {

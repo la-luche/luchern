@@ -1,7 +1,7 @@
 import type { TestId } from './tests';
 
 /**
- * Lifecycle of a recording as it moves through the (placeholder) cloud
+ * Lifecycle of a recording as it moves through the cloud
  * pipeline. `uploading` → `processing` → `done`, or `failed` on error.
  * Mirrors the status pill shown on each results card.
  */
@@ -24,19 +24,26 @@ export interface CloudResult {
 }
 
 /**
- * One recorded test, persisted locally in AsyncStorage. The `videoUri` points
- * at the on-device clip; nothing is actually uploaded until the real cloud
- * client lands (see lib/cloud.ts).
+ * One recorded test. Metadata is persisted in AsyncStorage and `videoUri`
+ * points at a durable file in the app documents directory.
  */
 export interface Recording {
   id: string;
   testId: TestId;
   /** Epoch millis. */
   createdAt: number;
-  /** Local file URI of the captured video. */
+  /** Durable local file URI of the captured video. */
   videoUri: string;
   status: RecordingStatus;
-  /** Fake cloud job id, set once "upload" starts. */
+  /** Server upload intent, persisted after the video bytes reach R2. */
+  uploadId?: string;
+  /** In-memory upload fraction; safe to lose across a relaunch. */
+  uploadProgress?: number;
+  /** Current whole-file attempt; transient and shown so retries are explicit. */
+  uploadAttempt?: number;
+  /** True during retry backoff after an upload attempt failed. */
+  uploadRetrying?: boolean;
+  /** Server trial/analysis id, persisted before result polling starts. */
   jobId?: string;
   /** Populated when status === 'done'. */
   result?: CloudResult;
