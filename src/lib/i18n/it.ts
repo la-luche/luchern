@@ -205,7 +205,7 @@ export const it: Dict = {
       steps: [
         'Tieni il telefono vicino così da inquadrare bene la mano.',
         'Batti insieme indice e pollice.',
-        'Il più ampio e veloce possibile, circa 30 volte.',
+        'Il più ampio e veloce possibile, 10 volte.',
       ],
       goodTip: 'La mano riempie l’inquadratura, con buona luce.',
       avoidTip: 'Mano troppo lontana o fuori dall’inquadratura.',

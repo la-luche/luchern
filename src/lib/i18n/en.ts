@@ -210,7 +210,7 @@ export const en = {
       steps: [
         'Hold the phone close so it clearly sees your hand.',
         'Tap your finger and thumb together.',
-        'As big and fast as you can, about 30 times.',
+        'As big and fast as you can, 10 times.',
       ],
       goodTip: 'Your hand fills the frame, in good light.',
       avoidTip: 'Hand too far away, or out of view.',
