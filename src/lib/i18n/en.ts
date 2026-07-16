@@ -126,6 +126,14 @@ export const en = {
       `Uploading ${n} recording${n === 1 ? '' : 's'}`,
     retrying: 'Upload failed — retrying',
     attempt: (n: number) => `attempt ${n}`,
+    failed: (n: number) => `${n} upload${n === 1 ? '' : 's'} failed`,
+    retryAll: 'Retry all',
+  },
+  toast: {
+    saved: 'Saved',
+  },
+  offline: {
+    message: "You're offline — recordings will upload later.",
   },
   recordingCard: {
     fallback: 'Recording',

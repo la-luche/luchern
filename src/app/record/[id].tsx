@@ -16,6 +16,7 @@ import { useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { advanceSession, endSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
+import { showToast } from '../../lib/toast';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
@@ -121,6 +122,8 @@ export default function RecordScreen() {
     try {
       const rec = await addRecording(test.id, tempUri);
       submittedRef.current = true; // storage now owns the file — don't clean it up
+      cues.saved();
+      showToast(t.toast.saved);
       if (session.active) {
         // Guided session: advance to the next test (or finish). A failed upload
         // doesn't block — the clip is saved and retries in the background.

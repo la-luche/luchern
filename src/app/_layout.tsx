@@ -7,9 +7,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
 import { AuthGate } from '../components/AuthGate';
 import { DisclaimerGate } from '../components/DisclaimerGate';
+import { OfflineBanner } from '../components/OfflineBanner';
 import { UploadBanner } from '../components/UploadBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 import { LanguageProvider } from '../lib/i18n';
+import { ToastHost } from '../lib/toast';
 
 // Single stack for the whole app. Headers are hidden — each screen draws its
 // own minimal top bar to match the Luche look. App is portrait-locked and
@@ -27,6 +29,7 @@ export default function RootLayout() {
         <DisclaimerGate>
           <AuthGate>
             <View className="flex-1 bg-white">
+              <OfflineBanner />
               <UploadBanner />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
                 <Stack.Screen name="index" />
@@ -36,6 +39,7 @@ export default function RootLayout() {
                 <Stack.Screen name="results/[id]" />
                 <Stack.Screen name="about" options={{ presentation: 'modal' }} />
               </Stack>
+              <ToastHost />
             </View>
           </AuthGate>
         </DisclaimerGate>

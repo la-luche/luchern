@@ -123,6 +123,14 @@ export const ru: Dict = {
       `Загрузка ${n} ${n === 1 ? 'записи' : 'записей'}`,
     retrying: 'Ошибка загрузки — повторная попытка',
     attempt: (n: number) => `попытка ${n}`,
+    failed: (n: number) => `${n} upload${n === 1 ? '' : 's'} failed`,
+    retryAll: 'Retry all',
+  },
+  toast: {
+    saved: 'Saved',
+  },
+  offline: {
+    message: "You're offline — recordings will upload later.",
   },
   recordingCard: {
     fallback: 'Запись',

@@ -49,4 +49,8 @@ export const cues = {
     buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
     say(text);
   },
+  /** Clip submitted → a quiet success buzz (no speech; a toast carries the text). */
+  saved(): void {
+    buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+  },
 };

@@ -86,9 +86,9 @@ export default function ResultDetailScreen() {
             onPress={confirmDelete}
             accessibilityRole="button"
             accessibilityLabel={t.result.deleteA11y}
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            className="h-11 w-11 items-center justify-center rounded-full active:opacity-60"
           >
-            <Ionicons name="trash-outline" size={18} color={COLORS.inkMuted} />
+            <Ionicons name="trash-outline" size={20} color={COLORS.inkMuted} />
           </Pressable>
         }
       />

@@ -122,6 +122,14 @@ export const it: Dict = {
       `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'}`,
     retrying: 'Caricamento non riuscito — nuovo tentativo',
     attempt: (n: number) => `tentativo ${n}`,
+    failed: (n: number) => `${n} caricament${n === 1 ? 'o' : 'i'} non riuscit${n === 1 ? 'o' : 'i'}`,
+    retryAll: 'Riprova tutto',
+  },
+  toast: {
+    saved: 'Salvato',
+  },
+  offline: {
+    message: 'Sei offline — le registrazioni verranno caricate più tardi.',
   },
   recordingCard: {
     fallback: 'Registrazione',
