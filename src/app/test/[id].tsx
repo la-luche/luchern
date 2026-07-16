@@ -37,17 +37,17 @@ export default function InstructionScreen() {
         </View>
 
         <View className="mt-7">
-          <SectionLabel>{t.instruction.setupTitle}</SectionLabel>
+          <SectionLabel icon="cellphone">{t.instruction.setupTitle}</SectionLabel>
           <SetupCard text={tt.setup} />
         </View>
 
         <View className="mt-7">
-          <SectionLabel>{t.instruction.stepsTitle}</SectionLabel>
+          <SectionLabel icon="format-list-numbered">{t.instruction.stepsTitle}</SectionLabel>
           <NumberedSteps steps={tt.steps} />
         </View>
 
         <View className="mt-7">
-          <SectionLabel>{t.instruction.tipsTitle}</SectionLabel>
+          <SectionLabel icon="lightbulb-on-outline">{t.instruction.tipsTitle}</SectionLabel>
           <Cues good={tt.goodTip} avoid={tt.avoidTip} />
         </View>
 

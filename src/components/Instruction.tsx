@@ -61,12 +61,21 @@ export function DemoVideo({
   );
 }
 
-/** Small uppercase section label above each block. */
-export function SectionLabel({ children }: { children: ReactNode }) {
+/**
+ * Small uppercase section label above each block, with an optional faint gray
+ * anchor icon so the user can orient themselves while scrolling. The icon is
+ * low-opacity on purpose — a wayfinding cue, not a focal point.
+ */
+export function SectionLabel({ icon, children }: { icon?: MCIName; children: ReactNode }) {
   return (
-    <Text className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
-      {children}
-    </Text>
+    <View className="mb-2 flex-row items-center gap-2">
+      {icon ? (
+        <MaterialCommunityIcons name={icon} size={18} color={COLORS.inkFaint} />
+      ) : null}
+      <Text className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
+        {children}
+      </Text>
+    </View>
   );
 }
 
