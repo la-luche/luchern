@@ -63,6 +63,14 @@ export const ru: Dict = {
     cameraFailedBody: 'Luche не удалось запустить камеру. Закройте этот экран и попробуйте снова.',
     recordingFailedTitle: 'Запись не сохранена',
     recordingFailedBody: 'Тест не был загружен. Проверьте свободное место и попробуйте снова.',
+    // TODO(i18n): translate the capture-review strings below (English-first).
+    getReady: 'Get ready…',
+    reviewTitle: 'How does it look?',
+    reviewHint: 'Play it back — could you see the movement clearly, in good light?',
+    submit: 'Looks good — submit',
+    retake: 'Retake',
+    cueGetReady: 'Get ready',
+    cueDone: 'Done',
   },
   resultsList: {
     title: 'Предыдущие записи',
@@ -156,14 +164,16 @@ export const ru: Dict = {
       blurb: 'Быстрая проверка того, как вы ходите.',
       timeEstimate: 'Около 1 минуты · один раз',
       setup:
-        'Прислоните телефон к чему-нибудь устойчивому, примерно в 3 шагах и вертикально, чтобы он видел вас с головы до ног. С помощником проще.',
+        'Попросите другого человека держать телефон и направлять его на ваши ноги и нижнюю часть тела, пока вы идёте. Телефон, поставленный вертикально, не видит ноги.',
       steps: [
         'Отойдите от телефона примерно на 10 шагов.',
         'Развернитесь и идите обратно.',
         'Повторите дважды, если можете.',
       ],
-      goodTip: 'Всё тело в кадре, при хорошем освещении.',
-      avoidTip: 'Слишком близко, тускло или обрезано по краям.',
+      goodTip: 'Ноги и стопы хорошо видны, при хорошем освещении.',
+      avoidTip: 'Телефон, поставленный вертикально, или ноги вне кадра.',
+      frameHint: 'Keep the legs and feet inside the frame', // TODO(i18n)
+      cueStart: 'Start walking', // TODO(i18n)
     },
     arisingFromChair: {
       name: 'Вставание со стула',
@@ -181,6 +191,8 @@ export const ru: Dict = {
       ],
       goodTip: 'Всё тело и стул остаются в кадре.',
       avoidTip: 'Помогать руками или выходить из кадра.',
+      frameHint: 'Fit your whole body and the chair', // TODO(i18n)
+      cueStart: 'Stand up', // TODO(i18n)
     },
     fingerTapping: {
       name: 'Постукивание пальцами',
@@ -197,6 +209,8 @@ export const ru: Dict = {
       ],
       goodTip: 'Рука заполняет кадр, при хорошем освещении.',
       avoidTip: 'Рука слишком далеко или вне кадра.',
+      frameHint: 'Your hand should fill the frame', // TODO(i18n)
+      cueStart: 'Start tapping', // TODO(i18n)
     },
   },
 };

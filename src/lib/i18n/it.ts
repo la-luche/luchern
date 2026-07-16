@@ -63,6 +63,14 @@ export const it: Dict = {
     cameraFailedBody: 'Luche non ha potuto avviare la fotocamera. Chiudi questa schermata e riprova.',
     recordingFailedTitle: 'Registrazione non salvata',
     recordingFailedBody: 'Nessun test è stato caricato. Controlla lo spazio disponibile e riprova.',
+    // TODO(i18n): translate the capture-review strings below (English-first).
+    getReady: 'Get ready…',
+    reviewTitle: 'How does it look?',
+    reviewHint: 'Play it back — could you see the movement clearly, in good light?',
+    submit: 'Looks good — submit',
+    retake: 'Retake',
+    cueGetReady: 'Get ready',
+    cueDone: 'Done',
   },
   resultsList: {
     title: 'Registrazioni precedenti',
@@ -156,14 +164,16 @@ export const it: Dict = {
       blurb: 'Un rapido sguardo a come cammini.',
       timeEstimate: 'Circa 1 minuto · una volta',
       setup:
-        'Appoggia il telefono a qualcosa di stabile, a circa 3 passi di distanza e in posizione verticale, così da inquadrarti dalla testa ai piedi. Con un aiuto è più facile.',
+        'Chiedi a un’altra persona di tenere il telefono e puntarlo verso le gambe e la parte inferiore del corpo mentre cammini. Un telefono appoggiato in verticale non riesce a inquadrare le gambe.',
       steps: [
         'Allontanati dal telefono, circa 10 passi.',
         'Girati e torna indietro.',
         'Ripeti due volte se puoi.',
       ],
-      goodTip: 'Tutto il corpo resta inquadrato, con buona luce.',
-      avoidTip: 'Troppo vicino, poca luce o tagliato ai bordi.',
+      goodTip: 'Le gambe e i piedi restano ben visibili, con buona luce.',
+      avoidTip: 'Un telefono appoggiato in verticale o le gambe fuori dall’inquadratura.',
+      frameHint: 'Keep the legs and feet inside the frame', // TODO(i18n)
+      cueStart: 'Start walking', // TODO(i18n)
     },
     arisingFromChair: {
       name: 'Alzarsi dalla sedia',
@@ -181,6 +191,8 @@ export const it: Dict = {
       ],
       goodTip: 'Tutto il corpo e la sedia restano inquadrati.',
       avoidTip: 'Usare le mani o restare fuori inquadratura.',
+      frameHint: 'Fit your whole body and the chair', // TODO(i18n)
+      cueStart: 'Stand up', // TODO(i18n)
     },
     fingerTapping: {
       name: 'Tapping delle dita',
@@ -197,6 +209,8 @@ export const it: Dict = {
       ],
       goodTip: 'La mano riempie l’inquadratura, con buona luce.',
       avoidTip: 'Mano troppo lontana o fuori dall’inquadratura.',
+      frameHint: 'Your hand should fill the frame', // TODO(i18n)
+      cueStart: 'Start tapping', // TODO(i18n)
     },
   },
 };

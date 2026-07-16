@@ -66,6 +66,14 @@ export const en = {
     cameraFailedBody: 'Luche could not start the camera. Close this screen and try again.',
     recordingFailedTitle: 'Recording not saved',
     recordingFailedBody: 'No test was uploaded. Check available storage and try again.',
+    getReady: 'Get ready…',
+    reviewTitle: 'How does it look?',
+    reviewHint: 'Play it back — could you see the movement clearly, in good light?',
+    submit: 'Looks good — submit',
+    retake: 'Retake',
+    // Spoken aloud during capture (patient may not be looking at the screen).
+    cueGetReady: 'Get ready',
+    cueDone: 'Done',
   },
   resultsList: {
     title: 'Previous recordings',
@@ -161,14 +169,16 @@ export const en = {
       blurb: 'A quick look at how you walk.',
       timeEstimate: 'About 1 minute · do it once',
       setup:
-        'Lean your phone against something steady, about 3 steps away and standing tall, so it can see you from head to toe. A helper makes this easier.',
+        'Ask another person to hold the phone and point it at your legs and lower body while you walk. A phone propped upright can’t see your legs.',
       steps: [
         'Walk away from the phone, about 10 steps.',
         'Turn around and walk back.',
         'Do this twice if you can.',
       ],
-      goodTip: 'Your whole body stays in view, in good light.',
-      avoidTip: 'Standing too close, dim light, or cut off at the edges.',
+      goodTip: 'Your legs and feet stay clearly in view, in good light.',
+      avoidTip: 'A propped-up phone, or your legs leaving the frame.',
+      frameHint: 'Keep the legs and feet inside the frame',
+      cueStart: 'Start walking',
     },
     arisingFromChair: {
       name: 'Standing Up from a Chair',
@@ -186,6 +196,8 @@ export const en = {
       ],
       goodTip: 'Your whole body and the chair stay in view.',
       avoidTip: 'Using your hands, or sitting out of frame.',
+      frameHint: 'Fit your whole body and the chair',
+      cueStart: 'Stand up',
     },
     fingerTapping: {
       name: 'Finger Tapping',
@@ -202,6 +214,8 @@ export const en = {
       ],
       goodTip: 'Your hand fills the frame, in good light.',
       avoidTip: 'Hand too far away, or out of view.',
+      frameHint: 'Your hand should fill the frame',
+      cueStart: 'Start tapping',
     },
   },
 };
