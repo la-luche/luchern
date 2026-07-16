@@ -28,7 +28,11 @@ export default function InstructionScreen() {
     <Screen>
       <Header />
       <ScrollView contentContainerClassName="px-6 pb-10">
-        <DemoVideo source={test.demoVideo} icon={test.icon} caption={t.instruction.demoCaption} />
+        <DemoVideo
+          source={test.demoVideo}
+          icon={test.icon}
+          caption={test.demoVideo != null ? t.instruction.demoCaption : t.instruction.demoSoon}
+        />
 
         <Text className="mt-6 text-[30px] font-bold text-ink">{tt.title}</Text>
 

@@ -27,32 +27,35 @@ export function DemoVideo({
   icon,
   caption,
 }: {
-  source: number;
+  source?: number;
   icon: MCIName;
   caption: string;
 }) {
-  const player = useVideoPlayer(source, (p) => {
+  const hasVideo = source != null;
+  const player = useVideoPlayer(source ?? null, (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
   });
   const { status } = useEvent(player, 'statusChange', { status: player.status });
-  const ready = status === 'readyToPlay';
+  const ready = hasVideo && status === 'readyToPlay';
 
   return (
     <View className="mt-2">
       <View className="aspect-video w-full overflow-hidden rounded-3xl bg-ink-faint">
-        <VideoView
-          player={player}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          nativeControls={false}
-          accessibilityLabel={caption}
-        />
+        {hasVideo && (
+          <VideoView
+            player={player}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+            nativeControls={false}
+            accessibilityLabel={caption}
+          />
+        )}
         {!ready && (
           <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
-            <MaterialCommunityIcons name={icon} size={40} color={COLORS.inkMuted} />
-            <ActivityIndicator color={COLORS.inkMuted} />
+            <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+            {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
           </View>
         )}
       </View>
