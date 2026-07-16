@@ -43,11 +43,13 @@ export const TESTS: TestConfig[] = [
     id: 'handMovements',
     updrsItem: 'MDS-UPDRS 3.5',
     icon: 'hand-back-right',
+    demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
   },
   {
     id: 'pronationSupination',
     updrsItem: 'MDS-UPDRS 3.6',
     icon: 'rotate-3d-variant',
+    demoVideo: require('../../assets/demos/HandTurnsDemo.mp4'),
   },
   {
     id: 'toeTapping',

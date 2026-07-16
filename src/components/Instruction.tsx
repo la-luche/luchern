@@ -47,7 +47,7 @@ export function DemoVideo({
           <VideoView
             player={player}
             style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
+            contentFit="contain"
             nativeControls={false}
             accessibilityLabel={caption}
           />
