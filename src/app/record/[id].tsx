@@ -8,7 +8,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
-import { CountdownOverlay, FramingGuide, ReviewPanel } from '../../components/Capture';
+import { FramingGuide, ReviewPanel } from '../../components/Capture';
 import { Screen } from '../../components/Screen';
 import { cues } from '../../lib/cues';
 import { useT } from '../../lib/i18n';
@@ -17,9 +17,7 @@ import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
-const COUNTDOWN_SECONDS = 5;
-
-type Phase = 'framing' | 'countdown' | 'recording' | 'review';
+type Phase = 'framing' | 'recording' | 'review';
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -29,10 +27,10 @@ function formatElapsed(seconds: number): string {
 
 /**
  * Capture screen as a small state machine:
- *   framing → (Start) → countdown → recording → (End) → review → (Submit) → result
+ *   framing → (Start) → recording → (End) → review → (Submit) → result
  * The clip is held locally and only uploaded on Submit; Retake discards it. A
- * static framing guide + a get-ready countdown make the capture harder to get
- * wrong, without any on-device ML.
+ * static framing guide helps the patient stay in frame, and start/end audio +
+ * haptic cues make it usable without watching the screen.
  */
 export default function RecordScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,7 +43,6 @@ export default function RecordScreen() {
   const { addRecording } = useRecordings();
 
   const [phase, setPhase] = useState<Phase>('framing');
-  const [count, setCount] = useState(COUNTDOWN_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -73,20 +70,6 @@ export default function RecordScreen() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  // Get-ready countdown. On reaching zero, recording begins automatically.
-  useEffect(() => {
-    if (phase !== 'countdown') return;
-    if (count <= 0) {
-      void beginRecording();
-      return;
-    }
-    if (count < COUNTDOWN_SECONDS) cues.tick(); // 4·3·2·1 ticks (5 was the getReady buzz)
-    const timer = setTimeout(() => setCount((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-    // beginRecording is stable enough for this local machine; count/phase drive it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, count]);
-
   // Best-effort cleanup: if we leave with an un-submitted clip, delete it.
   useEffect(
     () => () => {
@@ -100,18 +83,6 @@ export default function RecordScreen() {
   if (!test) return <Redirect href="/" />;
 
   const permissionsGranted = camPerm?.granted;
-
-  const startCountdown = () => {
-    if (!cameraReady) return;
-    cues.getReady(t.record.cueGetReady);
-    setCount(COUNTDOWN_SECONDS);
-    setPhase('countdown');
-  };
-
-  const cancelCountdown = () => {
-    setPhase('framing');
-    setCount(COUNTDOWN_SECONDS);
-  };
 
   const beginRecording = async () => {
     if (!cameraRef.current || !cameraReady) {
@@ -276,12 +247,12 @@ export default function RecordScreen() {
               )}
             </View>
 
-            {/* Bottom control — Start / End (hidden during countdown/review). */}
+            {/* Bottom control — Start / End (hidden during review). */}
             {(phase === 'framing' || recording) && (
               <View className="items-center pb-8">
                 {!recording ? (
                   <Pressable
-                    onPress={startCountdown}
+                    onPress={() => void beginRecording()}
                     disabled={!cameraReady}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.startA11y}
@@ -307,16 +278,6 @@ export default function RecordScreen() {
               </View>
             )}
           </SafeAreaView>
-
-          {/* Get-ready countdown. */}
-          {phase === 'countdown' && (
-            <CountdownOverlay
-              count={count}
-              label={t.record.getReady}
-              cancelLabel={t.common.cancel}
-              onCancel={cancelCountdown}
-            />
-          )}
 
           {/* Review the clip before it uploads. */}
           {phase === 'review' && tempUri && (
