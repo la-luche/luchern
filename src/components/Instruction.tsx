@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Text, View } from 'react-native';
 
 import { COLORS } from '../lib/theme';
 
@@ -24,10 +24,12 @@ const AVOID = '#C77700';
  */
 export function DemoVideo({
   source,
+  poster,
   icon,
   caption,
 }: {
   source?: number;
+  poster?: number;
   icon: MCIName;
   caption: string;
 }) {
@@ -52,12 +54,19 @@ export function DemoVideo({
             accessibilityLabel={caption}
           />
         )}
-        {!ready && (
-          <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
-            <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
-            {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
-          </View>
-        )}
+        {!ready &&
+          (poster != null ? (
+            <Image
+              source={poster}
+              resizeMode="contain"
+              style={{ position: 'absolute', width: '100%', height: '100%' }}
+            />
+          ) : (
+            <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
+              <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+              {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
+            </View>
+          ))}
       </View>
       <Text className="mt-2 text-center text-[13px] text-ink-muted">{caption}</Text>
     </View>

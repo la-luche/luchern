@@ -29,6 +29,8 @@ export interface TestConfig {
    * placeholder instead.
    */
   demoVideo?: number;
+  /** First-frame image shown instantly while the demo video loads. */
+  demoPoster?: number;
 }
 
 // Ordered by MDS-UPDRS item number.
@@ -38,18 +40,21 @@ export const TESTS: TestConfig[] = [
     updrsItem: 'MDS-UPDRS 3.4',
     icon: 'gesture-tap',
     demoVideo: require('../../assets/demos/FingerTappingDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/FingerTappingDemo.jpg'),
   },
   {
     id: 'handMovements',
     updrsItem: 'MDS-UPDRS 3.5',
     icon: 'hand-back-right',
     demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/HandMovementsDemo.jpg'),
   },
   {
     id: 'pronationSupination',
     updrsItem: 'MDS-UPDRS 3.6',
     icon: 'rotate-3d-variant',
     demoVideo: require('../../assets/demos/HandTurnsDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/HandTurnsDemo.jpg'),
   },
   {
     id: 'toeTapping',
@@ -61,18 +66,21 @@ export const TESTS: TestConfig[] = [
     updrsItem: 'MDS-UPDRS 3.8',
     icon: 'shoe-print',
     demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/LegAgilityDemo.jpg'),
   },
   {
     id: 'arisingFromChair',
     updrsItem: 'MDS-UPDRS 3.9',
     icon: 'seat',
     demoVideo: require('../../assets/demos/ChairDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/ChairDemo.jpg'),
   },
   {
     id: 'gait',
     updrsItem: 'MDS-UPDRS 3.10',
     icon: 'walk',
     demoVideo: require('../../assets/demos/WalkingDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/WalkingDemo.jpg'),
   },
   {
     id: 'restTremor',

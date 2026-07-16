@@ -30,6 +30,7 @@ export default function InstructionScreen() {
       <ScrollView contentContainerClassName="px-6 pb-10">
         <DemoVideo
           source={test.demoVideo}
+          poster={test.demoPoster}
           icon={test.icon}
           caption={test.demoVideo != null ? t.instruction.demoCaption : t.instruction.demoSoon}
         />
