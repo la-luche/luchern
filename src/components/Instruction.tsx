@@ -27,32 +27,35 @@ export function DemoVideo({
   icon,
   caption,
 }: {
-  source: number;
+  source?: number;
   icon: MCIName;
   caption: string;
 }) {
-  const player = useVideoPlayer(source, (p) => {
+  const hasVideo = source != null;
+  const player = useVideoPlayer(source ?? null, (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
   });
   const { status } = useEvent(player, 'statusChange', { status: player.status });
-  const ready = status === 'readyToPlay';
+  const ready = hasVideo && status === 'readyToPlay';
 
   return (
     <View className="mt-2">
       <View className="aspect-video w-full overflow-hidden rounded-3xl bg-ink-faint">
-        <VideoView
-          player={player}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          nativeControls={false}
-          accessibilityLabel={caption}
-        />
+        {hasVideo && (
+          <VideoView
+            player={player}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+            nativeControls={false}
+            accessibilityLabel={caption}
+          />
+        )}
         {!ready && (
           <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
-            <MaterialCommunityIcons name={icon} size={40} color={COLORS.inkMuted} />
-            <ActivityIndicator color={COLORS.inkMuted} />
+            <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+            {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
           </View>
         )}
       </View>
@@ -108,16 +111,16 @@ export function SetupCard({ text }: { text: string }) {
   );
 }
 
-/** Numbered "what to do" steps with filled ink badges. */
+/** Numbered "what to do" steps with filled ink badges. Large + airy for older eyes. */
 export function NumberedSteps({ steps }: { steps: readonly string[] }) {
   return (
-    <View className="gap-3.5">
+    <View className="gap-5">
       {steps.map((step, i) => (
-        <View key={i} className="flex-row items-center gap-3">
-          <View className="h-8 w-8 items-center justify-center rounded-full bg-ink">
-            <Text className="text-[15px] font-bold text-white">{i + 1}</Text>
+        <View key={i} className="flex-row items-center gap-3.5">
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-ink">
+            <Text className="text-[17px] font-bold text-white">{i + 1}</Text>
           </View>
-          <Text className="flex-1 text-[17px] leading-6 text-ink">{step}</Text>
+          <Text className="flex-1 text-[19px] leading-7 text-ink">{step}</Text>
         </View>
       ))}
     </View>

@@ -2,16 +2,17 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
-import { Cues, DemoVideo, MetaRow, NumberedSteps, SectionLabel, SetupCard } from '../../components/Instruction';
+import { DemoVideo, NumberedSteps } from '../../components/Instruction';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { useT } from '../../lib/i18n';
 import { getTest } from '../../lib/tests';
 
 /**
- * Per-test instruction guide, reimagined to coach a patient through a correct
- * at-home capture: demo clip → what to expect → phone setup → steps → good/avoid
- * cues → reassurance → Continue. Warm, large-type, single scroll.
+ * Per-test instruction guide, kept intentionally minimal for an older patient:
+ * a demo clip (shows the movement), the test name, a few big plain-language
+ * steps (phone setup folded into step 1), and one large button. The clinical
+ * reference + disclaimer sit in a small footer, not as their own blocks.
  */
 export default function InstructionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,44 +28,29 @@ export default function InstructionScreen() {
     <Screen>
       <Header />
       <ScrollView contentContainerClassName="px-6 pb-10">
-        <DemoVideo source={test.demoVideo} icon={test.icon} caption={t.instruction.demoCaption} />
+        <DemoVideo
+          source={test.demoVideo}
+          icon={test.icon}
+          caption={test.demoVideo != null ? t.instruction.demoCaption : t.instruction.demoSoon}
+        />
 
-        {/* Title + warm one-liner + time chip. */}
-        <Text className="mt-6 text-[28px] font-bold text-ink">{tt.title}</Text>
-        <Text className="mt-1 text-[16px] leading-6 text-ink-muted">{tt.blurb}</Text>
-        <MetaRow time={tt.timeEstimate} updrsItem={test.updrsItem} />
+        <Text className="mt-6 text-[30px] font-bold text-ink">{tt.title}</Text>
 
-        <View className="mt-7">
-          <SectionLabel icon="cellphone">{t.instruction.setupTitle}</SectionLabel>
-          <SetupCard text={tt.setup} />
-        </View>
-
-        <View className="mt-7">
-          <SectionLabel icon="format-list-numbered">{t.instruction.stepsTitle}</SectionLabel>
+        <View className="mt-6">
           <NumberedSteps steps={tt.steps} />
         </View>
 
-        <View className="mt-7">
-          <SectionLabel icon="lightbulb-on-outline">{t.instruction.tipsTitle}</SectionLabel>
-          <Cues good={tt.goodTip} avoid={tt.avoidTip} />
-        </View>
-
-        {/* Reassurance. */}
-        <View className="mt-8 items-center px-2">
-          <Text className="text-center text-[14px] leading-5 text-ink-muted">
-            {t.instruction.reassurance}
-          </Text>
-          <Text className="mt-1 text-center text-[13px] text-ink-muted">
-            {t.instruction.notDiagnosis}
-          </Text>
-        </View>
-
-        <View className="mt-6">
+        <View className="mt-9">
           <Button
             title={t.instruction.ready}
             onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
           />
         </View>
+
+        {/* Quiet footer: clinical reference + the not-a-diagnosis reminder. */}
+        <Text className="mt-6 text-center text-[12px] leading-5 text-ink-muted">
+          {test.updrsItem} · {t.instruction.notDiagnosis}
+        </Text>
       </ScrollView>
     </Screen>
   );
