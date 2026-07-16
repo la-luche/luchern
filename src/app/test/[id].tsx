@@ -1,54 +1,69 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
+import { Cues, DemoVideo, NumberedSteps, SectionLabel, SetupCard } from '../../components/Instruction';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
-import { StepList } from '../../components/StepList';
 import { useT } from '../../lib/i18n';
 import { getTest } from '../../lib/tests';
 
-/** Per-test instruction guide. Continue → recording screen. */
+/**
+ * Per-test instruction guide, reimagined to coach a patient through a correct
+ * at-home capture: demo clip → what to expect → phone setup → steps → good/avoid
+ * cues → reassurance → Continue. Warm, large-type, single scroll.
+ */
 export default function InstructionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
 
-  const player = useVideoPlayer(test?.demoVideo ?? null, (p) => {
-    p.loop = true;
-    p.muted = true;
-    p.play();
-  });
-
   if (!test) return <Redirect href="/" />;
+
+  const tt = t.tests[test.id];
 
   return (
     <Screen>
       <Header />
-      <ScrollView contentContainerClassName="px-6 pb-8">
-        {/* Looping, muted demo clip (from the old iOS app). */}
-        <View className="mt-2 aspect-video w-full overflow-hidden rounded-2xl bg-ink-faint">
-          <VideoView
-            player={player}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
-            nativeControls={false}
-            accessibilityLabel={`${t.tests[test.id].name} demonstration video`}
-          />
+      <ScrollView contentContainerClassName="px-6 pb-10">
+        <DemoVideo source={test.demoVideo} icon={test.icon} caption={t.instruction.demoCaption} />
+
+        {/* Title + warm one-liner + time chip. */}
+        <Text className="mt-6 text-[28px] font-bold text-ink">{tt.title}</Text>
+        <Text className="mt-1 text-[16px] leading-6 text-ink-muted">{tt.blurb}</Text>
+        <View className="mt-3 self-start rounded-full bg-ink-faint px-3 py-1.5">
+          <Text className="text-[13px] font-semibold text-ink-muted">{tt.timeEstimate}</Text>
         </View>
 
-        <Text className="mt-6 text-[28px] font-bold text-ink">{t.tests[test.id].title}</Text>
-        <Text className="mt-1 text-[16px] font-medium text-ink-muted">{t.tests[test.id].descriptor}</Text>
+        <View className="mt-7">
+          <SectionLabel>{t.instruction.setupTitle}</SectionLabel>
+          <SetupCard text={tt.setup} />
+        </View>
+
+        <View className="mt-7">
+          <SectionLabel>{t.instruction.stepsTitle}</SectionLabel>
+          <NumberedSteps steps={tt.steps} />
+        </View>
+
+        <View className="mt-7">
+          <SectionLabel>{t.instruction.tipsTitle}</SectionLabel>
+          <Cues good={tt.goodTip} avoid={tt.avoidTip} />
+        </View>
+
+        {/* Reassurance. */}
+        <View className="mt-8 items-center px-2">
+          <Text className="text-center text-[14px] leading-5 text-ink-muted">
+            {t.instruction.reassurance}
+          </Text>
+          <Text className="mt-1 text-center text-[13px] text-ink-muted">
+            {t.instruction.notDiagnosis}
+          </Text>
+        </View>
 
         <View className="mt-6">
-          <StepList steps={t.tests[test.id].steps} />
-        </View>
-
-        <View className="mt-8">
           <Button
-            title={t.common.continue}
+            title={t.instruction.ready}
             onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
           />
         </View>

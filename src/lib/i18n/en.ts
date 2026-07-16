@@ -142,39 +142,66 @@ export const en = {
     moderate: 'Moderate',
     severe: 'Severe',
   },
+  // Shared copy for the redesigned instruction screen (section labels + the
+  // reassurance/CTA line). Per-test specifics live under `tests.<id>`.
+  instruction: {
+    demoCaption: 'Here’s what it looks like',
+    setupTitle: 'Set up your phone',
+    stepsTitle: 'What to do',
+    tipsTitle: 'For a good result',
+    ready: 'I’m ready',
+    reassurance: 'There’s no wrong way to do this. You can retake it anytime.',
+    notDiagnosis: 'An automated check, not a diagnosis.',
+  },
   tests: {
     gait: {
       name: 'Walking',
       descriptor: 'Walk toward the camera',
       title: 'Walk in front of the camera',
+      blurb: 'A quick look at how you walk.',
+      timeEstimate: 'About 1 minute · do it once',
+      setup:
+        'Lean your phone against something steady, about 3 steps away and standing tall, so it can see you from head to toe. A helper makes this easier.',
       steps: [
-        'Walk 10 steps away from the camera',
-        'Turn around and walk 10 steps back',
-        'Tap Start when you’re ready to begin',
+        'Walk away from the phone, about 10 steps.',
+        'Turn around and walk back.',
+        'Do this twice if you can.',
       ],
+      goodTip: 'Your whole body stays in view, in good light.',
+      avoidTip: 'Standing too close, dim light, or cut off at the edges.',
     },
     arisingFromChair: {
       name: 'Standing Up from a Chair',
       descriptor: 'Stand up from a chair',
       title: 'Stand up from a chair',
+      blurb: 'A quick check of standing up.',
+      timeEstimate: 'Under a minute · 3 times',
+      setup:
+        'Prop your phone about 2–3 steps away so it can see all of you sitting in the chair.',
       steps: [
-        'Sit in a straight-back chair',
-        'Cross your arms over your chest',
-        'Stand up without using your hands',
-        'Repeat 3 times',
-        'Tap Start when you’re ready to begin',
+        'Sit in a firm chair with a straight back.',
+        'Cross your arms over your chest.',
+        'Stand up without using your hands.',
+        'Sit back down and repeat, 3 times.',
       ],
+      goodTip: 'Your whole body and the chair stay in view.',
+      avoidTip: 'Using your hands, or sitting out of frame.',
     },
     fingerTapping: {
       name: 'Finger Tapping',
       descriptor: 'Tap finger and thumb',
       title: 'Tap your fingers',
+      blurb: 'A quick check of finger movement.',
+      timeEstimate: 'About 30 seconds',
+      setup:
+        'Hold your phone, or prop it close, so it clearly sees your hand. You can flip to the front camera to watch yourself.',
       steps: [
-        'Tap your index finger against your thumb',
-        'As quickly and as widely as you can',
-        'About 30 taps',
-        'Tap Start when you’re ready to begin',
+        'Tap your index finger on your thumb.',
+        'As big and as fast as you can.',
+        'Keep going for about 30 taps.',
       ],
+      goodTip: 'Your hand fills the frame, in good light.',
+      avoidTip: 'Hand too far away, or out of view.',
     },
   },
 };
