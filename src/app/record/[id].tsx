@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
+import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, Text, View } from 'react-native';
@@ -13,6 +14,7 @@ import { Screen } from '../../components/Screen';
 import { cues } from '../../lib/cues';
 import { useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
+import { advanceSession, endSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -41,12 +43,15 @@ export default function RecordScreen() {
   const [camPerm, requestCam] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const { addRecording } = useRecordings();
+  const session = useSession();
+  useKeepAwake(); // keep the screen on while filming a test
 
   const [phase, setPhase] = useState<Phase>('framing');
   const [submitting, setSubmitting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [facing, setFacing] = useState<CameraType>('back');
+  const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
   const zoomBase = useRef(0);
 
@@ -116,7 +121,19 @@ export default function RecordScreen() {
     try {
       const rec = await addRecording(test.id, tempUri);
       submittedRef.current = true; // storage now owns the file — don't clean it up
-      router.replace({ pathname: '/results/[id]', params: { id: rec.id } });
+      if (session.active) {
+        // Guided session: advance to the next test (or finish). A failed upload
+        // doesn't block — the clip is saved and retries in the background.
+        const next = advanceSession();
+        if (next) {
+          router.replace({ pathname: '/test/[id]', params: { id: next } });
+        } else {
+          endSession();
+          router.replace('/results');
+        }
+      } else {
+        router.replace({ pathname: '/results/[id]', params: { id: rec.id } });
+      }
     } catch (error) {
       setSubmitting(false);
       recordDiagnostic('recording_failed', { testId: test.id, ...diagnosticErrorData(error) });
@@ -131,6 +148,14 @@ export default function RecordScreen() {
     setZoom(0);
     setPhase('framing');
   };
+
+  const flip = () => {
+    setFacing((f) => (f === 'back' ? 'front' : 'back'));
+    setTorch(false); // torch is a back-camera feature; reset on flip
+  };
+
+  const stepZoom = (delta: number) =>
+    setZoom((z) => Math.min(1, Math.max(0, Math.round((z + delta) * 100) / 100)));
 
   // Pinch-to-zoom, only while framing (zoom is frozen for the clip).
   const pinch = Gesture.Pinch()
@@ -187,6 +212,7 @@ export default function RecordScreen() {
             mode="video"
             facing={facing}
             zoom={zoom}
+            enableTorch={torch && facing === 'back'}
             mute
             videoQuality="720p"
             videoBitrate={3000000}
@@ -223,9 +249,19 @@ export default function RecordScreen() {
                 </View>
               )}
               <View className="flex-row items-center gap-2">
+                {phase === 'framing' && facing === 'back' && (
+                  <Pressable
+                    onPress={() => setTorch((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.record.flashlight}
+                    className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                  >
+                    <Ionicons name={torch ? 'flash' : 'flash-off'} size={20} color={COLORS.white} />
+                  </Pressable>
+                )}
                 {phase === 'framing' && (
                   <Pressable
-                    onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                    onPress={flip}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.flipCamera}
                     className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
@@ -238,6 +274,28 @@ export default function RecordScreen() {
                 </View>
               </View>
             </View>
+
+            {/* Zoom +/- — tremor-friendly alternative to pinch. */}
+            {phase === 'framing' && (
+              <View className="absolute right-4 top-1/2 -mt-12 gap-3">
+                <Pressable
+                  onPress={() => stepZoom(0.1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.record.zoomIn}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                >
+                  <Ionicons name="add" size={24} color={COLORS.white} />
+                </Pressable>
+                <Pressable
+                  onPress={() => stepZoom(-0.1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.record.zoomOut}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                >
+                  <Ionicons name="remove" size={24} color={COLORS.white} />
+                </Pressable>
+              </View>
+            )}
 
             <View className="flex-1 items-center justify-end pb-4" pointerEvents="none">
               {phase === 'framing' && zoom === 0 && (

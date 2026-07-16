@@ -11,8 +11,14 @@ export const it: Dict = {
   },
   menu: {
     chooseTest: 'Scegli un test',
+    startFullCheck: 'Avvia controllo completo',
+    orSingle: 'Oppure scegli un singolo test qui sotto',
     previousRecordings: 'Registrazioni precedenti',
     aboutA11y: 'Informazioni e privacy',
+  },
+  session: {
+    progress: (n: number, total: number) => `Test ${n} di ${total}`,
+    skip: 'Salta',
   },
   about: {
     title: 'Informazioni',
@@ -70,6 +76,9 @@ export const it: Dict = {
     retake: 'Rifai',
     cueGetReady: 'Preparati',
     cueDone: 'Fatto',
+    flashlight: 'Torcia',
+    zoomIn: 'Ingrandisci',
+    zoomOut: 'Riduci',
   },
   resultsList: {
     title: 'Registrazioni precedenti',
