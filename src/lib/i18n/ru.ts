@@ -11,8 +11,14 @@ export const ru: Dict = {
   },
   menu: {
     chooseTest: 'Выберите тест',
+    startFullCheck: 'Start full check',
+    orSingle: 'Or choose a single test below',
     previousRecordings: 'Предыдущие записи',
     aboutA11y: 'О приложении и конфиденциальность',
+  },
+  session: {
+    progress: (n: number, total: number) => `Test ${n} of ${total}`,
+    skip: 'Skip',
   },
   about: {
     title: 'О приложении',
@@ -71,6 +77,9 @@ export const ru: Dict = {
     retake: 'Retake',
     cueGetReady: 'Get ready',
     cueDone: 'Done',
+    flashlight: 'Flashlight',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
   },
   resultsList: {
     title: 'Предыдущие записи',

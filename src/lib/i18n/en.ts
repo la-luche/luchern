@@ -14,8 +14,14 @@ export const en = {
   },
   menu: {
     chooseTest: 'Choose a test',
+    startFullCheck: 'Start full check',
+    orSingle: 'Or choose a single test below',
     previousRecordings: 'Previous recordings',
     aboutA11y: 'About and privacy',
+  },
+  session: {
+    progress: (n: number, total: number) => `Test ${n} of ${total}`,
+    skip: 'Skip',
   },
   about: {
     title: 'About',
@@ -74,6 +80,9 @@ export const en = {
     // Spoken aloud during capture (patient may not be looking at the screen).
     cueGetReady: 'Get ready',
     cueDone: 'Done',
+    flashlight: 'Flashlight',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
   },
   resultsList: {
     title: 'Previous recordings',

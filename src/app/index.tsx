@@ -6,13 +6,24 @@ import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
 import { TestRow } from '../components/TestRow';
 import { useT } from '../lib/i18n';
+import { endSession, startSession } from '../lib/session';
 import { TESTS } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 
-/** Menu: title + the test rows + navigation to previous recordings. */
+/** Menu: run-all session, the test rows, and previous recordings. */
 export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
+
+  const startFullCheck = () => {
+    startSession(TESTS.map((test) => test.id));
+    router.push({ pathname: '/test/[id]', params: { id: TESTS[0].id } });
+  };
+
+  const openSingle = (id: string) => {
+    endSession(); // single-test taps run as one-offs, never part of a session
+    router.push({ pathname: '/test/[id]', params: { id } });
+  };
 
   return (
     <Screen>
@@ -36,14 +47,18 @@ export default function MenuScreen() {
           <Text className="mt-1 text-[15px] font-medium text-ink-muted">{t.menu.chooseTest}</Text>
         </View>
 
+        {/* Run-all session. */}
+        <View className="mt-6">
+          <Button title={t.menu.startFullCheck} onPress={startFullCheck} />
+          <Text className="mt-2 text-center text-[13px] text-ink-muted">
+            {t.menu.orSingle}
+          </Text>
+        </View>
+
         {/* Test rows. */}
-        <View className="mt-6 gap-3.5">
+        <View className="mt-4 gap-3.5">
           {TESTS.map((test) => (
-            <TestRow
-              key={test.id}
-              test={test}
-              onPress={() => router.push({ pathname: '/test/[id]', params: { id: test.id } })}
-            />
+            <TestRow key={test.id} test={test} onPress={() => openSingle(test.id)} />
           ))}
         </View>
 
