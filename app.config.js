@@ -1,6 +1,6 @@
 const { execFileSync } = require('node:child_process');
 
-const REPOSITORY_URL = 'https://github.com/Skovorp/luchern';
+const REPOSITORY_URL = 'https://github.com/la-luche/luchern';
 
 function readGit(args) {
   try {
