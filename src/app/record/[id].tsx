@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/Button';
 import { CountdownOverlay, FramingGuide, ReviewPanel } from '../../components/Capture';
 import { Screen } from '../../components/Screen';
+import { cues } from '../../lib/cues';
 import { useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { useRecordings } from '../../lib/storage';
@@ -79,6 +80,7 @@ export default function RecordScreen() {
       void beginRecording();
       return;
     }
+    if (count < COUNTDOWN_SECONDS) cues.tick(); // 4·3·2·1 ticks (5 was the getReady buzz)
     const timer = setTimeout(() => setCount((c) => c - 1), 1000);
     return () => clearTimeout(timer);
     // beginRecording is stable enough for this local machine; count/phase drive it.
@@ -101,6 +103,7 @@ export default function RecordScreen() {
 
   const startCountdown = () => {
     if (!cameraReady) return;
+    cues.getReady(t.record.cueGetReady);
     setCount(COUNTDOWN_SECONDS);
     setPhase('countdown');
   };
@@ -116,6 +119,7 @@ export default function RecordScreen() {
       return;
     }
     setPhase('recording');
+    cues.start(t.tests[test.id].cueStart);
     try {
       // recordAsync resolves only once stopRecording() is called.
       // codec must be set on iOS for the videoBitrate cap (below) to apply.
@@ -130,7 +134,10 @@ export default function RecordScreen() {
     }
   };
 
-  const endRecording = () => cameraRef.current?.stopRecording();
+  const endRecording = () => {
+    cues.stop(t.record.cueDone);
+    cameraRef.current?.stopRecording();
+  };
 
   const submitClip = async () => {
     if (!tempUri || submitting) return;

@@ -71,6 +71,9 @@ export const en = {
     reviewHint: 'Play it back — could you see the movement clearly, in good light?',
     submit: 'Looks good — submit',
     retake: 'Retake',
+    // Spoken aloud during capture (patient may not be looking at the screen).
+    cueGetReady: 'Get ready',
+    cueDone: 'Done',
   },
   resultsList: {
     title: 'Previous recordings',
@@ -175,6 +178,7 @@ export const en = {
       goodTip: 'Your legs and feet stay clearly in view, in good light.',
       avoidTip: 'A propped-up phone, or your legs leaving the frame.',
       frameHint: 'Keep the legs and feet inside the frame',
+      cueStart: 'Start walking',
     },
     arisingFromChair: {
       name: 'Standing Up from a Chair',
@@ -193,6 +197,7 @@ export const en = {
       goodTip: 'Your whole body and the chair stay in view.',
       avoidTip: 'Using your hands, or sitting out of frame.',
       frameHint: 'Fit your whole body and the chair',
+      cueStart: 'Stand up',
     },
     fingerTapping: {
       name: 'Finger Tapping',
@@ -210,6 +215,7 @@ export const en = {
       goodTip: 'Your hand fills the frame, in good light.',
       avoidTip: 'Hand too far away, or out of view.',
       frameHint: 'Your hand should fill the frame',
+      cueStart: 'Start tapping',
     },
   },
 };
