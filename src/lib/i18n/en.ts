@@ -251,6 +251,23 @@ export const en = {
       frameHint: 'Your hand should fill the frame',
       cueStart: 'Turn your palm up and down',
     },
+    toeTapping: {
+      name: 'Toe Tapping',
+      descriptor: 'Tap your toes',
+      title: 'Tap your toes',
+      blurb: 'A quick check of tapping your toes.',
+      timeEstimate: 'About 30 seconds',
+      setup: 'Sit in a chair and have someone point the phone at your foot.',
+      steps: [
+        'Sit in a chair with both feet flat on the floor.',
+        'Ask another person to hold the phone and point it at your foot.',
+        'Keep your heel down and tap your toes 10 times, as big and fast as you can.',
+      ],
+      goodTip: 'Your foot stays in view, in good light.',
+      avoidTip: 'Foot out of the frame, or lifting your heel.',
+      frameHint: 'Keep your foot in the frame',
+      cueStart: 'Tap your toes',
+    },
     legAgility: {
       name: 'Leg Agility',
       descriptor: 'Raise and stomp your foot',

@@ -13,6 +13,7 @@ export type TestId =
   | 'fingerTapping'
   | 'handMovements'
   | 'pronationSupination'
+  | 'toeTapping'
   | 'legAgility'
   | 'arisingFromChair'
   | 'gait'
@@ -47,6 +48,11 @@ export const TESTS: TestConfig[] = [
     id: 'pronationSupination',
     updrsItem: 'MDS-UPDRS 3.6',
     icon: 'rotate-3d-variant',
+  },
+  {
+    id: 'toeTapping',
+    updrsItem: 'MDS-UPDRS 3.7',
+    icon: 'foot-print',
   },
   {
     id: 'legAgility',
