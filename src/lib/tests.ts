@@ -60,6 +60,7 @@ export const TESTS: TestConfig[] = [
     id: 'legAgility',
     updrsItem: 'MDS-UPDRS 3.8',
     icon: 'shoe-print',
+    demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
   },
   {
     id: 'arisingFromChair',
