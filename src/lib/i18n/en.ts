@@ -161,14 +161,14 @@ export const en = {
       blurb: 'A quick look at how you walk.',
       timeEstimate: 'About 1 minute · do it once',
       setup:
-        'Lean your phone against something steady, about 3 steps away and standing tall, so it can see you from head to toe. A helper makes this easier.',
+        'Ask another person to hold the phone and point it at your legs and lower body while you walk. A phone propped upright can’t see your legs.',
       steps: [
         'Walk away from the phone, about 10 steps.',
         'Turn around and walk back.',
         'Do this twice if you can.',
       ],
-      goodTip: 'Your whole body stays in view, in good light.',
-      avoidTip: 'Standing too close, dim light, or cut off at the edges.',
+      goodTip: 'Your legs and feet stay clearly in view, in good light.',
+      avoidTip: 'A propped-up phone, or your legs leaving the frame.',
     },
     arisingFromChair: {
       name: 'Standing Up from a Chair',

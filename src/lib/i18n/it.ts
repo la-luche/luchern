@@ -156,14 +156,14 @@ export const it: Dict = {
       blurb: 'Un rapido sguardo a come cammini.',
       timeEstimate: 'Circa 1 minuto · una volta',
       setup:
-        'Appoggia il telefono a qualcosa di stabile, a circa 3 passi di distanza e in posizione verticale, così da inquadrarti dalla testa ai piedi. Con un aiuto è più facile.',
+        'Chiedi a un’altra persona di tenere il telefono e puntarlo verso le gambe e la parte inferiore del corpo mentre cammini. Un telefono appoggiato in verticale non riesce a inquadrare le gambe.',
       steps: [
         'Allontanati dal telefono, circa 10 passi.',
         'Girati e torna indietro.',
         'Ripeti due volte se puoi.',
       ],
-      goodTip: 'Tutto il corpo resta inquadrato, con buona luce.',
-      avoidTip: 'Troppo vicino, poca luce o tagliato ai bordi.',
+      goodTip: 'Le gambe e i piedi restano ben visibili, con buona luce.',
+      avoidTip: 'Un telefono appoggiato in verticale o le gambe fuori dall’inquadratura.',
     },
     arisingFromChair: {
       name: 'Alzarsi dalla sedia',

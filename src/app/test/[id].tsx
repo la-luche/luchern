@@ -2,7 +2,7 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
-import { Cues, DemoVideo, NumberedSteps, SectionLabel, SetupCard } from '../../components/Instruction';
+import { Cues, DemoVideo, MetaRow, NumberedSteps, SectionLabel, SetupCard } from '../../components/Instruction';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { useT } from '../../lib/i18n';
@@ -32,9 +32,7 @@ export default function InstructionScreen() {
         {/* Title + warm one-liner + time chip. */}
         <Text className="mt-6 text-[28px] font-bold text-ink">{tt.title}</Text>
         <Text className="mt-1 text-[16px] leading-6 text-ink-muted">{tt.blurb}</Text>
-        <View className="mt-3 self-start rounded-full bg-ink-faint px-3 py-1.5">
-          <Text className="text-[13px] font-semibold text-ink-muted">{tt.timeEstimate}</Text>
-        </View>
+        <MetaRow time={tt.timeEstimate} updrsItem={test.updrsItem} />
 
         <View className="mt-7">
           <SectionLabel icon="cellphone">{t.instruction.setupTitle}</SectionLabel>

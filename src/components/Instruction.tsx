@@ -79,6 +79,25 @@ export function SectionLabel({ icon, children }: { icon?: MCIName; children: Rea
   );
 }
 
+/**
+ * Meta chips under the title: how long / how often + the clinical MDS-UPDRS
+ * item this test maps to. The MDS-UPDRS chip is deliberately explicit — it tells
+ * patient and clinician alike that the score is grounded in the standard scale.
+ */
+export function MetaRow({ time, updrsItem }: { time: string; updrsItem: string }) {
+  return (
+    <View className="mt-3 flex-row flex-wrap items-center gap-2">
+      <View className="rounded-full bg-ink-faint px-3 py-1.5">
+        <Text className="text-[13px] font-semibold text-ink-muted">{time}</Text>
+      </View>
+      <View className="flex-row items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5">
+        <MaterialCommunityIcons name="clipboard-pulse-outline" size={14} color={COLORS.inkMuted} />
+        <Text className="text-[13px] font-semibold text-ink-muted">{updrsItem}</Text>
+      </View>
+    </View>
+  );
+}
+
 /** "Set up your phone" card — soft blue tint + phone icon. */
 export function SetupCard({ text }: { text: string }) {
   return (
