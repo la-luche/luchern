@@ -8,15 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  * patient/helper something concrete to aim for, which cuts down on clips where
  * the body/hand is out of frame.
  */
-export function FramingGuide({ hint }: { hint: string }) {
+export function FramingGuide() {
   return (
     <View pointerEvents="none" className="absolute inset-0">
-      <View className="absolute inset-x-8 inset-y-32 rounded-3xl border-2 border-white/70" />
-      <View className="absolute inset-x-0 top-20 items-center px-6">
-        <View className="rounded-full bg-black/55 px-4 py-2">
-          <Text className="text-center text-[15px] font-semibold text-white">{hint}</Text>
-        </View>
-      </View>
+      {/* Reserved top/bottom bands match the overlay chrome, so the guide can
+          never sit underneath the labels or the enlarged capture controls. */}
+      <View className="absolute inset-x-6 bottom-48 top-48 rounded-3xl border-2 border-white/70" />
     </View>
   );
 }
@@ -67,7 +64,7 @@ export function ReviewPanel({
               disabled={submitting}
               accessibilityRole="button"
               accessibilityLabel={submitLabel}
-              className={`h-[54px] flex-row items-center justify-center gap-2 rounded-full bg-white active:opacity-80 ${
+              className={`h-16 flex-row items-center justify-center gap-2 rounded-full bg-white active:opacity-80 ${
                 submitting ? 'opacity-60' : ''
               }`}
             >
@@ -79,7 +76,7 @@ export function ReviewPanel({
               disabled={submitting}
               accessibilityRole="button"
               accessibilityLabel={retakeLabel}
-              className={`h-[54px] items-center justify-center rounded-full border border-white/40 active:opacity-70 ${
+              className={`h-16 items-center justify-center rounded-full border border-white/40 active:opacity-70 ${
                 submitting ? 'opacity-40' : ''
               }`}
             >

@@ -1,11 +1,12 @@
-import type { TestId } from './tests';
+import type { EvaluatedSide, TestId } from './tests';
 
 /**
  * Lifecycle of a recording as it moves through the cloud
- * pipeline. `uploading` → `processing` → `done`, or `failed` on error.
+ * pipeline. `uploading` → `processing` → `done`; an unscoreable capture ends
+ * at `needs_retry`, while system/upload errors end at `failed`.
  * Mirrors the status pill shown on each results card.
  */
-export type RecordingStatus = 'uploading' | 'processing' | 'done' | 'failed';
+export type RecordingStatus = 'uploading' | 'processing' | 'done' | 'needs_retry' | 'failed';
 
 /** Analysis result from the cloud keypoint→MDS-UPDRS pipeline (see cloud.ts). */
 export interface CloudResult {
@@ -17,7 +18,7 @@ export interface CloudResult {
   isDemo: boolean;
   /** Real results are literature-heuristic estimates, not a diagnosis. */
   isEstimate?: boolean;
-  /** Derived MDS-UPDRS grade 0–4, when available. */
+  /** Derived MDS-UPDRS grade 0–4 rounded to one decimal, when available. */
   updrsGrade?: number;
   /** Heuristic confidence: "high" (finger tapping) | "low" (others). */
   confidence?: string;
@@ -30,6 +31,8 @@ export interface CloudResult {
 export interface Recording {
   id: string;
   testId: TestId;
+  /** Anatomical side selected before a unilateral hand/foot/leg capture. */
+  evaluatedSide?: EvaluatedSide;
   /** Epoch millis. */
   createdAt: number;
   /** Durable local file URI of the captured video. */
@@ -49,6 +52,8 @@ export interface Recording {
   result?: CloudResult;
   /** Set when status === 'failed': the raw error message, for display/debug. */
   failReason?: string;
+  /** Backend quality diagnostics when analysis completed without a score. */
+  analysisFailureReasons?: string[];
   /** Failed and NOT worth auto/manual retrying (file gone or over size cap). */
   permanent?: boolean;
   /** Failed in the upload phase and safe to auto-resume on next launch. */

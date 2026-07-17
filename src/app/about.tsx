@@ -11,10 +11,6 @@ import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
 import { exportDiagnostics } from '../lib/diagnostics';
 
-// TODO(store): this must point at a live privacy policy before submission —
-// both App Store and Play require one for a camera app. Placeholder for now.
-const PRIVACY_URL = 'https://getferal.ai/luche-privacy';
-
 type GitCommit = {
   message: string;
   sha: string;
@@ -58,9 +54,6 @@ export default function AboutScreen() {
     <Screen>
       <Header title={t.about.title} />
       <ScrollView contentContainerClassName="px-6 pb-10">
-        <Text className="mt-2 text-[28px] font-bold text-ink">{t.common.appName}</Text>
-        <Text className="mt-1 text-[14px] text-ink-muted">{t.about.subtitle}</Text>
-
         <Section title={t.invite.title}>
           <Button
             title={t.invite.enterButton}
@@ -86,12 +79,6 @@ export default function AboutScreen() {
 
         <Section title={t.about.privacyTitle}>
           <Text className="text-[15px] leading-6 text-ink/70">{t.about.privacyBody}</Text>
-          <Text
-            onPress={() => Linking.openURL(PRIVACY_URL)}
-            className="mt-3 text-[15px] font-semibold text-blue-600"
-          >
-            {t.about.privacyLink}
-          </Text>
         </Section>
 
         <Section title={t.about.supportTitle}>

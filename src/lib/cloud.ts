@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { ApiError, apiFetch } from './api';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import type { CloudResult } from './types';
-import type { TestId } from './tests';
+import type { EvaluatedSide, TestId } from './tests';
 import { PollTimeoutError } from './uploadRetry';
 
 /**
@@ -45,6 +45,11 @@ interface TrialDetail {
   updrs_label: string | null;
   is_estimate?: boolean | null;
   confidence?: string | null;
+  scoreable?: boolean | null;
+  capture_quality?: string | null;
+  submetrics?: {
+    quality_failures?: unknown;
+  } | null;
 }
 
 export class UploadIntentExpiredError extends Error {
@@ -52,6 +57,24 @@ export class UploadIntentExpiredError extends Error {
     super('upload authorization expired');
     this.name = 'UploadIntentExpiredError';
   }
+}
+
+/** Terminal quality rejection: analysis completed, but this capture cannot be
+ * scored. Re-running the same video cannot help; the user needs to record a new
+ * clip. `reasons` preserves the backend's quality diagnostics for the UI. */
+export class AnalysisNeedsRetryError extends Error {
+  constructor(public readonly reasons: string[]) {
+    super(`analysis returned no score: ${reasons.join(', ')}`);
+    this.name = 'AnalysisNeedsRetryError';
+  }
+}
+
+function noScoreReasons(trial: TrialDetail): string[] {
+  const raw = trial.submetrics?.quality_failures;
+  const reasons = Array.isArray(raw)
+    ? raw.filter((reason): reason is string => typeof reason === 'string' && reason.trim().length > 0)
+    : [];
+  return reasons.length > 0 ? [...new Set(reasons)] : ['insufficient_capture_quality'];
 }
 
 /**
@@ -162,6 +185,7 @@ export async function createAnalysisTrial(
   testId: TestId,
   clientTrialId: string,
   recordedAtMs: number,
+  evaluatedSide?: EvaluatedSide,
 ): Promise<{ jobId: string }> {
   try {
     const trial = await apiFetch<CreateTrialResp>('/trials', {
@@ -170,6 +194,7 @@ export async function createAnalysisTrial(
         upload_id: uploadId,
         test_type_id: testId,
         recorded_at: new Date(recordedAtMs).toISOString(),
+        metadata: evaluatedSide ? { evaluated_side: evaluatedSide } : {},
         client_trial_id: clientTrialId,
         analyze: true,
       }),
@@ -210,7 +235,8 @@ export async function deleteRemoteUpload(uploadId: string): Promise<'deleted' | 
   }
 }
 
-/** Poll the trial until the analysis worker finishes; resolve with the score. */
+/** Poll the trial until the analysis worker finishes; resolve with the score or
+ * throw a terminal AnalysisNeedsRetryError when capture quality prevented one. */
 export async function pollResult(jobId: string, _testId: TestId): Promise<CloudResult> {
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
@@ -233,6 +259,9 @@ export async function pollResult(jobId: string, _testId: TestId): Promise<CloudR
       // until the real deadline rather than collapsing a blip into a failure.
       await delay(POLL_INTERVAL_MS);
       continue;
+    }
+    if (t.analysis_status === 'needs_retry' || t.scoreable === false) {
+      throw new AnalysisNeedsRetryError(noScoreReasons(t));
     }
     if (t.analysis_status === 'done' && t.score != null) {
       return {

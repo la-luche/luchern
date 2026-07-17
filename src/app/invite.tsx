@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 
 import { Button } from '../components/Button';
@@ -10,39 +10,35 @@ import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
 
 /**
- * Accept a doctor's (observer's) invite. Reached two ways: the deep link
- * `luche://invite?token=<code>`, or manually via About → "Connect with your
- * doctor". Uses the existing feral-api invite endpoints; the signed-in patient
- * confirms, then the observer↔patient relationship is created server-side.
+ * Accept another account's sharing code. The signed-in user enters the code,
+ * confirms the viewer, and creates the relationship server-side.
  */
 type InviteInfo = { observer_name?: string | null };
 type Phase = 'enter' | 'loading' | 'confirm' | 'accepting' | 'done' | 'error';
-type InviteErr = 'notFound' | 'expired' | 'revoked' | 'capReached' | 'generic';
+type InviteErr = 'notFound' | 'selfInvite' | 'expired' | 'revoked' | 'capReached' | 'generic';
 
 function inviteErrorKey(e: unknown): InviteErr {
   if (e instanceof ApiError) {
-    if (e.status === 404) return 'notFound';
-    if (e.status === 410) {
-      try {
-        const code = (JSON.parse(e.responseBody) as { error?: string }).error;
-        if (code === 'expired') return 'expired';
-        if (code === 'revoked') return 'revoked';
-        if (code === 'cap_reached') return 'capReached';
-      } catch {
-        // fall through to generic
-      }
+    try {
+      const code = (JSON.parse(e.responseBody) as { error?: string }).error;
+      if (e.status === 400 && code === 'self_invite') return 'selfInvite';
+      if (e.status === 410 && code === 'expired') return 'expired';
+      if (e.status === 410 && code === 'revoked') return 'revoked';
+      if (e.status === 410 && code === 'cap_reached') return 'capReached';
+    } catch {
+      // fall through to status/generic handling
     }
+    if (e.status === 404) return 'notFound';
   }
   return 'generic';
 }
 
 export default function InviteScreen() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
   const router = useRouter();
   const t = useT();
 
-  const [code, setCode] = useState((token ?? '').trim());
-  const [phase, setPhase] = useState<Phase>(token ? 'loading' : 'enter');
+  const [code, setCode] = useState('');
+  const [phase, setPhase] = useState<Phase>('enter');
   const [observer, setObserver] = useState('');
   const [errKey, setErrKey] = useState<InviteErr>('generic');
 
@@ -73,12 +69,6 @@ export default function InviteScreen() {
       setPhase('error');
     }
   };
-
-  useEffect(() => {
-    if (token) void load(token);
-    // load only reacts to the deep-link token.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
 
   return (
     <Screen>

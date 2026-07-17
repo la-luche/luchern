@@ -19,6 +19,13 @@ jest.mock('../api', () => ({
 import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
 
 jest.mock('../cloud', () => ({
+  AnalysisNeedsRetryError: class AnalysisNeedsRetryError extends Error {
+    reasons: string[];
+    constructor(reasons: string[]) {
+      super(`analysis returned no score: ${reasons.join(', ')}`);
+      this.reasons = reasons;
+    }
+  },
   UploadIntentExpiredError: class UploadIntentExpiredError extends Error {},
   uploadRecording: jest.fn(),
   createAnalysisTrial: jest.fn(),
@@ -26,7 +33,7 @@ jest.mock('../cloud', () => ({
   deleteRemoteUpload: jest.fn(),
   pollResult: jest.fn(),
 }));
-import { createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
+import { AnalysisNeedsRetryError, createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
 import { __testing } from '../storage';
 
 const { driveOnce } = __testing;
@@ -83,6 +90,23 @@ describe('driveOnce', () => {
     expect(patch.permanent).toBe(false);
   });
 
+  it('server no-score result → terminal needs_retry with quality reasons', async () => {
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (pollResult as jest.Mock).mockRejectedValue(
+      new AnalysisNeedsRetryError(['tracking_gap', 'insufficient_repetitions']),
+    );
+
+    const patch = await driveOnce(baseRec(), { maxBackoffs: 0 });
+
+    expect(patch).toMatchObject({
+      status: 'needs_retry',
+      jobId: '99',
+      analysisFailureReasons: ['tracking_gap', 'insufficient_repetitions'],
+      resumable: false,
+    });
+  });
+
   it('happy path → done with result', async () => {
     (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
     (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
@@ -121,8 +145,31 @@ describe('driveOnce', () => {
     const rec = { ...baseRec(), status: 'processing' as const, uploadId: 'up-1' };
     const patch = await driveOnce(rec, { maxBackoffs: 0 });
     expect(uploadRecording).not.toHaveBeenCalled();
-    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0);
+    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0, undefined);
     expect(patch.status).toBe('done');
+  });
+
+  it('keeps the selected anatomical side through trial submission', async () => {
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '165' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.375, updrsGrade: 1.5, label: 'Slight' });
+    const rec = {
+      ...baseRec(),
+      testId: 'handMovements' as const,
+      evaluatedSide: 'left' as const,
+      status: 'processing' as const,
+      uploadId: 'up-165',
+    };
+
+    const patch = await driveOnce(rec, { maxBackoffs: 0 });
+
+    expect(createAnalysisTrial).toHaveBeenCalledWith(
+      'up-165',
+      'handMovements',
+      'r1',
+      0,
+      'left',
+    );
+    expect(patch).toMatchObject({ status: 'done', result: { updrsGrade: 1.5 } });
   });
 
   it('keeps uploadId when the small trial request fails', async () => {

@@ -76,3 +76,14 @@ export function localizeSeverity(t: Dict, label: string): string {
   const k = SEVERITY_MAP[label];
   return k ? t.severity[k] : label;
 }
+
+/** Convert a backend quality code into readable diagnostic copy while keeping
+ * its full meaning available for new codes the client has not seen before. */
+export function formatAnalysisFailureReason(reason: string): string {
+  const readable = reason
+    .trim()
+    .replace(/[:_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  if (!readable) return reason;
+  return `${readable.charAt(0).toUpperCase()}${readable.slice(1)}.`;
+}
