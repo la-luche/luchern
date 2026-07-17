@@ -1,5 +1,6 @@
+import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { ActivityIndicator, Share, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Share, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Header } from '../components/Header';
@@ -7,6 +8,7 @@ import { Screen } from '../components/Screen';
 import { apiFetch } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
+import { showToast } from '../lib/toast';
 
 /**
  * Fetch this account's permanent four-digit sharing code. Whoever enters it
@@ -41,6 +43,11 @@ export default function ShareCodeScreen() {
     Share.share({ message: t.generate.shareMessage(code) }).catch(() => {});
   };
 
+  const copyCode = async () => {
+    await Clipboard.setStringAsync(code);
+    showToast(t.generate.copied);
+  };
+
   return (
     <Screen>
       <Header title={t.generate.title} />
@@ -65,7 +72,18 @@ export default function ShareCodeScreen() {
             <Text className="mt-6 text-[15px] font-semibold uppercase tracking-wide text-ink-muted">
               {t.generate.yourCode}
             </Text>
-            <Text className="mt-3 text-[56px] font-bold tracking-[10px] text-ink">{code}</Text>
+            <Pressable
+              onPress={() => void copyCode()}
+              accessibilityRole="button"
+              accessibilityLabel={t.generate.copyCode}
+              accessibilityHint={t.generate.tapToCopy}
+              className="mt-3 items-center rounded-2xl px-5 py-3 active:bg-ink-faint"
+            >
+              <Text className="text-[56px] font-bold tracking-[10px] text-ink">{code}</Text>
+              <Text className="mt-1 text-[14px] font-medium text-ink-muted">
+                {t.generate.tapToCopy}
+              </Text>
+            </Pressable>
             <Text className="mt-5 px-2 text-center text-[15px] leading-6 text-ink-muted">
               {t.generate.instructions}
             </Text>

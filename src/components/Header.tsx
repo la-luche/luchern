@@ -15,25 +15,25 @@ export function Header({ title, right }: { title?: string; right?: ReactNode }) 
   const router = useRouter();
   const t = useT();
   return (
-    <View className="h-12 flex-row items-center justify-between px-[18px]">
-      <View className="w-10">
+    <View className="h-[68px] flex-row items-center justify-between px-5 pt-3">
+      <View className="w-12">
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel={t.common.back}
-          className="h-11 w-11 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
+          className="h-12 w-12 items-center justify-center rounded-full bg-ink-faint active:opacity-70"
         >
-          <Ionicons name="chevron-back" size={22} color={COLORS.ink} />
+          <Ionicons name="chevron-back" size={24} color={COLORS.ink} />
         </Pressable>
       </View>
 
       {title ? (
-        <Text className="text-[16px] font-semibold text-ink">{title}</Text>
+        <Text className="text-[17px] font-semibold text-ink">{title}</Text>
       ) : (
         <View />
       )}
 
-      <View className="w-10 items-end">{right}</View>
+      <View className="w-12 items-end">{right}</View>
     </View>
   );
 }

@@ -54,6 +54,9 @@ export const en = {
       'This code never changes. Share it with them; once they approve it, their recordings appear under your account.',
     shareCode: 'Share this code',
     shareMessage: (code: string) => `Connect with me on Luche — enter this code: ${code}`,
+    copyCode: 'Copy sharing code',
+    tapToCopy: 'Tap to copy',
+    copied: 'Code copied',
     error: 'Could not load your sharing code right now. Please try again.',
   },
   about: {

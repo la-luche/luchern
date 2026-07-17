@@ -51,6 +51,9 @@ export const it: Dict = {
       'Questo codice non cambia mai. Condividilo con questa persona; dopo la sua approvazione, le registrazioni appariranno nel tuo account.',
     shareCode: 'Condividi il codice',
     shareMessage: (code: string) => `Collegati a me su Luche — inserisci questo codice: ${code}`,
+    copyCode: 'Copia il codice di condivisione',
+    tapToCopy: 'Tocca per copiare',
+    copied: 'Codice copiato',
     error: 'Impossibile caricare il codice di condivisione al momento. Riprova.',
   },
   about: {
