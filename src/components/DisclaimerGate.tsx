@@ -44,15 +44,15 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
           <View className="mb-6 items-center">
             <MaterialCommunityIcons name="shield-alert-outline" size={56} color={COLORS.ink} />
           </View>
-          <Text className="mb-4 text-center text-[26px] font-bold text-ink">
+          <Text selectable className="mb-4 text-center text-[26px] font-bold text-ink">
             {t.disclaimer.title}
           </Text>
-          <Text className="mb-3 text-center text-[16px] leading-6 text-ink/70">
+          <Text selectable className="mb-3 text-center text-[16px] leading-6 text-ink/70">
             {t.disclaimer.body1lead}
             <Text className="font-semibold text-ink">{t.disclaimer.notMedicalDevice}</Text>
             {t.disclaimer.body1tail}
           </Text>
-          <Text className="mb-8 text-center text-[16px] leading-6 text-ink/70">
+          <Text selectable className="mb-8 text-center text-[16px] leading-6 text-ink/70">
             {t.disclaimer.body2}
           </Text>
           <Button title={t.common.iUnderstand} onPress={accept} />

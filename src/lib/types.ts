@@ -2,10 +2,11 @@ import type { TestId } from './tests';
 
 /**
  * Lifecycle of a recording as it moves through the cloud
- * pipeline. `uploading` → `processing` → `done`, or `failed` on error.
+ * pipeline. `uploading` → `processing` → `done`; an unscoreable capture ends
+ * at `needs_retry`, while system/upload errors end at `failed`.
  * Mirrors the status pill shown on each results card.
  */
-export type RecordingStatus = 'uploading' | 'processing' | 'done' | 'failed';
+export type RecordingStatus = 'uploading' | 'processing' | 'done' | 'needs_retry' | 'failed';
 
 /** Analysis result from the cloud keypoint→MDS-UPDRS pipeline (see cloud.ts). */
 export interface CloudResult {
@@ -49,6 +50,8 @@ export interface Recording {
   result?: CloudResult;
   /** Set when status === 'failed': the raw error message, for display/debug. */
   failReason?: string;
+  /** Backend quality diagnostics when analysis completed without a score. */
+  analysisFailureReasons?: string[];
   /** Failed and NOT worth auto/manual retrying (file gone or over size cap). */
   permanent?: boolean;
   /** Failed in the upload phase and safe to auto-resume on next launch. */

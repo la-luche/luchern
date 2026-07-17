@@ -45,16 +45,16 @@ export const en = {
     },
   },
   generate: {
-    title: 'Generate a code',
+    title: 'Your sharing code',
     prompt:
-      'Create a code and share it with the person whose recordings you want to see. When they enter it, their recordings become visible to you.',
-    generate: 'Generate a code',
-    yourCode: 'Your code',
+      'Show your permanent code and share it with the person whose recordings you want to see. When they enter it, their recordings become visible to you.',
+    generate: 'Show my code',
+    yourCode: 'Your permanent code',
     instructions:
-      'Share this code with them. Once they enter it, their recordings appear under your account.',
+      'This code never changes. Share it with them; once they approve it, their recordings appear under your account.',
     shareCode: 'Share this code',
     shareMessage: (code: string) => `Connect with me on Luche — enter this code: ${code}`,
-    error: 'Could not create a code right now. Please try again.',
+    error: 'Could not load your sharing code right now. Please try again.',
   },
   about: {
     title: 'About',
@@ -65,7 +65,6 @@ export const en = {
     privacyTitle: 'Privacy',
     privacyBody:
       'Recordings are saved on this device and uploaded securely to our cloud for analysis. Uploaded video, derived keypoints, analysis results, and account identifiers may be retained until you delete the recording. Deleting a completed recording removes the local copy and requests deletion from our server.',
-    privacyLink: 'Privacy policy →',
     versionTitle: 'Version',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Latest GitHub commit',
@@ -134,8 +133,9 @@ export const en = {
     cloudAnalysis: 'Your result',
     scoreHint: 'Lower is better. This is an automated estimate, not a diagnosis.',
     gradeLabel: (label: string) => `Severity · ${label}`,
-    estimatePill: 'ESTIMATE — automated screening, not a diagnosis',
     samplePill: 'SAMPLE — placeholder result, not real analysis',
+    noScoreTitle: 'No score could be produced',
+    noScoreBody: 'The recording did not pass the analysis quality check. Please record the test again. Details:',
     analysisFailed: 'Analysis failed. Please try recording again.',
     retry: 'Retry',
     failedRetry: 'Something went wrong. It will keep trying — or tap Retry.',
@@ -155,6 +155,7 @@ export const en = {
     uploading: 'Uploading…',
     processing: 'Processing…',
     done: 'Done',
+    needs_retry: 'No score',
     failed: 'Failed',
   },
   uploadBanner: {

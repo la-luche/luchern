@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
 import {
+  AnalysisNeedsRetryError,
   UploadIntentExpiredError,
   createAnalysisTrial,
   deleteRemoteRecording,
@@ -240,6 +241,20 @@ async function driveOnce(
         jobId,
       };
     }
+    if (e instanceof AnalysisNeedsRetryError) {
+      return {
+        status: 'needs_retry',
+        failReason: e.message,
+        analysisFailureReasons: e.reasons,
+        uploadId,
+        uploadProgress: undefined,
+        uploadAttempt: undefined,
+        uploadRetrying: undefined,
+        jobId,
+        permanent: undefined,
+        resumable: false,
+      };
+    }
     const permanent = classifyUploadError(e) === 'permanent';
     return {
       status: 'failed',
@@ -396,6 +411,7 @@ async function resume(id: string) {
     uploadAttempt: existing.uploadId ? undefined : 1,
     uploadRetrying: false,
     failReason: undefined,
+    analysisFailureReasons: undefined,
     permanent: undefined,
     resumable: undefined,
   });

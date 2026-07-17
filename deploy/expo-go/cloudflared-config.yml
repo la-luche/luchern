@@ -1,0 +1,13 @@
+protocol: http2
+tunnel: 4a0f00b0-37c4-47b3-b2e7-806de22e4d91
+credentials-file: /etc/cloudflared/4a0f00b0-37c4-47b3-b2e7-806de22e4d91.json
+ingress:
+  - hostname: ssh.ratemepls.com
+    service: ssh://localhost:22
+  - hostname: feral-api.ratemepls.com
+    service: http://localhost:5000
+  - hostname: luche.ai
+    service: http://localhost:8088
+  - hostname: go.luche.ai
+    service: http://localhost:8089
+  - service: http_status:404

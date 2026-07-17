@@ -31,8 +31,8 @@ function formatElapsed(seconds: number): string {
  * Capture screen as a small state machine:
  *   framing → (Start) → recording → (End) → review → (Submit) → result
  * The clip is held locally and only uploaded on Submit; Retake discards it. A
- * static framing guide helps the patient stay in frame, and start/end audio +
- * haptic cues make it usable without watching the screen.
+ * static framing guide helps the patient stay in frame, and start/end haptic
+ * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -212,27 +212,25 @@ export default function RecordScreen() {
           />
 
           {/* Framing guide during framing + recording (helps stay in frame). */}
-          {(phase === 'framing' || recording) && (
-            <FramingGuide hint={t.tests[test.id].frameHint} />
-          )}
+          {(phase === 'framing' || recording) && <FramingGuide />}
 
           {/* Overlay chrome. box-none so the preview shows through. */}
           <SafeAreaView className="absolute inset-0" pointerEvents="box-none">
             {/* Top bar. */}
-            <View className="h-12 flex-row items-center justify-between px-[18px]">
+            <View className="min-h-[60px] flex-row items-center justify-between px-4">
               {!recording ? (
                 <Pressable
                   onPress={() => router.back()}
                   accessibilityRole="button"
                   accessibilityLabel={t.common.back}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                  className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
                 >
-                  <Ionicons name="chevron-back" size={22} color={COLORS.white} />
+                  <Ionicons name="chevron-back" size={28} color={COLORS.white} />
                 </Pressable>
               ) : (
-                <View className="flex-row items-center gap-2 rounded-full bg-black/40 px-3 py-1.5">
-                  <View className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                  <Text className="text-[15px] font-semibold text-white">{formatElapsed(elapsed)}</Text>
+                <View className="min-h-[48px] flex-row items-center gap-2 rounded-full bg-black/50 px-4 py-2">
+                  <View className="h-3 w-3 rounded-full bg-red-500" />
+                  <Text className="text-[17px] font-semibold text-white">{formatElapsed(elapsed)}</Text>
                 </View>
               )}
               <View className="flex-row items-center gap-2">
@@ -241,9 +239,9 @@ export default function RecordScreen() {
                     onPress={() => setTorch((v) => !v)}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.flashlight}
-                    className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                    className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
                   >
-                    <Ionicons name={torch ? 'flash' : 'flash-off'} size={20} color={COLORS.white} />
+                    <Ionicons name={torch ? 'flash' : 'flash-off'} size={25} color={COLORS.white} />
                   </Pressable>
                 )}
                 {phase === 'framing' && (
@@ -251,66 +249,78 @@ export default function RecordScreen() {
                     onPress={flip}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.flipCamera}
-                    className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
+                    className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
                   >
-                    <Ionicons name="camera-reverse-outline" size={22} color={COLORS.white} />
+                    <Ionicons name="camera-reverse-outline" size={27} color={COLORS.white} />
                   </Pressable>
                 )}
-                <View className="rounded-full bg-black/40 px-3 py-1.5">
-                  <Text className="text-[15px] font-semibold text-white">{t.tests[test.id].name}</Text>
-                </View>
               </View>
             </View>
 
-            {/* Zoom +/- — tremor-friendly alternative to pinch. */}
-            {phase === 'framing' && (
-              <View className="absolute right-4 top-1/2 -mt-12 gap-3">
-                <Pressable
-                  onPress={() => stepZoom(0.1)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.record.zoomIn}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
-                >
-                  <Ionicons name="add" size={24} color={COLORS.white} />
-                </Pressable>
-                <Pressable
-                  onPress={() => stepZoom(-0.1)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.record.zoomOut}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40 active:opacity-70"
-                >
-                  <Ionicons name="remove" size={24} color={COLORS.white} />
-                </Pressable>
+            {/* Test name and framing hint get their own rows, so they cannot
+                collide with the back/camera controls on narrow phones. */}
+            <View pointerEvents="none" className="mt-3 items-center gap-2 px-5">
+              <View className="max-w-full rounded-full bg-black/55 px-4 py-2">
+                <Text className="text-center text-[17px] font-semibold text-white">
+                  {t.tests[test.id].name}
+                </Text>
               </View>
-            )}
+              <View className="max-w-full rounded-2xl bg-black/55 px-4 py-2">
+                <Text className="text-center text-[15px] font-semibold leading-5 text-white">
+                  {t.tests[test.id].frameHint}
+                </Text>
+              </View>
+            </View>
 
             <View className="flex-1" pointerEvents="none" />
 
             {/* Bottom control — Start / End (hidden during review). */}
             {(phase === 'framing' || recording) && (
-              <View className="items-center pb-8">
-                {!recording ? (
+              <View className="items-center px-4 pb-4">
+                <View className="flex-row items-center justify-center gap-6">
+                  {phase === 'framing' && (
+                    <Pressable
+                      onPress={() => stepZoom(-0.1)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.record.zoomOut}
+                      className="h-16 w-16 items-center justify-center rounded-full bg-black/55 active:opacity-70"
+                    >
+                      <Ionicons name="remove" size={32} color={COLORS.white} />
+                    </Pressable>
+                  )}
+                  {!recording ? (
                   <Pressable
                     onPress={() => void beginRecording()}
                     disabled={!cameraReady}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.startA11y}
-                    className={`h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80 ${
+                    className={`h-24 w-24 items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80 ${
                       cameraReady ? '' : 'opacity-40'
                     }`}
                   >
-                    <View className="h-6 w-6 rounded-md bg-red-500" />
+                    <View className="h-9 w-9 rounded-xl bg-red-500" />
                   </Pressable>
                 ) : (
                   <Pressable
                     onPress={endRecording}
                     accessibilityRole="button"
                     accessibilityLabel={t.record.endA11y}
-                    className="h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
+                    className="h-24 w-24 items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
                   >
-                    <View className="h-7 w-7 rounded-lg bg-ink" />
+                    <View className="h-10 w-10 rounded-xl bg-ink" />
                   </Pressable>
                 )}
+                  {phase === 'framing' && (
+                    <Pressable
+                      onPress={() => stepZoom(0.1)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.record.zoomIn}
+                      className="h-16 w-16 items-center justify-center rounded-full bg-black/55 active:opacity-70"
+                    >
+                      <Ionicons name="add" size={32} color={COLORS.white} />
+                    </Pressable>
+                  )}
+                </View>
                 <Text className="mt-3 text-[16px] font-medium text-white/90">
                   {recording ? t.record.tapToEnd : cameraReady ? t.record.tapToStart : t.record.preparing}
                 </Text>

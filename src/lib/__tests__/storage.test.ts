@@ -19,6 +19,13 @@ jest.mock('../api', () => ({
 import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
 
 jest.mock('../cloud', () => ({
+  AnalysisNeedsRetryError: class AnalysisNeedsRetryError extends Error {
+    reasons: string[];
+    constructor(reasons: string[]) {
+      super(`analysis returned no score: ${reasons.join(', ')}`);
+      this.reasons = reasons;
+    }
+  },
   UploadIntentExpiredError: class UploadIntentExpiredError extends Error {},
   uploadRecording: jest.fn(),
   createAnalysisTrial: jest.fn(),
@@ -26,7 +33,7 @@ jest.mock('../cloud', () => ({
   deleteRemoteUpload: jest.fn(),
   pollResult: jest.fn(),
 }));
-import { createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
+import { AnalysisNeedsRetryError, createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
 import { __testing } from '../storage';
 
 const { driveOnce } = __testing;
@@ -81,6 +88,23 @@ describe('driveOnce', () => {
     expect(patch.status).toBe('failed');
     expect(patch.resumable).toBe(false);
     expect(patch.permanent).toBe(false);
+  });
+
+  it('server no-score result → terminal needs_retry with quality reasons', async () => {
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-1' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '99' });
+    (pollResult as jest.Mock).mockRejectedValue(
+      new AnalysisNeedsRetryError(['tracking_gap', 'insufficient_repetitions']),
+    );
+
+    const patch = await driveOnce(baseRec(), { maxBackoffs: 0 });
+
+    expect(patch).toMatchObject({
+      status: 'needs_retry',
+      jobId: '99',
+      analysisFailureReasons: ['tracking_gap', 'insufficient_repetitions'],
+      resumable: false,
+    });
   });
 
   it('happy path → done with result', async () => {

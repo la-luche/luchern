@@ -45,6 +45,11 @@ interface TrialDetail {
   updrs_label: string | null;
   is_estimate?: boolean | null;
   confidence?: string | null;
+  scoreable?: boolean | null;
+  capture_quality?: string | null;
+  submetrics?: {
+    quality_failures?: unknown;
+  } | null;
 }
 
 export class UploadIntentExpiredError extends Error {
@@ -52,6 +57,24 @@ export class UploadIntentExpiredError extends Error {
     super('upload authorization expired');
     this.name = 'UploadIntentExpiredError';
   }
+}
+
+/** Terminal quality rejection: analysis completed, but this capture cannot be
+ * scored. Re-running the same video cannot help; the user needs to record a new
+ * clip. `reasons` preserves the backend's quality diagnostics for the UI. */
+export class AnalysisNeedsRetryError extends Error {
+  constructor(public readonly reasons: string[]) {
+    super(`analysis returned no score: ${reasons.join(', ')}`);
+    this.name = 'AnalysisNeedsRetryError';
+  }
+}
+
+function noScoreReasons(trial: TrialDetail): string[] {
+  const raw = trial.submetrics?.quality_failures;
+  const reasons = Array.isArray(raw)
+    ? raw.filter((reason): reason is string => typeof reason === 'string' && reason.trim().length > 0)
+    : [];
+  return reasons.length > 0 ? [...new Set(reasons)] : ['insufficient_capture_quality'];
 }
 
 /**
@@ -210,7 +233,8 @@ export async function deleteRemoteUpload(uploadId: string): Promise<'deleted' | 
   }
 }
 
-/** Poll the trial until the analysis worker finishes; resolve with the score. */
+/** Poll the trial until the analysis worker finishes; resolve with the score or
+ * throw a terminal AnalysisNeedsRetryError when capture quality prevented one. */
 export async function pollResult(jobId: string, _testId: TestId): Promise<CloudResult> {
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
@@ -233,6 +257,9 @@ export async function pollResult(jobId: string, _testId: TestId): Promise<CloudR
       // until the real deadline rather than collapsing a blip into a failure.
       await delay(POLL_INTERVAL_MS);
       continue;
+    }
+    if (t.analysis_status === 'needs_retry' || t.scoreable === false) {
+      throw new AnalysisNeedsRetryError(noScoreReasons(t));
     }
     if (t.analysis_status === 'done' && t.score != null) {
       return {

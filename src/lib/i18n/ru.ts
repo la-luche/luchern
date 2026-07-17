@@ -42,16 +42,16 @@ export const ru: Dict = {
     },
   },
   generate: {
-    title: 'Generate a code',
+    title: 'Ваш код доступа',
     prompt:
-      'Create a code and share it with the person whose recordings you want to see. When they enter it, their recordings become visible to you.',
-    generate: 'Generate a code',
-    yourCode: 'Your code',
+      'Покажите свой постоянный код человеку, чьи записи вы хотите видеть. После ввода кода его записи станут доступны вам.',
+    generate: 'Показать мой код',
+    yourCode: 'Ваш постоянный код',
     instructions:
-      'Share this code with them. Once they enter it, their recordings appear under your account.',
-    shareCode: 'Share this code',
-    shareMessage: (code: string) => `Connect with me on Luche — enter this code: ${code}`,
-    error: 'Could not create a code right now. Please try again.',
+      'Этот код никогда не меняется. Поделитесь им; после подтверждения записи этого человека появятся в вашем аккаунте.',
+    shareCode: 'Поделиться кодом',
+    shareMessage: (code: string) => `Подключитесь ко мне в Luche — введите код: ${code}`,
+    error: 'Не удалось загрузить код доступа. Попробуйте ещё раз.',
   },
   about: {
     title: 'О приложении',
@@ -62,7 +62,6 @@ export const ru: Dict = {
     privacyTitle: 'Конфиденциальность',
     privacyBody:
       'Записи сохраняются на этом устройстве и безопасно загружаются в облако для анализа. Загруженное видео, полученные ключевые точки, результаты анализа и идентификаторы аккаунта могут храниться, пока вы не удалите запись. Удаление завершённой записи удаляет локальную копию и отправляет запрос на удаление данных с сервера.',
-    privacyLink: 'Политика конфиденциальности →',
     versionTitle: 'Версия',
     versionValue: '1.0.0 (бета)',
     commitTitle: 'Последний коммит GitHub',
@@ -131,8 +130,9 @@ export const ru: Dict = {
     cloudAnalysis: 'Ваш результат',
     scoreHint: 'Чем ниже, тем лучше. Это автоматическая оценка, а не диагноз.',
     gradeLabel: (label: string) => `Степень · ${label}`,
-    estimatePill: 'ОЦЕНКА — автоматический скрининг, не диагноз',
     samplePill: 'ПРИМЕР — тестовый результат, не настоящий анализ',
+    noScoreTitle: 'Не удалось рассчитать результат',
+    noScoreBody: 'Запись не прошла проверку качества анализа. Запишите тест ещё раз. Подробности:',
     analysisFailed: 'Анализ не удался. Попробуйте записать снова.',
     retry: 'Повторить',
     failedRetry: 'Что-то пошло не так. Приложение продолжит попытки — или нажмите «Повторить».',
@@ -152,6 +152,7 @@ export const ru: Dict = {
     uploading: 'Загрузка…',
     processing: 'Обработка…',
     done: 'Готово',
+    needs_retry: 'Нет результата',
     failed: 'Ошибка',
   },
   uploadBanner: {

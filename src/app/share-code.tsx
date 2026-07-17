@@ -1,30 +1,40 @@
 import { useState } from 'react';
-import { Share, Text, View } from 'react-native';
+import { ActivityIndicator, Share, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Header } from '../components/Header';
 import { Screen } from '../components/Screen';
+import { apiFetch } from '../lib/api';
 import { useT } from '../lib/i18n';
+import { COLORS } from '../lib/theme';
 
 /**
- * Generate a code to share with another person. Whoever enters it links to you,
- * and their recordings become visible to you. Frontend only — the backend must
- * mint a short (4-digit) code and grant the generator viewing access (the
- * existing invite endpoints use long tokens + an observer role, so this needs
- * backend work before it functions end-to-end).
+ * Fetch this account's permanent four-digit sharing code. Whoever enters it
+ * explicitly approves the relationship, after which their recordings become
+ * visible to this account. The server, not the client, owns allocation and
+ * guarantees that codes are stable and never reused.
  */
-type Phase = 'idle' | 'ready';
+type InviteResponse = { token: string };
+type Phase = 'idle' | 'loading' | 'ready' | 'error';
 
 export default function ShareCodeScreen() {
   const t = useT();
   const [phase, setPhase] = useState<Phase>('idle');
   const [code, setCode] = useState('');
 
-  const generate = () => {
-    // Frontend placeholder: a 4-digit code (matching the enter-code input). The
-    // backend will mint the real short code once pairing lands.
-    setCode(String(Math.floor(1000 + Math.random() * 9000)));
-    setPhase('ready');
+  const loadCode = async () => {
+    setPhase('loading');
+    try {
+      const result = await apiFetch<InviteResponse>('/invites', {
+        method: 'POST',
+        body: JSON.stringify({ max_uses: null }),
+      });
+      if (!/^\d{4}$/.test(result.token)) throw new Error('invalid sharing code');
+      setCode(result.token);
+      setPhase('ready');
+    } catch {
+      setPhase('error');
+    }
   };
 
   const shareCode = () => {
@@ -39,9 +49,15 @@ export default function ShareCodeScreen() {
           <>
             <Text className="text-[17px] leading-6 text-ink">{t.generate.prompt}</Text>
             <View className="mt-8">
-              <Button title={t.generate.generate} onPress={generate} />
+              <Button title={t.generate.generate} onPress={() => void loadCode()} />
             </View>
           </>
+        )}
+
+        {phase === 'loading' && (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator color={COLORS.ink} />
+          </View>
         )}
 
         {phase === 'ready' && (
@@ -55,6 +71,19 @@ export default function ShareCodeScreen() {
             </Text>
             <View className="mt-8 w-full">
               <Button title={t.generate.shareCode} onPress={shareCode} />
+            </View>
+          </View>
+        )}
+
+        {phase === 'error' && (
+          <View className="flex-1 items-center justify-center px-2">
+            <Text className="text-center text-[16px] leading-6 text-ink">{t.generate.error}</Text>
+            <View className="mt-8 w-full">
+              <Button
+                title={t.invite.tryAgain}
+                variant="secondary"
+                onPress={() => void loadCode()}
+              />
             </View>
           </View>
         )}

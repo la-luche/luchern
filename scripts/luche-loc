@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly PORT="8081"
+
+if ! command -v brew >/dev/null 2>&1; then
+  echo "luche-loc: Homebrew is required to locate Node 20" >&2
+  exit 1
+fi
+readonly NODE20_BIN="$(brew --prefix node@20)/bin"
+
+if [[ ! -x "$NODE20_BIN/node" ]]; then
+  echo "luche-loc: Node 20 is missing at $NODE20_BIN/node" >&2
+  exit 1
+fi
+
+cd "$REPO"
+export PATH="$NODE20_BIN:$PATH"
+
+# Reclaim Expo's standard port, but never kill an unrelated process.
+for pid in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true); do
+  process_command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+  process_cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+  if [[ "$process_command" == *expo* ||
+        "$process_command" == *metro* ||
+        "$process_command" == *react-native* ||
+        "$process_cwd" == "$REPO" ]]; then
+    echo "luche-loc: stopping stale Expo process $pid"
+    kill "$pid"
+  else
+    echo "luche-loc: port $PORT is occupied by a non-Expo process (pid $pid):" >&2
+    echo "  command: ${process_command:-unknown}" >&2
+    echo "  cwd: ${process_cwd:-unknown}" >&2
+    exit 1
+  fi
+done
+
+echo "luche-loc: $REPO"
+echo "luche-loc: starting Expo on the local network; scan the QR with Expo Go"
+exec npx expo start --lan --port "$PORT" "$@"

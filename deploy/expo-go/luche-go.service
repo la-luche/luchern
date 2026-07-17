@@ -1,0 +1,19 @@
+[Unit]
+Description=Luche Expo Go browser gateway
+After=network-online.target luche-go-expo.service
+Wants=network-online.target luche-go-expo.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi-rus/Downloads/feral-remote/luche-go/gateway
+Environment=PUBLIC_ORIGIN=https://go.luche.ai
+Environment=GATEWAY_HOST=127.0.0.1
+Environment=GATEWAY_PORT=8089
+Environment=EXPO_HOST=127.0.0.1
+Environment=EXPO_PORT=8091
+ExecStart=/usr/bin/node server.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

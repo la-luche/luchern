@@ -42,16 +42,16 @@ export const it: Dict = {
     },
   },
   generate: {
-    title: 'Genera un codice',
+    title: 'Il tuo codice di condivisione',
     prompt:
-      'Crea un codice e condividilo con la persona di cui vuoi vedere le registrazioni. Quando lo inserisce, le sue registrazioni diventano visibili a te.',
-    generate: 'Genera un codice',
-    yourCode: 'Il tuo codice',
+      'Mostra il tuo codice permanente e condividilo con la persona di cui vuoi vedere le registrazioni. Quando lo inserisce, le sue registrazioni diventano visibili a te.',
+    generate: 'Mostra il mio codice',
+    yourCode: 'Il tuo codice permanente',
     instructions:
-      'Condividi questo codice con lei. Una volta inserito, le sue registrazioni appariranno nel tuo account.',
+      'Questo codice non cambia mai. Condividilo con questa persona; dopo la sua approvazione, le registrazioni appariranno nel tuo account.',
     shareCode: 'Condividi il codice',
     shareMessage: (code: string) => `Collegati a me su Luche — inserisci questo codice: ${code}`,
-    error: 'Impossibile creare un codice al momento. Riprova.',
+    error: 'Impossibile caricare il codice di condivisione al momento. Riprova.',
   },
   about: {
     title: 'Informazioni',
@@ -62,7 +62,6 @@ export const it: Dict = {
     privacyTitle: 'Privacy',
     privacyBody:
       'Le registrazioni vengono salvate su questo dispositivo e caricate in modo sicuro nel cloud per l’analisi. Il video caricato, i keypoint derivati, i risultati e gli identificatori dell’account possono essere conservati finché non elimini la registrazione. L’eliminazione di una registrazione completata rimuove la copia locale e ne richiede l’eliminazione dal server.',
-    privacyLink: 'Informativa sulla privacy →',
     versionTitle: 'Versione',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Ultimo commit GitHub',
@@ -130,8 +129,9 @@ export const it: Dict = {
     cloudAnalysis: 'Il tuo risultato',
     scoreHint: 'Più basso è meglio. È una stima automatica, non una diagnosi.',
     gradeLabel: (label: string) => `Gravità · ${label}`,
-    estimatePill: 'STIMA — screening automatico, non una diagnosi',
     samplePill: 'ESEMPIO — risultato fittizio, non un’analisi reale',
+    noScoreTitle: 'Impossibile produrre un punteggio',
+    noScoreBody: 'La registrazione non ha superato il controllo qualità dell’analisi. Registra di nuovo il test. Dettagli:',
     analysisFailed: 'Analisi non riuscita. Riprova a registrare.',
     retry: 'Riprova',
     failedRetry: 'Qualcosa è andato storto. Riproverà da solo — oppure tocca Riprova.',
@@ -151,6 +151,7 @@ export const it: Dict = {
     uploading: 'Caricamento…',
     processing: 'Elaborazione…',
     done: 'Completato',
+    needs_retry: 'Nessun punteggio',
     failed: 'Non riuscito',
   },
   uploadBanner: {

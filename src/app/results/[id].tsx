@@ -9,7 +9,7 @@ import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
-import { localizeSeverity, useT } from '../../lib/i18n';
+import { formatAnalysisFailureReason, localizeSeverity, useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -144,13 +144,6 @@ export default function ResultDetailScreen() {
               <Text className="mt-2 text-center text-[15px] leading-5 text-ink-muted">
                 {t.result.scoreHint}
               </Text>
-              {recording.result.isEstimate && !recording.result.isDemo && (
-                <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
-                  <Text className="text-center text-[14px] font-semibold text-amber-700">
-                    {t.result.estimatePill}
-                  </Text>
-                </View>
-              )}
               {recording.result.isDemo && (
                 <View className="mt-3 rounded-xl bg-amber-100 px-3 py-1.5">
                   <Text className="text-center text-[14px] font-semibold text-amber-700">
@@ -158,6 +151,23 @@ export default function ResultDetailScreen() {
                   </Text>
                 </View>
               )}
+            </View>
+          ) : recording.status === 'needs_retry' ? (
+            <View className="mt-3 gap-2">
+              <Text className="text-[15px] font-semibold text-red-700">
+                {t.result.noScoreTitle}
+              </Text>
+              <Text className="text-[14px] leading-5 text-ink-muted">
+                {t.result.noScoreBody}
+              </Text>
+              {(recording.analysisFailureReasons ?? []).map((reason) => (
+                <View key={reason} className="flex-row gap-2">
+                  <Text className="text-[14px] text-red-700">•</Text>
+                  <Text selectable className="flex-1 text-[14px] leading-5 text-red-700">
+                    {formatAnalysisFailureReason(reason)}
+                  </Text>
+                </View>
+              ))}
             </View>
           ) : recording.status === 'failed' ? (
             <View className="mt-3 gap-3">

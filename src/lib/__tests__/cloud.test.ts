@@ -15,9 +15,10 @@ jest.mock('../diagnostics', () => ({
   diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
 }));
 import { apiFetch } from '../api';
-import { pollResult } from '../cloud';
+import { AnalysisNeedsRetryError, pollResult } from '../cloud';
 
 describe('pollResult', () => {
+  beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.useRealTimers());
 
   it('throws PollTimeoutError when the ceiling passes with no result', async () => {
@@ -37,6 +38,35 @@ describe('pollResult', () => {
     (apiFetch as jest.Mock).mockResolvedValue({ analysis_status: 'failed', score: null });
     await expect(pollResult('42', 'gait')).rejects.toThrow('analysis failed');
     await expect(pollResult('42', 'gait')).rejects.not.toBeInstanceOf(PollTimeoutError);
+  });
+
+  it('stops polling and preserves the backend reasons when no score is possible', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({
+      analysis_status: 'needs_retry',
+      score: null,
+      scoreable: false,
+      submetrics: { quality_failures: ['tracking_gap', 'insufficient_repetitions'] },
+    });
+
+    const error = await pollResult('42', 'gait').catch((reason) => reason);
+
+    expect(error).toBeInstanceOf(AnalysisNeedsRetryError);
+    expect(error.reasons).toEqual(['tracking_gap', 'insufficient_repetitions']);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a readable fallback reason when a quality rejection has no details', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({
+      analysis_status: 'done',
+      score: null,
+      scoreable: false,
+      submetrics: {},
+    });
+
+    const error = await pollResult('42', 'gait').catch((reason) => reason);
+
+    expect(error).toBeInstanceOf(AnalysisNeedsRetryError);
+    expect(error.reasons).toEqual(['insufficient_capture_quality']);
   });
 
   it('keeps polling through a transient error, then resolves on success', async () => {
