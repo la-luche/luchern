@@ -1,6 +1,7 @@
 import { useAuth, useSSO, useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
@@ -13,12 +14,27 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensurePatientOnboarded } from '../lib/api';
+import { recordDiagnostic } from '../lib/diagnostics';
 import { useT } from '../lib/i18n';
 import { Button } from './Button';
 import { SocialButton } from './SocialButton';
 
 // Required so the OAuth browser redirect can resolve back into the app.
 WebBrowser.maybeCompleteAuthSession();
+
+/**
+ * Use a real callback path rather than reopening the experience root. Expo Go
+ * owns the exp/exps schemes; our public preview is HTTPS-only, so its callback
+ * must be exps. Native builds own the `luche` scheme declared in app.json.
+ */
+function ssoRedirectUrl(): string {
+  if (Platform.OS === 'web') {
+    return AuthSession.makeRedirectUri({ path: 'sso-callback' });
+  }
+  const scheme =
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ? 'exps' : 'luche';
+  return AuthSession.makeRedirectUri({ scheme, path: 'sso-callback' });
+}
 
 /** Warm up / cool down the in-app browser — smooths the Android OAuth cold start. */
 function useWarmUpBrowser() {
@@ -116,11 +132,14 @@ function SignInScreen() {
       if (busy) return;
       setBusy(true);
       setError(null);
+      const redirectUrl = ssoRedirectUrl();
+      let resultType = 'none';
       try {
         const { createdSessionId, setActive, authSessionResult } = await startSSOFlow({
           strategy,
-          redirectUrl: AuthSession.makeRedirectUri(),
+          redirectUrl,
         });
+        resultType = authSessionResult?.type ?? 'none';
         // User backed out of the browser → silent no-op, stay on the screen.
         if (authSessionResult?.type === 'cancel' || authSessionResult?.type === 'dismiss') {
           return;
@@ -132,6 +151,12 @@ function SignInScreen() {
         // Only reached on an unexpected incomplete/transfer state.
         throw new Error(t.auth.genericError);
       } catch (e: any) {
+        recordDiagnostic('auth_sso_failed', {
+          strategy,
+          resultType,
+          redirectScheme: redirectUrl.split(':', 1)[0],
+          errorCode: e?.errors?.[0]?.code ?? e?.code ?? e?.name ?? 'unknown',
+        });
         setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.genericError);
       } finally {
         setBusy(false);
