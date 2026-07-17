@@ -41,4 +41,10 @@ export async function deleteRecordingFile(uri: string): Promise<void> {
   await FileSystem.deleteAsync(uri, { idempotent: true });
 }
 
+/** Destructive privacy boundary used by logout, including orphaned old files. */
+export async function deleteAllRecordingFiles(): Promise<void> {
+  if (!RECORDINGS_DIR) return;
+  await FileSystem.deleteAsync(RECORDINGS_DIR, { idempotent: true });
+}
+
 export const __testing = { extensionFor };

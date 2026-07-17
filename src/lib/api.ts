@@ -1,5 +1,4 @@
 import { getClerkInstance } from '@clerk/clerk-expo';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -9,10 +8,9 @@ import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 /**
  * Backend client: base URL + auth.
  *
- * Auth is Clerk when the user is signed in (session JWT, verified by feral-api
- * against the same instance's JWKS). If Clerk has no session it falls back to an
- * anonymous device token — so requests always carry a bearer, and the fallback
- * kept the app working before Clerk was wired.
+ * Auth is always the currently signed-in Clerk account. Falling back to the
+ * retired anonymous device identity would silently put uploads in a different
+ * account and break cross-device history.
  */
 export const API_BASE = 'https://feral-api.ratemepls.com';
 
@@ -81,68 +79,22 @@ function recordApiError(requestId: string, method: string, path: string, status:
   recordDiagnostic('api_error', { requestId, method, path, status });
 }
 
-const DEVICE_ID_KEY = 'luche.deviceId.v1';
-const TOKEN_KEY = 'luche.deviceToken.v1';
-
-let tokenCache: string | null = null;
-
-function randomId(): string {
-  // Stable per-install id; stored, so weak randomness is fine. Avoids a crypto dep.
-  let s = '';
-  for (let i = 0; i < 4; i++) s += Math.random().toString(36).slice(2);
-  return `luche-${Date.now().toString(36)}-${s}`;
-}
-
-async function getDeviceId(): Promise<string> {
-  let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
-  if (!id) {
-    id = randomId();
-    await AsyncStorage.setItem(DEVICE_ID_KEY, id);
-  }
-  return id;
-}
-
 /** Clerk session JWT when signed in, else null. Freshly minted (Clerk refreshes). */
 async function clerkToken(): Promise<string | null> {
   try {
     const clerk = getClerkInstance({ publishableKey: CLERK_PUBLISHABLE_KEY });
     if (clerk.session) return await clerk.session.getToken();
   } catch {
-    // Clerk not ready — fall through to device token.
+    // Clerk can be briefly unavailable while its provider restores a session.
   }
   return null;
 }
 
-/** Mint (or return the cached) anonymous device bearer token. */
-async function deviceToken(): Promise<string> {
-  if (tokenCache) return tokenCache;
-  const stored = await AsyncStorage.getItem(TOKEN_KEY);
-  if (stored) {
-    tokenCache = stored;
-    return stored;
-  }
-  const deviceId = await getDeviceId();
-  const reqId = requestId();
-  const path = '/auth/device';
-  const res = await fetchWithNetworkDiagnostic(path, reqId, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Request-ID': reqId, ...CLIENT_HEADERS },
-    body: JSON.stringify({ device_id: deviceId }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    recordApiError(reqId, 'POST', path, res.status);
-    throw new ApiError(res.status, path, body, 'POST', reqId);
-  }
-  const { token } = (await res.json()) as { token: string };
-  tokenCache = token;
-  await AsyncStorage.setItem(TOKEN_KEY, token);
-  return token;
-}
-
-/** Bearer token for API calls: Clerk if signed in, otherwise device token. */
+/** Bearer token for the signed-in account; never substitute another identity. */
 export async function getToken(): Promise<string> {
-  return (await clerkToken()) ?? (await deviceToken());
+  const token = await clerkToken();
+  if (!token) throw new Error('signed-in session unavailable');
+  return token;
 }
 
 /** Idempotently register the signed-in Clerk user as a 'patient'. */
@@ -169,7 +121,7 @@ export async function ensurePatientOnboarded(): Promise<void> {
   }
 }
 
-/** JSON request with the device bearer token attached. */
+/** JSON request with the current Clerk account bearer attached. */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const reqId = requestId();

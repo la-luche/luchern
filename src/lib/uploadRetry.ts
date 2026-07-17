@@ -13,6 +13,35 @@ export class PollTimeoutError extends Error {
   }
 }
 
+/** Expected control-flow when logout/account switching cancels local work. */
+export class OperationCancelledError extends Error {
+  constructor() {
+    super('operation cancelled');
+    this.name = 'OperationCancelledError';
+  }
+}
+
+export function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new OperationCancelledError();
+}
+
+/** Backoff/poll sleep that exits immediately when logout cancels the pipeline. */
+export function cancellableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfCancelled(signal);
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new OperationCancelledError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /** 'permanent' failures are pointless to retry (file gone, over size cap);
  *  everything else is a transient/network condition worth retrying. */
 export function classifyUploadError(e: unknown): 'retryable' | 'permanent' {

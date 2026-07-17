@@ -1,7 +1,9 @@
+import { useUser } from '@clerk/clerk-expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { ApiError, ensurePatientOnboarded } from './api';
 import {
   AnalysisNeedsRetryError,
   UploadIntentExpiredError,
@@ -11,143 +13,89 @@ import {
   pollResult,
   uploadRecording,
 } from './cloud';
-import { ApiError } from './api';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
-import { deleteRecordingFile, persistRecordingFile } from './recordingFiles';
+import {
+  deleteAllRecordingFiles,
+  deleteRecordingFile,
+  persistRecordingFile,
+} from './recordingFiles';
+import { fetchOwnedTrials, mergeOwnedTrials } from './recordingSync';
 import type { EvaluatedSide, TestId } from './tests';
 import type { Recording } from './types';
 import {
+  OperationCancelledError,
   PollTimeoutError,
   UPLOAD_BACKOFFS_MS,
+  cancellableDelay,
   classifyUploadError,
   createSerialQueue,
+  throwIfCancelled,
 } from './uploadRetry';
 
-const STORAGE_KEY = 'luche.recordings.v1';
+const LEGACY_STORAGE_KEY = 'luche.recordings.v1';
+const STORAGE_KEY_PREFIX = 'luche.recordings.v2.';
 
-// --- Module-level shared store -------------------------------------------------
-// A single in-memory cache backed by AsyncStorage, with a tiny subscription
-// system so every mounted useRecordings() hook re-renders on any change. Avoids
-// each screen holding a divergent copy of the list.
-
+let activeAccountId: string | null = null;
+let requestedAccountId: string | null = null;
+let accountEpoch = 0;
+let suspended = false;
 let cache: Recording[] | null = null;
 let loadPromise: Promise<Recording[]> | null = null;
+let activationPromise: Promise<void> | null = null;
 let persistTail: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
-// Guards against driving the same recording's pipeline twice concurrently.
-const inFlight = new Set<string>();
+const operations = new Map<
+  string,
+  { controller: AbortController; promise: Promise<void>; epoch: number }
+>();
 
-// One byte-upload at a time — parallel uploads compete on weak uplinks and all
-// slow past the presign TTL.
+// One byte upload at a time. Parallel videos compete on weak uplinks and can
+// all overrun their presigned URL lifetimes.
 const serialUpload = createSerialQueue();
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function storageKey(accountId: string): string {
+  return `${STORAGE_KEY_PREFIX}${accountId}`;
 }
 
-/** Attempt the upload with in-session exponential backoff. `maxBackoffs` is the
- *  number of retries after the first try (defaults to the full schedule; tests
- *  pass 0). Permanent errors abort immediately. Returns the upload id. */
-async function uploadWithRetry(
-  rec: Recording,
-  maxBackoffs: number = UPLOAD_BACKOFFS_MS.length,
-  onProgress?: (fraction: number) => void,
-  onAttempt?: (attempt: number) => void,
-  onRetry?: (nextAttempt: number, delayMs: number) => void,
-): Promise<string> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
-    try {
-      onAttempt?.(attempt + 1);
-      onProgress?.(0);
-      const res = await uploadRecording(rec.videoUri, rec.testId, onProgress);
-      return res.uploadId;
-    } catch (e) {
-      lastErr = e;
-      recordDiagnostic('upload_attempt_failed', {
-        recordingId: rec.id,
-        attempt: attempt + 1,
-        ...diagnosticErrorData(e),
-      });
-      if (classifyUploadError(e) === 'permanent') throw e;
-      if (
-        e instanceof ApiError &&
-        e.status >= 400 &&
-        e.status < 500 &&
-        e.status !== 408 &&
-        e.status !== 429
-      ) throw e;
-      if (attempt < maxBackoffs) {
-        const retryDelay = UPLOAD_BACKOFFS_MS[attempt] + Math.floor(Math.random() * 1000);
-        onRetry?.(attempt + 2, retryDelay);
-        await delay(retryDelay);
-      }
-    }
-  }
-  throw lastErr;
-}
-
-/** Retry only the small idempotent trial-creation request. The video bytes have
- * already reached R2 and are never resent for a transient API error. */
-async function createTrialWithRetry(
-  rec: Recording,
-  uploadId: string,
-  maxBackoffs: number = UPLOAD_BACKOFFS_MS.length,
-): Promise<string> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
-    try {
-      const res = await createAnalysisTrial(
-        uploadId,
-        rec.testId,
-        rec.id,
-        rec.createdAt,
-        rec.evaluatedSide,
-      );
-      return res.jobId;
-    } catch (e) {
-      lastErr = e;
-      recordDiagnostic('trial_submit_failed', {
-        recordingId: rec.id,
-        uploadId,
-        attempt: attempt + 1,
-        ...diagnosticErrorData(e),
-      });
-      if (e instanceof UploadIntentExpiredError) throw e;
-      if (
-        e instanceof ApiError &&
-        e.status >= 400 &&
-        e.status < 500 &&
-        e.status !== 408 &&
-        e.status !== 422 &&
-        e.status !== 429
-      ) throw e;
-      if (attempt < maxBackoffs) {
-        await delay(UPLOAD_BACKOFFS_MS[attempt] + Math.floor(Math.random() * 1000));
-      }
-    }
-  }
-  throw lastErr;
+function isCurrent(epoch: number, accountId: string | null = activeAccountId): boolean {
+  return !suspended && epoch === accountEpoch && accountId === activeAccountId;
 }
 
 function emit() {
-  for (const l of listeners) l();
+  for (const listener of listeners) listener();
 }
 
-async function persist() {
+async function persist(expectedEpoch: number = accountEpoch): Promise<void> {
+  if (!isCurrent(expectedEpoch) || !activeAccountId) return;
+  const key = storageKey(activeAccountId);
   const snapshot = JSON.stringify(cache ?? []);
-  const write = persistTail.then(() => AsyncStorage.setItem(STORAGE_KEY, snapshot));
+  const write = persistTail.then(() => AsyncStorage.setItem(key, snapshot));
   persistTail = write.catch(() => {});
   await write;
 }
 
 async function ensureLoaded(): Promise<Recording[]> {
+  if (!activeAccountId) throw new Error('recording account unavailable');
   if (cache) return cache;
   if (!loadPromise) {
-    loadPromise = AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      cache = raw ? (JSON.parse(raw) as Recording[]) : [];
-      return cache;
-    });
+    const accountId = activeAccountId;
+    const epoch = accountEpoch;
+    loadPromise = (async () => {
+      const key = storageKey(accountId);
+      let raw = await AsyncStorage.getItem(key);
+      if (raw == null) {
+        // One-time migration from the pre-account cache. AuthGate meant these
+        // records belonged to whichever account was already signed in.
+        raw = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        if (raw != null) {
+          await AsyncStorage.setItem(key, raw);
+          await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
+      }
+      const loaded = raw ? (JSON.parse(raw) as Recording[]) : [];
+      if (epoch === accountEpoch && accountId === activeAccountId) cache = loaded;
+      return loaded;
+    })();
   }
   return loadPromise;
 }
@@ -156,27 +104,138 @@ function makeId(): string {
   return `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
-async function patch(id: string, partial: Partial<Recording>) {
+async function patch(
+  id: string,
+  partial: Partial<Recording>,
+  expectedEpoch: number = accountEpoch,
+) {
+  if (!isCurrent(expectedEpoch)) return;
   const list = await ensureLoaded();
-  cache = list.map((r) => (r.id === id ? { ...r, ...partial } : r));
-  await persist();
+  if (!isCurrent(expectedEpoch)) return;
+  cache = list.map((recording) =>
+    recording.id === id ? { ...recording, ...partial } : recording,
+  );
+  await persist(expectedEpoch);
+  if (isCurrent(expectedEpoch)) emit();
+}
+
+function patchVolatile(id: string, partial: Partial<Recording>, expectedEpoch: number) {
+  if (!cache || !isCurrent(expectedEpoch)) return;
+  cache = cache.map((recording) =>
+    recording.id === id ? { ...recording, ...partial } : recording,
+  );
   emit();
 }
 
-/** Update transient UI state without hammering AsyncStorage on every progress event. */
-function patchVolatile(id: string, partial: Partial<Recording>) {
-  if (!cache) return;
-  cache = cache.map((r) => (r.id === id ? { ...r, ...partial } : r));
-  emit();
+async function uploadWithRetry(
+  rec: Recording,
+  maxBackoffs: number = UPLOAD_BACKOFFS_MS.length,
+  onProgress?: (fraction: number) => void,
+  onAttempt?: (attempt: number) => void,
+  onRetry?: (nextAttempt: number, delayMs: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!rec.videoUri) throw new Error('recording file missing');
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
+    throwIfCancelled(signal);
+    try {
+      onAttempt?.(attempt + 1);
+      onProgress?.(0);
+      const response = signal
+        ? await uploadRecording(rec.videoUri, rec.testId, onProgress, signal)
+        : await uploadRecording(rec.videoUri, rec.testId, onProgress);
+      return response.uploadId;
+    } catch (error) {
+      throwIfCancelled(signal);
+      lastError = error;
+      recordDiagnostic('upload_attempt_failed', {
+        recordingId: rec.id,
+        attempt: attempt + 1,
+        ...diagnosticErrorData(error),
+      });
+      if (classifyUploadError(error) === 'permanent') throw error;
+      if (
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408 &&
+        error.status !== 429
+      ) {
+        throw error;
+      }
+      if (attempt < maxBackoffs) {
+        const retryDelay = UPLOAD_BACKOFFS_MS[attempt] + Math.floor(Math.random() * 1000);
+        onRetry?.(attempt + 2, retryDelay);
+        await cancellableDelay(retryDelay, signal);
+      }
+    }
+  }
+  throw lastError;
 }
 
-/** Pure lifecycle core: runs the upload→poll for one recording and RETURNS the
- *  patch to apply. No persistence, so it's unit-testable. `opts.maxBackoffs`
- *  lets tests disable backoff. */
+async function createTrialWithRetry(
+  rec: Recording,
+  uploadId: string,
+  maxBackoffs: number = UPLOAD_BACKOFFS_MS.length,
+  signal?: AbortSignal,
+): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
+    throwIfCancelled(signal);
+    try {
+      const response = signal
+        ? await createAnalysisTrial(
+            uploadId,
+            rec.testId,
+            rec.id,
+            rec.createdAt,
+            rec.evaluatedSide,
+            signal,
+          )
+        : await createAnalysisTrial(
+            uploadId,
+            rec.testId,
+            rec.id,
+            rec.createdAt,
+            rec.evaluatedSide,
+          );
+      return response.jobId;
+    } catch (error) {
+      throwIfCancelled(signal);
+      lastError = error;
+      recordDiagnostic('trial_submit_failed', {
+        recordingId: rec.id,
+        uploadId,
+        attempt: attempt + 1,
+        ...diagnosticErrorData(error),
+      });
+      if (error instanceof UploadIntentExpiredError) throw error;
+      if (
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408 &&
+        error.status !== 422 &&
+        error.status !== 429
+      ) {
+        throw error;
+      }
+      if (attempt < maxBackoffs) {
+        const retryDelay = UPLOAD_BACKOFFS_MS[attempt] + Math.floor(Math.random() * 1000);
+        await cancellableDelay(retryDelay, signal);
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** Pure upload→submit→poll lifecycle. Boundary callbacks make durable writes. */
 async function driveOnce(
   rec: Recording,
   opts: {
     maxBackoffs?: number;
+    signal?: AbortSignal;
     onBytesUploaded?: (uploadId: string) => Promise<void> | void;
     onUploadExpired?: () => Promise<void> | void;
     onTrialCreated?: (jobId: string) => Promise<void> | void;
@@ -190,9 +249,8 @@ async function driveOnce(
   let phase: 'upload' | 'submit' | 'poll' = uploadId ? 'submit' : 'upload';
   try {
     if (!jobId) {
-      // One expired intent recovery is performed immediately. More than one
-      // indicates a persistent server/clock problem and surfaces for retry.
       for (let intentAttempt = 0; intentAttempt < 2; intentAttempt++) {
+        throwIfCancelled(opts.signal);
         if (!uploadId) {
           phase = 'upload';
           uploadId = await serialUpload(() =>
@@ -202,15 +260,14 @@ async function driveOnce(
               opts.onUploadProgress,
               opts.onUploadAttempt,
               opts.onUploadRetry,
+              opts.signal,
             ),
           );
-          // Persist this boundary before the tiny create-trial request. A kill
-          // from here onward resumes without retransmitting the video.
           await opts.onBytesUploaded?.(uploadId);
         }
         phase = 'submit';
         try {
-          jobId = await createTrialWithRetry(rec, uploadId, opts.maxBackoffs);
+          jobId = await createTrialWithRetry(rec, uploadId, opts.maxBackoffs, opts.signal);
           await opts.onTrialCreated?.(jobId);
           break;
         } catch (error) {
@@ -225,7 +282,9 @@ async function driveOnce(
       if (!jobId) throw new Error('trial creation failed');
     }
     phase = 'poll';
-    const result = await pollResult(jobId, rec.testId);
+    const result = opts.signal
+      ? await pollResult(jobId, rec.testId, opts.signal)
+      : await pollResult(jobId, rec.testId);
     return {
       status: 'done',
       uploadId,
@@ -235,9 +294,9 @@ async function driveOnce(
       jobId,
       result,
     };
-  } catch (e) {
-    if (e instanceof PollTimeoutError) {
-      // Server may still finish — keep processing so resumePending re-polls.
+  } catch (error) {
+    if (error instanceof OperationCancelledError || opts.signal?.aborted) throw error;
+    if (error instanceof PollTimeoutError) {
       return {
         status: 'processing',
         uploadId,
@@ -247,11 +306,11 @@ async function driveOnce(
         jobId,
       };
     }
-    if (e instanceof AnalysisNeedsRetryError) {
+    if (error instanceof AnalysisNeedsRetryError) {
       return {
         status: 'needs_retry',
-        failReason: e.message,
-        analysisFailureReasons: e.reasons,
+        failReason: error.message,
+        analysisFailureReasons: error.reasons,
         uploadId,
         uploadProgress: undefined,
         uploadAttempt: undefined,
@@ -261,10 +320,10 @@ async function driveOnce(
         resumable: false,
       };
     }
-    const permanent = classifyUploadError(e) === 'permanent';
+    const permanent = classifyUploadError(error) === 'permanent';
     return {
       status: 'failed',
-      failReason: e instanceof Error ? e.message : String(e),
+      failReason: error instanceof Error ? error.message : String(error),
       uploadId,
       uploadProgress: undefined,
       uploadAttempt: undefined,
@@ -275,21 +334,24 @@ async function driveOnce(
   }
 }
 
-/** Persisting wrapper: guards against double-driving, marks 'processing' as
- *  soon as the upload succeeds, then applies the final patch. */
-async function drive(rec: Recording) {
-  if (inFlight.has(rec.id)) return;
-  inFlight.add(rec.id);
+async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
   try {
-    const patch_ = await driveOnce(rec, {
-      onUploadProgress: (uploadProgress) => patchVolatile(rec.id, { uploadProgress }),
-      onUploadAttempt: (uploadAttempt) => patchVolatile(rec.id, {
-        uploadAttempt,
-        uploadRetrying: false,
-        uploadProgress: 0,
-      }),
+    const finalPatch = await driveOnce(rec, {
+      signal,
+      onUploadProgress: (uploadProgress) =>
+        patchVolatile(rec.id, { uploadProgress }, epoch),
+      onUploadAttempt: (uploadAttempt) =>
+        patchVolatile(
+          rec.id,
+          { uploadAttempt, uploadRetrying: false, uploadProgress: 0 },
+          epoch,
+        ),
       onUploadRetry: (uploadAttempt, delayMs) => {
-        patchVolatile(rec.id, { uploadAttempt, uploadRetrying: true, uploadProgress: 0 });
+        patchVolatile(
+          rec.id,
+          { uploadAttempt, uploadRetrying: true, uploadProgress: 0 },
+          epoch,
+        );
         recordDiagnostic('upload_retry_scheduled', {
           recordingId: rec.id,
           attempt: uploadAttempt,
@@ -297,42 +359,130 @@ async function drive(rec: Recording) {
         });
       },
       onBytesUploaded: (uploadId) =>
-        patch(rec.id, {
-          status: 'processing',
-          uploadId,
-          uploadProgress: undefined,
-          uploadAttempt: undefined,
-          uploadRetrying: undefined,
-        }).then(() => {
+        patch(
+          rec.id,
+          {
+            status: 'processing',
+            uploadId,
+            uploadProgress: undefined,
+            uploadAttempt: undefined,
+            uploadRetrying: undefined,
+          },
+          epoch,
+        ).then(() => {
           recordDiagnostic('upload_completed', { recordingId: rec.id, uploadId });
         }),
       onUploadExpired: () =>
-        patch(rec.id, {
-          status: 'uploading',
-          uploadId: undefined,
-          uploadProgress: 0,
-          uploadAttempt: undefined,
-          uploadRetrying: undefined,
-        }).then(() => {
+        patch(
+          rec.id,
+          {
+            status: 'uploading',
+            uploadId: undefined,
+            uploadProgress: 0,
+            uploadAttempt: undefined,
+            uploadRetrying: undefined,
+          },
+          epoch,
+        ).then(() => {
           recordDiagnostic('upload_intent_expired', { recordingId: rec.id });
         }),
-      onTrialCreated: (jobId) => patch(rec.id, { status: 'processing', jobId }).then(() => {
-        recordDiagnostic('trial_created', { recordingId: rec.id, jobId });
-      }),
+      onTrialCreated: (jobId) =>
+        patch(rec.id, { status: 'processing', jobId }, epoch).then(() => {
+          recordDiagnostic('trial_created', { recordingId: rec.id, jobId });
+        }),
     });
-    await patch(rec.id, patch_);
-    recordDiagnostic('pipeline_state', {
-      recordingId: rec.id,
-      status: patch_.status ?? rec.status,
-      ...(patch_.jobId ? { jobId: patch_.jobId } : {}),
-      ...(patch_.failReason ? { reason: patch_.failReason } : {}),
-    });
-  } finally {
-    inFlight.delete(rec.id);
+    await patch(rec.id, finalPatch, epoch);
+    if (isCurrent(epoch)) {
+      recordDiagnostic('pipeline_state', {
+        recordingId: rec.id,
+        status: finalPatch.status ?? rec.status,
+        ...(finalPatch.jobId ? { jobId: finalPatch.jobId } : {}),
+        ...(finalPatch.failReason ? { reason: finalPatch.failReason } : {}),
+      });
+    }
+  } catch (error) {
+    if (!(error instanceof OperationCancelledError) && !signal.aborted) throw error;
   }
 }
 
-// --- Public store operations ---------------------------------------------------
+function drive(rec: Recording): Promise<void> {
+  if (suspended || !activeAccountId) return Promise.resolve();
+  const epoch = accountEpoch;
+  const operationKey = `${epoch}:${rec.id}`;
+  const existing = operations.get(operationKey);
+  if (existing) return existing.promise;
+
+  const controller = new AbortController();
+  const promise = runDrive(rec, epoch, controller.signal).finally(() => {
+    operations.delete(operationKey);
+  });
+  operations.set(operationKey, { controller, promise, epoch });
+  return promise;
+}
+
+async function refreshFromServer(expectedEpoch: number = accountEpoch): Promise<void> {
+  if (!isCurrent(expectedEpoch)) return;
+  const local = await ensureLoaded();
+  let response: Awaited<ReturnType<typeof fetchOwnedTrials>>;
+  try {
+    response = await fetchOwnedTrials();
+  } catch (error) {
+    // A brand-new Clerk session can render children just before AuthGate's
+    // idempotent onboarding request finishes. Complete it and retry once.
+    if (
+      error instanceof ApiError &&
+      error.status === 403 &&
+      error.responseBody.includes('not_onboarded')
+    ) {
+      await ensurePatientOnboarded();
+      response = await fetchOwnedTrials();
+    } else {
+      throw error;
+    }
+  }
+  if (!isCurrent(expectedEpoch)) return;
+  const merged = mergeOwnedTrials(local, response.trials);
+  cache = merged.recordings;
+  await persist(expectedEpoch);
+  if (!isCurrent(expectedEpoch)) return;
+  emit();
+  await Promise.all(
+    merged.localUrisToDelete.map((uri) => deleteRecordingFile(uri).catch(() => {})),
+  );
+}
+
+function cancelOperations() {
+  for (const operation of operations.values()) operation.controller.abort();
+}
+
+async function activateAccount(accountId: string): Promise<void> {
+  if (activeAccountId === accountId && cache) return;
+  if (requestedAccountId === accountId && activationPromise) return activationPromise;
+
+  requestedAccountId = accountId;
+  const activation = (async () => {
+    cancelOperations();
+    accountEpoch += 1;
+    activeAccountId = accountId;
+    suspended = false;
+    cache = null;
+    loadPromise = null;
+    await ensureLoaded();
+    emit();
+    try {
+      await refreshFromServer(accountEpoch);
+    } catch (error) {
+      recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
+    }
+    resumePending();
+  })();
+  activationPromise = activation;
+  try {
+    await activation;
+  } finally {
+    if (activationPromise === activation) activationPromise = null;
+  }
+}
 
 async function add(
   testId: TestId,
@@ -340,6 +490,7 @@ async function add(
   evaluatedSide?: EvaluatedSide,
 ): Promise<Recording> {
   const list = await ensureLoaded();
+  const epoch = accountEpoch;
   const id = makeId();
   const durableUri = await persistRecordingFile(videoUri, id);
   const rec: Recording = {
@@ -353,36 +504,39 @@ async function add(
     uploadAttempt: 1,
     uploadRetrying: false,
   };
+  if (!isCurrent(epoch)) {
+    await deleteRecordingFile(durableUri).catch(() => {});
+    throw new Error('recording account changed');
+  }
   cache = [rec, ...(cache ?? list)];
   try {
-    await persist();
+    await persist(epoch);
   } catch (error) {
-    cache = (cache ?? []).filter((r) => r.id !== id);
+    cache = (cache ?? []).filter((recording) => recording.id !== id);
     await deleteRecordingFile(durableUri).catch(() => {});
     throw error;
   }
   emit();
   recordDiagnostic('recording_saved', { recordingId: id, testId, uri: 'documents' });
-  // Fire-and-forget the persisted upload/analysis pipeline.
   void drive(rec);
   return rec;
 }
 
+function operationForRecording(id: string) {
+  return operations.get(`${accountEpoch}:${id}`);
+}
+
 async function removeById(id: string) {
   const list = await ensureLoaded();
-  const recording = list.find((r) => r.id === id);
+  const recording = list.find((item) => item.id === id);
   if (!recording) return;
-  if (inFlight.has(id) && !recording.jobId) {
-    // Avoid leaving a partially uploaded object with no trial id to delete.
-    // This window covers only the byte upload and tiny trial-creation request.
+  if (operationForRecording(id) && !recording.jobId) {
     throw new Error('recording upload is still being finalized');
   }
   let jobId = recording.jobId;
   if (!jobId && recording.uploadId) {
     const pendingResult = await deleteRemoteUpload(recording.uploadId);
     if (pendingResult === 'consumed') {
-      // POST /trials succeeded but its response was lost. Repeating it is
-      // idempotent and recovers the trial id needed for complete deletion.
       const recovered = await createAnalysisTrial(
         recording.uploadId,
         recording.testId,
@@ -394,28 +548,29 @@ async function removeById(id: string) {
     }
   }
   if (jobId) await deleteRemoteRecording(jobId);
-  await deleteRecordingFile(recording.videoUri);
-  cache = (cache ?? list).filter((r) => r.id !== id);
+  if (recording.videoUri) await deleteRecordingFile(recording.videoUri);
+  cache = (cache ?? list).filter((item) => item.id !== id);
   await persist();
   emit();
-  recordDiagnostic('recording_deleted', { recordingId: id, remote: Boolean(jobId || recording.uploadId) });
+  recordDiagnostic('recording_deleted', {
+    recordingId: id,
+    remote: Boolean(jobId || recording.uploadId),
+  });
 }
 
-/** Re-drive any recording left un-finished, and auto-resume upload-phase
- *  failures from a prior session. Permanent + analysis failures wait for a
- *  manual Retry tap. */
 function resumePending() {
-  if (!cache) return;
-  for (const r of cache) {
-    if (r.status === 'uploading' || r.status === 'processing') void drive(r);
-    else if (r.status === 'failed' && r.resumable) void resume(r.id);
+  if (!cache || suspended) return;
+  for (const recording of cache) {
+    if (recording.status === 'uploading' || recording.status === 'processing') {
+      void drive(recording);
+    } else if (recording.status === 'failed' && recording.resumable) {
+      void resume(recording.id);
+    }
   }
 }
 
-/** Resume the exact failed phase. In particular, preserve uploadId so a failed
- * trial-creation request never retransmits the already-uploaded video. */
 async function resume(id: string) {
-  const existing = (await ensureLoaded()).find((r) => r.id === id);
+  const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing) return;
   await patch(id, {
     status: existing.uploadId ? 'processing' : 'uploading',
@@ -427,15 +582,36 @@ async function resume(id: string) {
     permanent: undefined,
     resumable: undefined,
   });
-  const rec = (cache ?? []).find((r) => r.id === id);
-  if (rec) void drive(rec);
+  const recording = (cache ?? []).find((item) => item.id === id);
+  if (recording) void drive(recording);
 }
 
-// --- React hook ----------------------------------------------------------------
+/** Cancel all local work, delete every app-owned clip, and clear this account's cache. */
+async function purgeForLogout(): Promise<void> {
+  const accountId = activeAccountId;
+  if (!accountId) return;
+  suspended = true;
+  accountEpoch += 1;
+  cancelOperations();
+  await Promise.allSettled([...operations.values()].map((operation) => operation.promise));
+  await persistTail.catch(() => {});
+  await deleteAllRecordingFiles();
+  const recordingKeys = (await AsyncStorage.getAllKeys()).filter(
+    (key) => key === LEGACY_STORAGE_KEY || key.startsWith(STORAGE_KEY_PREFIX),
+  );
+  if (recordingKeys.length > 0) await AsyncStorage.multiRemove(recordingKeys);
+  cache = [];
+  loadPromise = null;
+  activeAccountId = null;
+  requestedAccountId = null;
+  emit();
+}
 
 export function useRecordings() {
+  const { user } = useUser();
+  const accountId = user?.id ?? null;
   const [recordings, setRecordings] = useState<Recording[]>(cache ?? []);
-  const [loading, setLoading] = useState(cache === null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -444,26 +620,51 @@ export function useRecordings() {
     };
     listeners.add(sync);
     const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') resumePending();
-    });
-    ensureLoaded().then(() => {
-      if (!mounted) return;
-      setLoading(false);
-      sync();
+      if (state !== 'active' || !accountId) return;
+      void refreshFromServer().catch((error) => {
+        recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
+      });
       resumePending();
     });
+
+    if (accountId) {
+      setLoading(true);
+      void activateAccount(accountId).finally(() => {
+        if (!mounted) return;
+        sync();
+        setLoading(false);
+      });
+    } else {
+      setRecordings([]);
+      setLoading(false);
+    }
     return () => {
       mounted = false;
       listeners.delete(sync);
       appStateSubscription.remove();
     };
-  }, []);
+  }, [accountId]);
 
   const addRecording = useCallback(add, []);
   const remove = useCallback(removeById, []);
   const retry = useCallback((id: string) => void resume(id), []);
+  const refresh = useCallback(() => refreshFromServer(), []);
+  const logoutAndPurge = useCallback(() => purgeForLogout(), []);
+  const unuploadedCount = useMemo(
+    () => recordings.filter((recording) => recording.videoUri && !recording.jobId).length,
+    [recordings],
+  );
 
-  return { recordings, loading, addRecording, remove, retry };
+  return {
+    recordings,
+    loading,
+    addRecording,
+    remove,
+    retry,
+    refresh,
+    logoutAndPurge,
+    unuploadedCount,
+  };
 }
 
 export const __testing = { driveOnce };

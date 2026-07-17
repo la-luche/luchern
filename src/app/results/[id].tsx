@@ -3,6 +3,7 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
@@ -10,22 +11,54 @@ import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
 import { formatAnalysisFailureReason, localizeSeverity, useT } from '../../lib/i18n';
+import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
-/** Detail for one recording: video playback + experimental cloud-analysis panel. */
+function RecordingVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer({ uri }, (videoPlayer) => {
+    videoPlayer.loop = true;
+  });
+  return <VideoView player={player} style={{ flex: 1 }} nativeControls contentFit="contain" />;
+}
+
+/** Detail for one recording: retained local playback or cloud playback on demand. */
 export default function ResultDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { recordings, loading, remove, retry } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
+  const [remoteVideoUri, setRemoteVideoUri] = useState<string | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState(false);
 
-  // Hook must run unconditionally — source is null until the recording loads.
-  const player = useVideoPlayer(recording ? { uri: recording.videoUri } : null, (p) => {
-    p.loop = true;
-  });
+  const loadRemoteVideo = useCallback(async () => {
+    if (!recording?.jobId) {
+      setVideoError(true);
+      return null;
+    }
+    setVideoLoading(true);
+    setVideoError(false);
+    try {
+      const detail = await fetchSharedTrialDetail(Number(recording.jobId));
+      setRemoteVideoUri(detail.video_url);
+      return detail.video_url;
+    } catch {
+      setRemoteVideoUri(null);
+      setVideoError(true);
+      return null;
+    } finally {
+      setVideoLoading(false);
+    }
+  }, [recording?.jobId]);
+
+  useEffect(() => {
+    setRemoteVideoUri(null);
+    setVideoError(false);
+    if (recording && !recording.videoUri) void loadRemoteVideo();
+  }, [loadRemoteVideo, recording?.id, recording?.videoUri]);
 
   if (loading) {
     return (
@@ -53,14 +86,21 @@ export default function ResultDetailScreen() {
       const name = test ? t.tests[test.id].name : t.result.fallbackTitle;
       const date = new Date(recording.createdAt).toISOString().slice(0, 10);
       const safe = `Luche_${name}_${date}`.replace(/[^\w-]+/g, '_');
-      let uri = recording.videoUri;
+      let uri = recording.videoUri ?? remoteVideoUri ?? (await loadRemoteVideo());
+      if (!uri) throw new Error(t.resultsList.videoLoadFailed);
       if (FileSystem.cacheDirectory) {
         const dest = `${FileSystem.cacheDirectory}${safe}.mp4`;
         try {
-          await FileSystem.copyAsync({ from: recording.videoUri, to: dest });
+          await FileSystem.deleteAsync(dest, { idempotent: true });
+          if (uri.startsWith('file://')) {
+            await FileSystem.copyAsync({ from: uri, to: dest });
+          } else {
+            await FileSystem.downloadAsync(uri, dest);
+          }
           uri = dest;
         } catch {
-          // fall back to the original file if the copy fails
+          // A remote URL cannot be handed reliably to the native share sheet.
+          if (!uri.startsWith('file://')) throw new Error(t.result.couldNotShare);
         }
       }
       await Sharing.shareAsync(uri, {
@@ -110,13 +150,36 @@ export default function ResultDetailScreen() {
       <ScrollView contentContainerClassName="px-6 pb-10">
         {/* Video playback. */}
         <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
-          <VideoView
-            player={player}
-            style={{ flex: 1 }}
-            nativeControls
-            contentFit="contain"
-          />
+          {recording.videoUri || remoteVideoUri ? (
+            <RecordingVideo
+              key={recording.videoUri ?? remoteVideoUri}
+              uri={recording.videoUri ?? remoteVideoUri!}
+            />
+          ) : (
+            <View className="flex-1 items-center justify-center px-6">
+              {videoLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <MaterialCommunityIcons name="video-off-outline" size={44} color={COLORS.white} />
+              )}
+            </View>
+          )}
         </View>
+
+        {videoError && (
+          <View className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+            <Text className="text-[15px] font-semibold text-red-700">
+              {t.resultsList.videoLoadFailed}
+            </Text>
+            <View className="mt-3">
+              <Button
+                title={t.resultsList.tryAgain}
+                variant="secondary"
+                onPress={() => void loadRemoteVideo()}
+              />
+            </View>
+          </View>
+        )}
 
         <View className="mt-4">
           <StatusPill status={recording.status} />
@@ -197,7 +260,12 @@ export default function ResultDetailScreen() {
         </View>
 
         <View className="mt-8">
-          <Button title={t.result.shareWithDoctor} variant="secondary" onPress={shareVideo} />
+          <Button
+            title={t.result.shareWithDoctor}
+            variant="secondary"
+            onPress={shareVideo}
+            disabled={videoLoading}
+          />
           <View className="mt-3">
             <Button title={t.result.backToMenu} onPress={() => router.navigate('/')} />
           </View>

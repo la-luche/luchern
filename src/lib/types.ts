@@ -25,8 +25,9 @@ export interface CloudResult {
 }
 
 /**
- * One recorded test. Metadata is persisted in AsyncStorage and `videoUri`
- * points at a durable file in the app documents directory.
+ * One recorded test. Metadata is persisted in an account-scoped cache.
+ * `videoUri` exists while a local clip is retained; cloud-backed history can
+ * omit it and request a fresh signed URL only when the recording is opened.
  */
 export interface Recording {
   id: string;
@@ -35,8 +36,8 @@ export interface Recording {
   evaluatedSide?: EvaluatedSide;
   /** Epoch millis. */
   createdAt: number;
-  /** Durable local file URI of the captured video. */
-  videoUri: string;
+  /** Durable local file URI while the captured video is retained on-device. */
+  videoUri?: string;
   status: RecordingStatus;
   /** Server upload intent, persisted after the video bytes reach R2. */
   uploadId?: string;

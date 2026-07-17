@@ -1,6 +1,7 @@
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+jest.mock('@clerk/clerk-expo', () => ({ useUser: jest.fn() }));
 
 jest.mock('../diagnostics', () => ({
   recordDiagnostic: jest.fn(),

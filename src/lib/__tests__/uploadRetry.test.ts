@@ -1,10 +1,28 @@
 import {
+  OperationCancelledError,
   PollTimeoutError,
+  cancellableDelay,
   classifyUploadError,
   UPLOAD_BACKOFFS_MS,
   createSerialQueue,
   uploadingCount,
 } from '../uploadRetry';
+
+describe('cancellableDelay', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('ends retry backoff immediately when logout aborts it', async () => {
+    jest.useFakeTimers();
+    const controller = new AbortController();
+    const waiting = cancellableDelay(60_000, controller.signal);
+    const assertion = expect(waiting).rejects.toBeInstanceOf(OperationCancelledError);
+
+    controller.abort();
+
+    await assertion;
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
 
 describe('classifyUploadError', () => {
   it('permanent for missing local file', () => {

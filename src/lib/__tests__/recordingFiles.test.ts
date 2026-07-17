@@ -9,6 +9,7 @@ jest.mock('expo-file-system/legacy', () => ({
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   __testing,
+  deleteAllRecordingFiles,
   deleteRecordingFile,
   persistRecordingFile,
 } from '../recordingFiles';
@@ -52,6 +53,14 @@ describe('recording file lifecycle', () => {
     await deleteRecordingFile('file:///documents/recordings/rec-1.mov');
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(
       'file:///documents/recordings/rec-1.mov',
+      { idempotent: true },
+    );
+  });
+
+  it('deletes the complete recordings directory on logout', async () => {
+    await deleteAllRecordingFiles();
+    expect(FileSystem.deleteAsync).toHaveBeenCalledWith(
+      'file:///documents/recordings/',
       { idempotent: true },
     );
   });

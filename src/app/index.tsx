@@ -1,4 +1,6 @@
+import { useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -14,6 +16,9 @@ import { COLORS } from '../lib/theme';
 export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
+  const { user } = useUser();
+  const email = user?.primaryEmailAddress?.emailAddress;
+  const profileName = user?.fullName || user?.firstName || email || t.profile.account;
 
   const startFullCheck = () => {
     startSession(TESTS.map((test) => test.id));
@@ -27,16 +32,28 @@ export default function MenuScreen() {
 
   return (
     <Screen>
-      {/* Top bar — About/info button only. */}
+      {/* The signed-in identity stays visible from the main screen. */}
       <View className="h-12 flex-row items-center justify-end px-[18px]">
         <Pressable
           onPress={() => router.push('/about')}
           accessibilityRole="button"
-          accessibilityLabel={t.menu.aboutA11y}
-          className="h-11 flex-row items-center gap-1.5 rounded-full bg-ink-faint px-4 active:opacity-70"
+          accessibilityLabel={t.profile.openProfileA11y}
+          className="h-11 max-w-[240px] flex-row items-center gap-2 rounded-full bg-ink-faint px-2.5 pr-4 active:opacity-70"
         >
-          <Ionicons name="information-circle-outline" size={20} color={COLORS.ink} />
-          <Text className="text-[16px] font-medium text-ink">{t.about.title}</Text>
+          {user?.imageUrl ? (
+            <Image
+              source={{ uri: user.imageUrl }}
+              className="h-7 w-7 rounded-full"
+              contentFit="cover"
+            />
+          ) : (
+            <View className="h-7 w-7 items-center justify-center rounded-full bg-white">
+              <Ionicons name="person-outline" size={17} color={COLORS.ink} />
+            </View>
+          )}
+          <Text numberOfLines={1} className="shrink text-[15px] font-medium text-ink">
+            {profileName}
+          </Text>
         </Pressable>
       </View>
 

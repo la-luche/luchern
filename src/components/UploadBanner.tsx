@@ -38,7 +38,9 @@ export function UploadBanner() {
   }
 
   // Failed but not permanent → let the user retry them all at once.
-  const failed = recordings.filter((r) => r.status === 'failed' && !r.permanent);
+  const failed = recordings.filter(
+    (recording) => recording.status === 'failed' && recording.resumable && !recording.permanent,
+  );
   if (failed.length > 0) {
     return (
       <View

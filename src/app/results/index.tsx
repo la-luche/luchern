@@ -42,7 +42,7 @@ interface ResultSection {
 /** Local recordings plus read-only recordings from people who accepted this account's code. */
 export default function ResultsScreen() {
   const router = useRouter();
-  const { recordings, loading } = useRecordings();
+  const { recordings, loading, refresh: refreshOwnedRecordings } = useRecordings();
   const t = useT();
 
   const [patients, setPatients] = useState<SharedPatient[]>([]);
@@ -132,7 +132,10 @@ export default function ResultsScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
-    await loadPatients(selectedPatientId);
+    await Promise.all([
+      loadPatients(selectedPatientId),
+      refreshOwnedRecordings().catch(() => {}),
+    ]);
     if (mounted.current) setRefreshing(false);
   };
 

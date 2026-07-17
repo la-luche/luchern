@@ -8,8 +8,9 @@ Core ML, no on-device model, no frame buffering.
 > Status: **Experimental cloud pipeline (2026-07-13).** `src/lib/cloud.ts` talks to
 > `feral-api`: presigned R2 upload → Sapiens2 keypoints (serve_luche/RunPod) →
 > hand-written kinematic heuristic. These scores are uncalibrated estimates, not
-> trained/validated keypoints→UPDRS models. Auth uses Clerk sign-in with a legacy
-> anonymous device-token fallback. Finger keypoints are the most usable signal;
+> trained/validated keypoints→UPDRS models. Auth uses the current Clerk account
+> exclusively so ownership stays stable across devices. Finger keypoints are
+> the most usable signal;
 > none of the patient-facing grades should be treated as clinically validated.
 
 ## Stack
@@ -89,14 +90,16 @@ pollResult(jobId, testId)          -> Promise<CloudResult>
 
 `storage.ts` drives `uploading -> processing -> done`, persists the upload ID
 immediately after the video reaches R2, and persists the job ID before polling.
-This makes relaunch/retry avoid retransmitting a completed upload.
+This makes relaunch/retry avoid retransmitting a completed upload. It also
+hydrates metadata from `GET /me/trials`, keeps uploaded videos locally for
+three days, and requests a signed cloud URL when an older video is opened.
 
 ### Data model
 
-One `Recording` per captured test, persisted locally:
+One `Recording` per captured test, cached per signed-in account:
 
 ```ts
-{ id, testId, createdAt, videoUri, status, uploadId?, jobId?, result? }
+{ id, testId, createdAt, videoUri?, status, uploadId?, jobId?, result? }
 ```
 
 `useRecordings()` (in `storage.ts`) exposes the list + `addRecording` + `remove`,
@@ -110,6 +113,6 @@ CSS-first config) and will break NativeWind. `package.json` pins
 
 ## What's intentionally NOT here
 
-Still out of scope: a trained/calibrated keypoints→UPDRS model, Core ML, the
-observer/data-sharing surface in this RN client, PDF export, and landscape
-recording. See `STORE_SUBMISSION.md` for the remaining submission work.
+Still out of scope: a trained/calibrated keypoints→UPDRS model, Core ML, PDF
+export, and landscape recording. See `STORE_SUBMISSION.md` for the remaining
+submission work.

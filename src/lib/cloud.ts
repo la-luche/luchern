@@ -4,7 +4,12 @@ import { ApiError, apiFetch } from './api';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import type { CloudResult } from './types';
 import type { EvaluatedSide, TestId } from './tests';
-import { PollTimeoutError } from './uploadRetry';
+import {
+  OperationCancelledError,
+  PollTimeoutError,
+  cancellableDelay,
+  throwIfCancelled,
+} from './uploadRetry';
 
 /**
  * Cloud client — the ONE module that talks to the backend. Real pipeline:
@@ -25,10 +30,6 @@ const POLL_INTERVAL_MS = 3000;
 // Must exceed the worker's WORKER_JOB_TIMEOUT_SECONDS (25 min) so a cold GPU
 // job that finishes late isn't turned into a false client-side failure.
 const POLL_MAX_MS = 30 * 60 * 1000;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 interface RequestUrlResp {
   upload_url: string;
@@ -86,7 +87,9 @@ export async function uploadRecording(
   videoUri: string,
   testId: TestId,
   onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
 ): Promise<{ uploadId: string }> {
+  throwIfCancelled(signal);
   const info = await FileSystem.getInfoAsync(videoUri);
   if (!info.exists) throw new Error('recording file missing');
   const sizeBytes = (info as { size?: number }).size ?? 0;
@@ -98,7 +101,9 @@ export async function uploadRecording(
   const req = await apiFetch<RequestUrlResp>('/uploads/request-url', {
     method: 'POST',
     body: JSON.stringify({ test_type_id: testId, size_bytes: sizeBytes }),
+    signal,
   });
+  throwIfCancelled(signal);
   recordDiagnostic('upload_url_ready', {
     uploadId: req.upload_id,
     sizeBytes,
@@ -144,6 +149,8 @@ export async function uploadRecording(
     }
   });
   cancelUpload = () => { void task.cancelAsync().catch(() => {}); };
+  const onAbort = () => cancelUpload();
+  signal?.addEventListener('abort', onAbort, { once: true });
   armStallWatchdog();
   let put;
   try {
@@ -154,8 +161,11 @@ export async function uploadRecording(
       uploadId: req.upload_id,
       ...diagnosticErrorData(error),
     });
+    if (signal?.aborted) throw new OperationCancelledError();
     if (stalled) throw new Error('upload stalled for 45 seconds');
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
   }
   if (stallTimer) clearTimeout(stallTimer);
   if (!put) throw new Error('upload interrupted');
@@ -186,7 +196,9 @@ export async function createAnalysisTrial(
   clientTrialId: string,
   recordedAtMs: number,
   evaluatedSide?: EvaluatedSide,
+  signal?: AbortSignal,
 ): Promise<{ jobId: string }> {
+  throwIfCancelled(signal);
   try {
     const trial = await apiFetch<CreateTrialResp>('/trials', {
       method: 'POST',
@@ -198,6 +210,7 @@ export async function createAnalysisTrial(
         client_trial_id: clientTrialId,
         analyze: true,
       }),
+      signal,
     });
 
     return { jobId: String(trial.trial_id) };
@@ -237,13 +250,19 @@ export async function deleteRemoteUpload(uploadId: string): Promise<'deleted' | 
 
 /** Poll the trial until the analysis worker finishes; resolve with the score or
  * throw a terminal AnalysisNeedsRetryError when capture quality prevented one. */
-export async function pollResult(jobId: string, _testId: TestId): Promise<CloudResult> {
+export async function pollResult(
+  jobId: string,
+  _testId: TestId,
+  signal?: AbortSignal,
+): Promise<CloudResult> {
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
+    throwIfCancelled(signal);
     let t: TrialDetail;
     try {
-      t = await apiFetch<TrialDetail>(`/trials/${jobId}`);
+      t = await apiFetch<TrialDetail>(`/trials/${jobId}`, { signal });
     } catch (error) {
+      throwIfCancelled(signal);
       // Auth/ownership/not-found failures will not heal by polling. Network,
       // throttling, and 5xx errors remain transient until the real deadline.
       if (
@@ -257,7 +276,7 @@ export async function pollResult(jobId: string, _testId: TestId): Promise<CloudR
       }
       // Transient poll error (e.g. 5xx during GPU cold start): keep polling
       // until the real deadline rather than collapsing a blip into a failure.
-      await delay(POLL_INTERVAL_MS);
+      await cancellableDelay(POLL_INTERVAL_MS, signal);
       continue;
     }
     if (t.analysis_status === 'needs_retry' || t.scoreable === false) {
@@ -276,7 +295,7 @@ export async function pollResult(jobId: string, _testId: TestId): Promise<CloudR
     if (t.analysis_status === 'failed') {
       throw new Error('analysis failed');
     }
-    await delay(POLL_INTERVAL_MS);
+    await cancellableDelay(POLL_INTERVAL_MS, signal);
   }
   throw new PollTimeoutError();
 }
