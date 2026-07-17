@@ -53,7 +53,7 @@ Menu ──select test──▶ Instructions ──Continue──▶ Recording �
 ```
 
 A first-launch **medical disclaimer** gate (`DisclaimerGate`) wraps everything;
-an **About/Privacy** screen (`/about`) is reachable from the menu.
+an **About** screen (`/about`) is reachable from the menu.
 
 ### Directory map
 
@@ -66,7 +66,7 @@ src/
     record/[id].tsx        # Camera + Start/End
     results/index.tsx      # Recording cards list
     results/[id].tsx       # Playback + cloud-analysis panel
-    about.tsx              # Privacy & disclaimer (modal)
+    about.tsx              # Sharing, support, and release details
   components/              # hand-built, ~8 small pieces (no UI kit)
   lib/
     tests.ts               # the 3 movement tests currently exposed

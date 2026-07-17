@@ -7,9 +7,6 @@ const PORT = Number(process.env.GATEWAY_PORT || 8089);
 const UPSTREAM_HOST = process.env.EXPO_HOST || "127.0.0.1";
 const UPSTREAM_PORT = Number(process.env.EXPO_PORT || 8081);
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || "https://go.luche.ai";
-const DEPLOY_VERSION_FILE =
-  process.env.DEPLOY_VERSION_FILE ||
-  "/home/pi-rus/Downloads/feral-remote/luche-go/deploy/last-successful-sha";
 const EXPO_GO_URL = PUBLIC_ORIGIN.replace(/^https:/, "exps:").replace(/^http:/, "exp:");
 
 const landingTemplate = await readFile(new URL("./landing.html", import.meta.url), "utf8");
@@ -35,12 +32,6 @@ function sendLanding(res) {
 function isExpoManifestRequest(req) {
   const platform = req.headers["expo-platform"];
   return platform === "ios" || platform === "android";
-}
-
-async function deployedCommit() {
-  const commit = (await readFile(DEPLOY_VERSION_FILE, "utf8")).trim();
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("invalid deployed commit");
-  return commit;
 }
 
 function upstreamHeaders(req) {
@@ -117,38 +108,9 @@ async function health(res) {
   });
 }
 
-async function version(res) {
-  try {
-    const commit = await deployedCommit();
-    res.writeHead(200, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "https://luche.ai",
-      vary: "Origin",
-      "x-content-type-options": "nosniff",
-    });
-    res.end(
-      JSON.stringify({
-        commit,
-        short_commit: commit.slice(0, 12),
-        url: `https://github.com/la-luche/luchern/commit/${commit}`,
-      }),
-    );
-  } catch {
-    res.writeHead(503, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "https://luche.ai",
-      vary: "Origin",
-    });
-    res.end(JSON.stringify({ error: "deployed_version_unavailable" }));
-  }
-}
-
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", PUBLIC_ORIGIN);
   if (url.pathname === "/_luche/health") return void health(res);
-  if (url.pathname === "/_luche/version") return void version(res);
   if (url.pathname === "/_luche/expo-go-qr.svg") {
     res.writeHead(200, {
       "content-type": "image/svg+xml",
@@ -156,6 +118,10 @@ const server = http.createServer((req, res) => {
       "x-content-type-options": "nosniff",
     });
     return void res.end(expoGoQr);
+  }
+  if (url.pathname.startsWith("/_luche/")) {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+    return void res.end("Not found\n");
   }
   if (url.pathname === "/" && !isExpoManifestRequest(req)) return void sendLanding(res);
   proxyHttp(req, res);
