@@ -34,6 +34,7 @@ export const it: Dict = {
     tryAgain: 'Riprova',
     errors: {
       notFound: 'Codice non trovato. Controllalo e riprova.',
+      selfInvite: 'Questo è il tuo codice. Non puoi collegarti a te stesso.',
       expired: 'Questo codice è scaduto. Chiedi al medico un nuovo codice.',
       revoked: 'Questo codice non è più valido.',
       capReached: 'Questo codice ha raggiunto il limite. Chiedi al medico un nuovo codice.',

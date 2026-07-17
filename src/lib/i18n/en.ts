@@ -37,6 +37,7 @@ export const en = {
     tryAgain: 'Try again',
     errors: {
       notFound: 'That code wasn’t found. Check it and try again.',
+      selfInvite: 'That is your own code. You cannot connect to yourself.',
       expired: 'This code has expired. Ask your doctor for a new one.',
       revoked: 'This code is no longer valid.',
       capReached: 'This code has reached its limit. Ask your doctor for a new one.',
