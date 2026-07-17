@@ -43,13 +43,12 @@ async function deployedCommit() {
   return commit;
 }
 
-function upstreamHeaders(req, { identityEncoding = false } = {}) {
+function upstreamHeaders(req) {
   return {
     ...req.headers,
     host: `${UPSTREAM_HOST}:${UPSTREAM_PORT}`,
     "x-forwarded-host": req.headers.host || new URL(PUBLIC_ORIGIN).host,
     "x-forwarded-proto": new URL(PUBLIC_ORIGIN).protocol.slice(0, -1),
-    ...(identityEncoding ? { "accept-encoding": "identity" } : {}),
   };
 }
 
@@ -65,56 +64,6 @@ function proxyHttp(req, res) {
     (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
       upstreamRes.pipe(res);
-    },
-  );
-
-  upstream.on("error", (error) => {
-    if (!res.headersSent) {
-      res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
-    }
-    res.end(`Expo server unavailable: ${error.message}\n`);
-  });
-  req.pipe(upstream);
-}
-
-function proxyManifest(req, res) {
-  const upstream = http.request(
-    {
-      host: UPSTREAM_HOST,
-      port: UPSTREAM_PORT,
-      method: req.method,
-      path: req.url,
-      headers: upstreamHeaders(req, { identityEncoding: true }),
-    },
-    (upstreamRes) => {
-      const chunks = [];
-      upstreamRes.on("data", (chunk) => chunks.push(chunk));
-      upstreamRes.on("end", async () => {
-        const body = Buffer.concat(chunks);
-        try {
-          const manifest = JSON.parse(body.toString("utf8"));
-          const commit = await deployedCommit();
-          const launchUrl = new URL(manifest.launchAsset.url);
-          launchUrl.searchParams.set("lucheRelease", commit);
-          manifest.launchAsset.url = launchUrl.toString();
-          const rewritten = Buffer.from(JSON.stringify(manifest));
-          const headers = {
-            ...upstreamRes.headers,
-            "cache-control": "no-store",
-            "content-length": String(rewritten.length),
-          };
-          delete headers["content-encoding"];
-          delete headers["transfer-encoding"];
-          res.writeHead(upstreamRes.statusCode || 200, headers);
-          res.end(rewritten);
-        } catch (error) {
-          res.writeHead(502, {
-            "content-type": "application/json; charset=utf-8",
-            "cache-control": "no-store",
-          });
-          res.end(JSON.stringify({ error: "manifest_rewrite_failed", message: error.message }));
-        }
-      });
     },
   );
 
@@ -209,7 +158,6 @@ const server = http.createServer((req, res) => {
     return void res.end(expoGoQr);
   }
   if (url.pathname === "/" && !isExpoManifestRequest(req)) return void sendLanding(res);
-  if (url.pathname === "/" && isExpoManifestRequest(req)) return void proxyManifest(req, res);
   proxyHttp(req, res);
 });
 
