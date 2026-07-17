@@ -7,6 +7,9 @@ const PORT = Number(process.env.GATEWAY_PORT || 8089);
 const UPSTREAM_HOST = process.env.EXPO_HOST || "127.0.0.1";
 const UPSTREAM_PORT = Number(process.env.EXPO_PORT || 8081);
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || "https://go.luche.ai";
+const DEPLOY_VERSION_FILE =
+  process.env.DEPLOY_VERSION_FILE ||
+  "/home/pi-rus/Downloads/feral-remote/luche-go/deploy/last-successful-sha";
 const EXPO_GO_URL = PUBLIC_ORIGIN.replace(/^https:/, "exps:").replace(/^http:/, "exp:");
 
 const landingTemplate = await readFile(new URL("./landing.html", import.meta.url), "utf8");
@@ -34,25 +37,84 @@ function isExpoManifestRequest(req) {
   return platform === "ios" || platform === "android";
 }
 
-function proxyHttp(req, res) {
-  const headers = {
+async function deployedCommit() {
+  const commit = (await readFile(DEPLOY_VERSION_FILE, "utf8")).trim();
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("invalid deployed commit");
+  return commit;
+}
+
+function upstreamHeaders(req, { identityEncoding = false } = {}) {
+  return {
     ...req.headers,
     host: `${UPSTREAM_HOST}:${UPSTREAM_PORT}`,
     "x-forwarded-host": req.headers.host || new URL(PUBLIC_ORIGIN).host,
     "x-forwarded-proto": new URL(PUBLIC_ORIGIN).protocol.slice(0, -1),
+    ...(identityEncoding ? { "accept-encoding": "identity" } : {}),
   };
+}
 
+function proxyHttp(req, res) {
   const upstream = http.request(
     {
       host: UPSTREAM_HOST,
       port: UPSTREAM_PORT,
       method: req.method,
       path: req.url,
-      headers,
+      headers: upstreamHeaders(req),
     },
     (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
       upstreamRes.pipe(res);
+    },
+  );
+
+  upstream.on("error", (error) => {
+    if (!res.headersSent) {
+      res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+    }
+    res.end(`Expo server unavailable: ${error.message}\n`);
+  });
+  req.pipe(upstream);
+}
+
+function proxyManifest(req, res) {
+  const upstream = http.request(
+    {
+      host: UPSTREAM_HOST,
+      port: UPSTREAM_PORT,
+      method: req.method,
+      path: req.url,
+      headers: upstreamHeaders(req, { identityEncoding: true }),
+    },
+    (upstreamRes) => {
+      const chunks = [];
+      upstreamRes.on("data", (chunk) => chunks.push(chunk));
+      upstreamRes.on("end", async () => {
+        const body = Buffer.concat(chunks);
+        try {
+          const manifest = JSON.parse(body.toString("utf8"));
+          const commit = await deployedCommit();
+          const launchUrl = new URL(manifest.launchAsset.url);
+          launchUrl.searchParams.set("lucheRelease", commit);
+          manifest.launchAsset.url = launchUrl.toString();
+          const rewritten = Buffer.from(JSON.stringify(manifest));
+          const headers = {
+            ...upstreamRes.headers,
+            "cache-control": "no-store",
+            "content-length": String(rewritten.length),
+          };
+          delete headers["content-encoding"];
+          delete headers["transfer-encoding"];
+          res.writeHead(upstreamRes.statusCode || 200, headers);
+          res.end(rewritten);
+        } catch (error) {
+          res.writeHead(502, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(JSON.stringify({ error: "manifest_rewrite_failed", message: error.message }));
+        }
+      });
     },
   );
 
@@ -106,9 +168,38 @@ async function health(res) {
   });
 }
 
+async function version(res) {
+  try {
+    const commit = await deployedCommit();
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "https://luche.ai",
+      vary: "Origin",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(
+      JSON.stringify({
+        commit,
+        short_commit: commit.slice(0, 12),
+        url: `https://github.com/la-luche/luchern/commit/${commit}`,
+      }),
+    );
+  } catch {
+    res.writeHead(503, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "https://luche.ai",
+      vary: "Origin",
+    });
+    res.end(JSON.stringify({ error: "deployed_version_unavailable" }));
+  }
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", PUBLIC_ORIGIN);
   if (url.pathname === "/_luche/health") return void health(res);
+  if (url.pathname === "/_luche/version") return void version(res);
   if (url.pathname === "/_luche/expo-go-qr.svg") {
     res.writeHead(200, {
       "content-type": "image/svg+xml",
@@ -118,6 +209,7 @@ const server = http.createServer((req, res) => {
     return void res.end(expoGoQr);
   }
   if (url.pathname === "/" && !isExpoManifestRequest(req)) return void sendLanding(res);
+  if (url.pathname === "/" && isExpoManifestRequest(req)) return void proxyManifest(req, res);
   proxyHttp(req, res);
 });
 
