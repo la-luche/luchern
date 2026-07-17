@@ -469,12 +469,16 @@ async function activateAccount(accountId: string): Promise<void> {
     loadPromise = null;
     await ensureLoaded();
     emit();
-    try {
-      await refreshFromServer(accountEpoch);
-    } catch (error) {
-      recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
-    }
+    // Local storage is enough to render the list/empty state. Do not make the
+    // screen's loading flag wait on a network request that can be slow or
+    // offline; merge cloud history in the background when it arrives.
     resumePending();
+    const epoch = accountEpoch;
+    void refreshFromServer(epoch)
+      .then(() => resumePending())
+      .catch((error) => {
+        recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
+      });
   })();
   activationPromise = activation;
   try {
