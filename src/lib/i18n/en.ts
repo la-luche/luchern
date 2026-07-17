@@ -110,7 +110,13 @@ export const en = {
     uploading: 'Uploading to server…',
     processing: 'Processing on server…',
     saveShare: 'Save / share video',
+    shareWithDoctor: 'Share this video with my doctor',
     backToMenu: 'Back to menu',
+  },
+  share: {
+    shareResults: 'Share results with my doctor',
+    summaryHeader: 'My Luche movement results:',
+    summaryFooter: 'Recorded with Luche — an automated screening, not a diagnosis.',
   },
   status: {
     uploading: 'Uploading…',

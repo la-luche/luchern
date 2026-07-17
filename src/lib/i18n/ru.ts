@@ -107,7 +107,13 @@ export const ru: Dict = {
     uploading: 'Загрузка на сервер…',
     processing: 'Обработка на сервере…',
     saveShare: 'Сохранить / поделиться видео',
+    shareWithDoctor: 'Share this video with my doctor',
     backToMenu: 'В меню',
+  },
+  share: {
+    shareResults: 'Share results with my doctor',
+    summaryHeader: 'My Luche movement results:',
+    summaryFooter: 'Recorded with Luche — an automated screening, not a diagnosis.',
   },
   status: {
     uploading: 'Загрузка…',

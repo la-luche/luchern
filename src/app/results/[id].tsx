@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
@@ -47,11 +48,24 @@ export default function ResultDetailScreen() {
       return;
     }
     try {
-      // The clip lives locally at recording.videoUri — opens the iOS share sheet
-      // (AirDrop, Save to Files, Save to Photos, …).
-      await Sharing.shareAsync(recording.videoUri, {
+      // Copy to a doctor-friendly filename (test + date) so the shared clip is
+      // self-explanatory, then open the share sheet (email, WhatsApp, AirDrop…).
+      const name = test ? t.tests[test.id].name : t.result.fallbackTitle;
+      const date = new Date(recording.createdAt).toISOString().slice(0, 10);
+      const safe = `Luche_${name}_${date}`.replace(/[^\w-]+/g, '_');
+      let uri = recording.videoUri;
+      if (FileSystem.cacheDirectory) {
+        const dest = `${FileSystem.cacheDirectory}${safe}.mp4`;
+        try {
+          await FileSystem.copyAsync({ from: recording.videoUri, to: dest });
+          uri = dest;
+        } catch {
+          // fall back to the original file if the copy fails
+        }
+      }
+      await Sharing.shareAsync(uri, {
         mimeType: 'video/mp4',
-        dialogTitle: t.result.shareDialogTitle,
+        dialogTitle: t.result.shareWithDoctor,
         UTI: 'public.movie',
       });
     } catch (e) {
@@ -173,7 +187,7 @@ export default function ResultDetailScreen() {
         </View>
 
         <View className="mt-8">
-          <Button title={t.result.saveShare} variant="secondary" onPress={shareVideo} />
+          <Button title={t.result.shareWithDoctor} variant="secondary" onPress={shareVideo} />
           <View className="mt-3">
             <Button title={t.result.backToMenu} onPress={() => router.navigate('/')} />
           </View>
