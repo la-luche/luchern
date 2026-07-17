@@ -133,7 +133,7 @@ export default function ResultDetailScreen() {
             <View className="mt-4 items-center">
               <Text className="text-[44px] font-bold text-ink">
                 {recording.result.updrsGrade != null
-                  ? recording.result.updrsGrade
+                  ? recording.result.updrsGrade.toFixed(1)
                   : recording.result.score.toFixed(2)}
               </Text>
               <Text className="text-[16px] font-medium text-ink-muted">

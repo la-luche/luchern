@@ -19,10 +19,14 @@ export type TestId =
   | 'gait'
   | 'restTremor';
 
+export type EvaluatedSide = 'left' | 'right';
+
 export interface TestConfig {
   id: TestId;
   updrsItem: string;
   icon: MCIName;
+  /** The backend must know which anatomical limb the patient was instructed to use. */
+  sideSpecific?: boolean;
   /**
    * Looping demo clip shown on the instruction screen. require()'d mp4 in
    * assets/demos/. Optional — tests without a filmed demo yet show an icon
@@ -39,6 +43,7 @@ export const TESTS: TestConfig[] = [
     id: 'fingerTapping',
     updrsItem: 'MDS-UPDRS 3.4',
     icon: 'gesture-tap',
+    sideSpecific: true,
     demoVideo: require('../../assets/demos/FingerTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/FingerTappingDemo.jpg'),
   },
@@ -46,6 +51,7 @@ export const TESTS: TestConfig[] = [
     id: 'handMovements',
     updrsItem: 'MDS-UPDRS 3.5',
     icon: 'hand-back-right',
+    sideSpecific: true,
     demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandMovementsDemo.jpg'),
   },
@@ -53,6 +59,7 @@ export const TESTS: TestConfig[] = [
     id: 'pronationSupination',
     updrsItem: 'MDS-UPDRS 3.6',
     icon: 'rotate-3d-variant',
+    sideSpecific: true,
     demoVideo: require('../../assets/demos/HandTurnsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandTurnsDemo.jpg'),
   },
@@ -60,11 +67,13 @@ export const TESTS: TestConfig[] = [
     id: 'toeTapping',
     updrsItem: 'MDS-UPDRS 3.7',
     icon: 'foot-print',
+    sideSpecific: true,
   },
   {
     id: 'legAgility',
     updrsItem: 'MDS-UPDRS 3.8',
     icon: 'shoe-print',
+    sideSpecific: true,
     demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/LegAgilityDemo.jpg'),
   },

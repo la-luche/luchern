@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { ApiError, apiFetch } from './api';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import type { CloudResult } from './types';
-import type { TestId } from './tests';
+import type { EvaluatedSide, TestId } from './tests';
 import { PollTimeoutError } from './uploadRetry';
 
 /**
@@ -185,6 +185,7 @@ export async function createAnalysisTrial(
   testId: TestId,
   clientTrialId: string,
   recordedAtMs: number,
+  evaluatedSide?: EvaluatedSide,
 ): Promise<{ jobId: string }> {
   try {
     const trial = await apiFetch<CreateTrialResp>('/trials', {
@@ -193,6 +194,7 @@ export async function createAnalysisTrial(
         upload_id: uploadId,
         test_type_id: testId,
         recorded_at: new Date(recordedAtMs).toISOString(),
+        metadata: evaluatedSide ? { evaluated_side: evaluatedSide } : {},
         client_trial_id: clientTrialId,
         analyze: true,
       }),

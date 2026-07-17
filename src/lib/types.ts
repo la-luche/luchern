@@ -1,4 +1,4 @@
-import type { TestId } from './tests';
+import type { EvaluatedSide, TestId } from './tests';
 
 /**
  * Lifecycle of a recording as it moves through the cloud
@@ -18,7 +18,7 @@ export interface CloudResult {
   isDemo: boolean;
   /** Real results are literature-heuristic estimates, not a diagnosis. */
   isEstimate?: boolean;
-  /** Derived MDS-UPDRS grade 0–4, when available. */
+  /** Derived MDS-UPDRS grade 0–4 rounded to one decimal, when available. */
   updrsGrade?: number;
   /** Heuristic confidence: "high" (finger tapping) | "low" (others). */
   confidence?: string;
@@ -31,6 +31,8 @@ export interface CloudResult {
 export interface Recording {
   id: string;
   testId: TestId;
+  /** Anatomical side selected before a unilateral hand/foot/leg capture. */
+  evaluatedSide?: EvaluatedSide;
   /** Epoch millis. */
   createdAt: number;
   /** Durable local file URI of the captured video. */

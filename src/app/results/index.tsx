@@ -28,7 +28,7 @@ export default function ResultsScreen() {
       const label = localizeSeverity(t, r.result!.label);
       const val =
         r.result!.updrsGrade != null
-          ? ` (${r.result!.updrsGrade})`
+          ? ` (${r.result!.updrsGrade.toFixed(1)})`
           : r.result!.score != null
             ? ` (${r.result!.score.toFixed(2)})`
             : '';

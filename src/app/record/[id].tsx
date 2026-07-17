@@ -35,10 +35,11 @@ function formatElapsed(seconds: number): string {
  * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, side } = useLocalSearchParams<{ id: string; side?: string }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
+  const evaluatedSide = side === 'left' || side === 'right' ? side : undefined;
 
   const [camPerm, requestCam] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -85,6 +86,9 @@ export default function RecordScreen() {
   );
 
   if (!test) return <Redirect href="/" />;
+  if (test.sideSpecific && !evaluatedSide) {
+    return <Redirect href={{ pathname: '/test/[id]', params: { id: test.id } }} />;
+  }
 
   const permissionsGranted = camPerm?.granted;
 
@@ -118,7 +122,7 @@ export default function RecordScreen() {
     if (!tempUri || submitting) return;
     setSubmitting(true);
     try {
-      const rec = await addRecording(test.id, tempUri);
+      const rec = await addRecording(test.id, tempUri, evaluatedSide);
       submittedRef.current = true; // storage now owns the file — don't clean it up
       cues.saved();
       showToast(t.toast.saved);

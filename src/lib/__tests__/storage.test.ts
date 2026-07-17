@@ -145,8 +145,31 @@ describe('driveOnce', () => {
     const rec = { ...baseRec(), status: 'processing' as const, uploadId: 'up-1' };
     const patch = await driveOnce(rec, { maxBackoffs: 0 });
     expect(uploadRecording).not.toHaveBeenCalled();
-    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0);
+    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0, undefined);
     expect(patch.status).toBe('done');
+  });
+
+  it('keeps the selected anatomical side through trial submission', async () => {
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '165' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.375, updrsGrade: 1.5, label: 'Slight' });
+    const rec = {
+      ...baseRec(),
+      testId: 'handMovements' as const,
+      evaluatedSide: 'left' as const,
+      status: 'processing' as const,
+      uploadId: 'up-165',
+    };
+
+    const patch = await driveOnce(rec, { maxBackoffs: 0 });
+
+    expect(createAnalysisTrial).toHaveBeenCalledWith(
+      'up-165',
+      'handMovements',
+      'r1',
+      0,
+      'left',
+    );
+    expect(patch).toMatchObject({ status: 'done', result: { updrsGrade: 1.5 } });
   });
 
   it('keeps uploadId when the small trial request fails', async () => {

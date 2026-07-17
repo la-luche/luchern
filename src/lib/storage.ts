@@ -14,7 +14,7 @@ import {
 import { ApiError } from './api';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import { deleteRecordingFile, persistRecordingFile } from './recordingFiles';
-import type { TestId } from './tests';
+import type { EvaluatedSide, TestId } from './tests';
 import type { Recording } from './types';
 import {
   PollTimeoutError,
@@ -97,7 +97,13 @@ async function createTrialWithRetry(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
     try {
-      const res = await createAnalysisTrial(uploadId, rec.testId, rec.id, rec.createdAt);
+      const res = await createAnalysisTrial(
+        uploadId,
+        rec.testId,
+        rec.id,
+        rec.createdAt,
+        rec.evaluatedSide,
+      );
       return res.jobId;
     } catch (e) {
       lastErr = e;
@@ -328,13 +334,18 @@ async function drive(rec: Recording) {
 
 // --- Public store operations ---------------------------------------------------
 
-async function add(testId: TestId, videoUri: string): Promise<Recording> {
+async function add(
+  testId: TestId,
+  videoUri: string,
+  evaluatedSide?: EvaluatedSide,
+): Promise<Recording> {
   const list = await ensureLoaded();
   const id = makeId();
   const durableUri = await persistRecordingFile(videoUri, id);
   const rec: Recording = {
     id,
     testId,
+    evaluatedSide,
     createdAt: Date.now(),
     videoUri: durableUri,
     status: 'uploading',
@@ -377,6 +388,7 @@ async function removeById(id: string) {
         recording.testId,
         recording.id,
         recording.createdAt,
+        recording.evaluatedSide,
       );
       jobId = recovered.jobId;
     }
