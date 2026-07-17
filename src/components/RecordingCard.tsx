@@ -28,6 +28,9 @@ export function RecordingCard({
   const t = useT();
   const test = getTest(recording.testId);
   const name = test ? t.tests[test.id].name : t.recordingCard.fallback;
+  const updrsGrade = recording.result
+    ? recording.result.updrsGrade ?? Math.min(4, Math.max(0, recording.result.score * 4))
+    : undefined;
   return (
     <Pressable
       onPress={onPress}
@@ -53,7 +56,7 @@ export function RecordingCard({
       {recording.status === 'done' && recording.result && (
         <View className="items-end">
           <Text className="text-[20px] font-bold text-ink">
-            {recording.result.score.toFixed(2)}
+            {updrsGrade?.toFixed(1)}
           </Text>
           <Text className="text-[14px] text-ink-muted">
             {localizeSeverity(t, recording.result.label)}
