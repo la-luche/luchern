@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useT } from '../lib/i18n';
 import { COLORS } from '../lib/theme';
 import { Button } from './Button';
+import { LanguagePicker } from './LanguagePicker';
 
 const ACCEPTED_KEY = 'luche.disclaimerAccepted.v1';
 
@@ -41,6 +42,9 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
     <View className="flex-1 bg-white">
       <SafeAreaView className="flex-1">
         <ScrollView contentContainerClassName="grow justify-center px-7 py-10">
+          <View className="mb-8">
+            <LanguagePicker />
+          </View>
           <View className="mb-6 items-center">
             <MaterialCommunityIcons name="shield-alert-outline" size={56} color={COLORS.ink} />
           </View>

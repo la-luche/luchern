@@ -248,13 +248,20 @@ export default function ResultDetailScreen() {
           ) : (
             <View className="mt-4 flex-row items-center gap-3">
               <ActivityIndicator color={COLORS.ink} />
-              <Text className="text-[14px] text-ink-muted">
-                {recording.status === 'uploading'
-                  ? recording.uploadRetrying
-                    ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
-                    : t.result.uploading
-                  : t.result.processing}
-              </Text>
+              <View className="flex-1">
+                <Text className="text-[14px] text-ink-muted">
+                  {recording.status === 'uploading'
+                    ? recording.uploadRetrying
+                      ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
+                      : t.result.uploading
+                    : t.result.processing}
+                </Text>
+                {recording.status === 'processing' && (
+                  <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
+                    {t.result.processingWait}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
         </View>

@@ -179,6 +179,7 @@ export const en = {
     permanentFailed: 'This recording couldn’t be uploaded. Please make a new recording.',
     uploading: 'Uploading your recording…',
     processing: 'Getting your result…',
+    processingWait: 'Getting your result may take a few minutes. You can leave this screen and come back later.',
     saveShare: 'Save or share video',
     shareWithDoctor: 'Save or share this video',
     backToMenu: 'Back to home',
@@ -206,6 +207,7 @@ export const en = {
   },
   recordingCard: {
     fallback: 'Recording',
+    processingMayTake: 'May take a few minutes',
     a11y: (name: string, date: string) => `${name} from ${date}`,
   },
   testRow: {
@@ -227,6 +229,9 @@ export const en = {
     verify: 'Continue',
     useDifferentEmail: 'Use a different email',
     orContinueWithEmail: 'or continue with email',
+    developmentNoticeTitle: 'We’re still in development',
+    developmentNoticeBody:
+      'Sign-in is handled by Clerk, our authentication provider. Clerk receives basic account information such as your name and email, but never your Luche videos, recordings, or results.',
     genericError: 'We couldn’t sign you in. Please try again.',
   },
   severity: {

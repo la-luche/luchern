@@ -177,6 +177,7 @@ export const it: Dict = {
     permanentFailed: 'Impossibile caricare questa registrazione. Registrala di nuovo.',
     uploading: 'Invio della registrazione al server…',
     processing: 'Preparazione del risultato…',
+    processingWait: 'Preparare il risultato può richiedere alcuni minuti. Puoi uscire da questa schermata e tornare più tardi.',
     saveShare: 'Salva o condividi il video',
     shareWithDoctor: 'Condividi questo video',
     backToMenu: 'Torna al menu',
@@ -204,6 +205,7 @@ export const it: Dict = {
   },
   recordingCard: {
     fallback: 'Registrazione',
+    processingMayTake: 'Può richiedere alcuni minuti',
     a11y: (name: string, date: string) => `${name} del ${date}`,
   },
   testRow: {
@@ -225,6 +227,9 @@ export const it: Dict = {
     verify: 'Verifica',
     useDifferentEmail: 'Usa un’altra email',
     orContinueWithEmail: 'oppure usa l’email',
+    developmentNoticeTitle: 'Siamo ancora in fase di sviluppo',
+    developmentNoticeBody:
+      'L’accesso a Luche è gestito da Clerk, il nostro servizio di autenticazione. Clerk riceve solo le informazioni di base dell’account, come nome ed email, e mai i video, le registrazioni o i risultati di Luche.',
     genericError: 'Non è stato possibile accedere. Riprova.',
   },
   severity: {

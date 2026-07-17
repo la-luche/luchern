@@ -56,6 +56,9 @@ export function SharedRecordingCard({
         <View className="items-end gap-1">
           <ActivityIndicator size="small" color={COLORS.inkMuted} />
           <Text className="text-[12px] text-ink-muted">{t.resultsList.scorePending}</Text>
+          <Text className="max-w-[92px] text-right text-[12px] leading-4 text-ink-muted">
+            {t.recordingCard.processingMayTake}
+          </Text>
         </View>
       ) : (
         <Text className="text-[20px] font-bold text-ink">{grade.toFixed(1)}</Text>

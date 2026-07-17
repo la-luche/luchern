@@ -51,6 +51,11 @@ export function RecordingCard({
         <Text className="text-[17px] font-semibold text-ink">{name}</Text>
         <Text className="text-[15px] text-ink-muted">{formatDate(recording.createdAt)}</Text>
         <StatusPill status={recording.status} />
+        {recording.status === 'processing' && (
+          <Text className="text-[13px] leading-4 text-ink-muted">
+            {t.recordingCard.processingMayTake}
+          </Text>
+        )}
       </View>
 
       {recording.status === 'done' && recording.result && (

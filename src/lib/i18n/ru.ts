@@ -178,6 +178,7 @@ export const ru: Dict = {
     permanentFailed: 'Эту запись не удалось загрузить. Запишите движение ещё раз.',
     uploading: 'Загружаем запись…',
     processing: 'Готовим результат…',
+    processingWait: 'Подготовка результата может занять несколько минут. Можно закрыть этот экран и вернуться позже.',
     saveShare: 'Сохранить видео или поделиться им',
     shareWithDoctor: 'Поделиться видео',
     backToMenu: 'В меню',
@@ -204,6 +205,7 @@ export const ru: Dict = {
   },
   recordingCard: {
     fallback: 'Запись',
+    processingMayTake: 'Может занять несколько минут',
     a11y: (name: string, date: string) => `${name} от ${date}`,
   },
   testRow: {
@@ -225,6 +227,9 @@ export const ru: Dict = {
     verify: 'Подтвердить',
     useDifferentEmail: 'Указать другой адрес',
     orContinueWithEmail: 'или войти по почте',
+    developmentNoticeTitle: 'Мы всё ещё в разработке',
+    developmentNoticeBody:
+      'Вход в Luche обеспечивает Clerk, наш сервис авторизации. Clerk получает основные данные аккаунта, например имя и адрес электронной почты, но никогда не получает видео, записи или результаты Luche.',
     genericError: 'Не удалось войти. Попробуйте ещё раз.',
   },
   severity: {
@@ -370,7 +375,7 @@ export const ru: Dict = {
       cueStart: 'Поднимайте стопу и с силой ставьте её на пол',
     },
     restTremor: {
-      name: 'Руки в покое',
+      name: 'Тремор в покое',
       descriptor: 'Расслабьте руки и не двигайтесь',
       title: 'Расслабьте руки и не двигайтесь',
       blurb: 'Короткая запись расслабленных рук.',
