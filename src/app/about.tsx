@@ -62,8 +62,11 @@ export default function AboutScreen() {
     setLoggingOut(true);
     try {
       await logoutAndPurge();
-      await signOut();
+      // AuthGate unmounts the entire Stack as soon as Clerk signs out. Reset
+      // the route while that navigator still exists; dispatching afterward
+      // produces React Navigation's unhandled REPLACE(index) warning.
       router.replace('/');
+      await signOut();
     } catch {
       Alert.alert(t.profile.logoutFailedTitle, t.profile.logoutFailedBody);
       setLoggingOut(false);
