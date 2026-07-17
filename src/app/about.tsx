@@ -54,9 +54,6 @@ export default function AboutScreen() {
     <Screen>
       <Header title={t.about.title} />
       <ScrollView contentContainerClassName="px-6 pb-10">
-        <Text className="mt-2 text-[28px] font-bold text-ink">{t.common.appName}</Text>
-        <Text className="mt-1 text-[14px] text-ink-muted">{t.about.subtitle}</Text>
-
         <Section title={t.invite.title}>
           <Button
             title={t.invite.enterButton}

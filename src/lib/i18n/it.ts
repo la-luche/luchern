@@ -10,7 +10,6 @@ export const it: Dict = {
     iUnderstand: 'Ho capito',
   },
   menu: {
-    chooseTest: 'Scegli un test',
     startFullCheck: 'Avvia controllo completo',
     orSingle: 'Oppure scegli un singolo test qui sotto',
     previousRecordings: 'Registrazioni precedenti',
@@ -58,7 +57,6 @@ export const it: Dict = {
   },
   about: {
     title: 'Informazioni',
-    subtitle: 'Registratore di test motori',
     disclaimerTitle: 'Avviso medico',
     disclaimerBody:
       'Luche è uno strumento di ricerca e benessere. Non è un dispositivo medico e non fornisce una diagnosi. I risultati sono solo a scopo informativo — consulta sempre un medico qualificato per la tua salute.',

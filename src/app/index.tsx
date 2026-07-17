@@ -44,7 +44,6 @@ export default function MenuScreen() {
         {/* Title block. */}
         <View className="items-center pt-3">
           <Text className="text-[28px] font-bold text-ink">{t.common.appName}</Text>
-          <Text className="mt-1 text-[15px] font-medium text-ink-muted">{t.menu.chooseTest}</Text>
         </View>
 
         {/* Run-all session. */}

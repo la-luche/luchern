@@ -10,7 +10,6 @@ export const ru: Dict = {
     iUnderstand: 'Понятно',
   },
   menu: {
-    chooseTest: 'Выберите тест',
     startFullCheck: 'Start full check',
     orSingle: 'Or choose a single test below',
     previousRecordings: 'Предыдущие записи',
@@ -58,7 +57,6 @@ export const ru: Dict = {
   },
   about: {
     title: 'О приложении',
-    subtitle: 'Запись двигательных тестов',
     disclaimerTitle: 'Медицинское предупреждение',
     disclaimerBody:
       'Luche — инструмент для исследований и оздоровления. Это не медицинское устройство, и оно не ставит диагноз. Результаты предназначены только для информационных целей — всегда консультируйтесь с квалифицированным врачом о своём здоровье.',

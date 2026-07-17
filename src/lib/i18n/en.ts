@@ -13,7 +13,6 @@ export const en = {
     iUnderstand: 'I understand',
   },
   menu: {
-    chooseTest: 'Choose a test',
     startFullCheck: 'Start full check',
     orSingle: 'Or choose a single test below',
     previousRecordings: 'Previous recordings',
@@ -61,7 +60,6 @@ export const en = {
   },
   about: {
     title: 'About',
-    subtitle: 'Movement test recorder',
     disclaimerTitle: 'Medical disclaimer',
     disclaimerBody:
       'Luche is a research and wellness tool. It is not a medical device and does not provide a diagnosis. Results are for informational purposes only — always consult a qualified clinician about your health.',
