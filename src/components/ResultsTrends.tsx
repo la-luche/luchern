@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 
 import { useT } from '../lib/i18n';
 import type { SharedRecording } from '../lib/sharedRecordings';
-import { TESTS } from '../lib/tests';
+import { getTest, TESTS } from '../lib/tests';
 import type { Recording } from '../lib/types';
 import { TrendChart, type TrendPoint } from './TrendChart';
 
@@ -74,10 +74,11 @@ export function SharedResultsTrends({
   const sections = [...new Set(scored.map((recording) => recording.testId))].map((testId) => {
     const matching = scored.filter((recording) => recording.testId === testId);
     const first = matching[0];
+    const localTest = getTest(testId);
     return {
       testId,
-      name: first.testName,
-      descriptor: first.updrsItem || first.unit,
+      name: localTest ? t.tests[localTest.id].name : first.testName,
+      descriptor: localTest ? t.tests[localTest.id].descriptor : '',
       points: matching.map((recording) => ({
         id: String(recording.trialId),
         t: recording.createdAt,
@@ -96,9 +97,11 @@ export function SharedResultsTrends({
         <View key={section.testId} className="rounded-2xl border border-ink-faint bg-white p-4">
           <View className="mb-1">
             <Text className="text-[16px] font-semibold text-ink">{section.name}</Text>
-            <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
-              {section.descriptor}
-            </Text>
+            {!!section.descriptor && (
+              <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
+                {section.descriptor}
+              </Text>
+            )}
           </View>
           <TrendChart
             points={section.points}

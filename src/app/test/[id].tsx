@@ -79,13 +79,6 @@ export default function InstructionScreen() {
             onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
           />
         </View>
-
-        {/* Quiet footer: clinical reference only. The not-a-diagnosis reminder
-            lives on the result screen (and the first-launch disclaimer) — no
-            need to repeat it before every test. */}
-        <Text className="mt-6 text-center text-[12px] leading-5 text-ink-muted">
-          {test.updrsItem}
-        </Text>
       </ScrollView>
     </Screen>
   );

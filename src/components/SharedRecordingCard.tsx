@@ -26,6 +26,7 @@ export function SharedRecordingCard({
 }) {
   const t = useT();
   const localTest = getTest(recording.testId);
+  const name = localTest ? t.tests[localTest.id].name : recording.testName;
   const date = formatDate(recording.createdAt);
   const grade = recording.score == null
     ? null
@@ -35,7 +36,7 @@ export function SharedRecordingCard({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={t.recordingCard.a11y(recording.testName, date)}
+      accessibilityLabel={t.recordingCard.a11y(name, date)}
       className="mb-3 flex-row items-center rounded-2xl border border-ink-faint bg-white p-4 active:opacity-70"
     >
       <View className="h-14 w-14 items-center justify-center rounded-xl bg-ink">
@@ -47,11 +48,8 @@ export function SharedRecordingCard({
       </View>
 
       <View className="ml-4 flex-1 gap-1">
-        <Text className="text-[17px] font-semibold text-ink">{recording.testName}</Text>
+        <Text className="text-[17px] font-semibold text-ink">{name}</Text>
         <Text className="text-[15px] text-ink-muted">{date}</Text>
-        {!!recording.updrsItem && (
-          <Text className="text-[13px] text-ink-muted">{recording.updrsItem}</Text>
-        )}
       </View>
 
       {grade == null ? (

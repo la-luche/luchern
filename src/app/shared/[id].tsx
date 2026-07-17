@@ -12,6 +12,7 @@ import {
   fetchSharedTrialDetail,
   type SharedTrialDetail,
 } from '../../lib/sharedRecordings';
+import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
 function RemoteVideo({ uri }: { uri: string }) {
@@ -83,10 +84,13 @@ export default function SharedResultDetailScreen() {
     : detail?.unit === '% fog'
       ? t.resultsList.fog
       : t.resultsList.severity;
+  const localTest = getTest(detail?.test_type_id);
 
   return (
     <Screen>
-      <Header title={detail?.display_name ?? t.result.fallbackTitle} />
+      <Header
+        title={localTest ? t.tests[localTest.id].name : detail?.display_name ?? t.result.fallbackTitle}
+      />
       <ScrollView contentContainerClassName="px-6 pb-10">
         {!!ownerName && (
           <Text className="mb-3 text-center text-[14px] text-ink-muted">
@@ -123,9 +127,6 @@ export default function SharedResultDetailScreen() {
         ) : detail ? (
           <>
             <View className="mt-4 rounded-2xl border border-ink-faint p-5">
-              <Text className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
-                {detail.updrs_item}
-              </Text>
               {noScore ? (
                 <View className="mt-3">
                   <Text className="text-[16px] font-semibold text-red-700">
