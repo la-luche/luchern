@@ -67,6 +67,13 @@ export default function AboutScreen() {
             variant="secondary"
             onPress={() => router.push('/invite')}
           />
+          <View className="mt-3">
+            <Button
+              title={t.generate.generate}
+              variant="secondary"
+              onPress={() => router.push('/share-code')}
+            />
+          </View>
         </Section>
 
         <Section title={t.about.languageTitle}>

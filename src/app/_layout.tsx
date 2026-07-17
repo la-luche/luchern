@@ -38,6 +38,7 @@ export default function RootLayout() {
                 <Stack.Screen name="results/index" />
                 <Stack.Screen name="results/[id]" />
                 <Stack.Screen name="invite" />
+                <Stack.Screen name="share-code" />
                 <Stack.Screen name="about" options={{ presentation: 'modal' }} />
               </Stack>
               <ToastHost />

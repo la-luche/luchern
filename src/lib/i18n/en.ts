@@ -44,6 +44,18 @@ export const en = {
       generic: 'Something went wrong. Please try again.',
     },
   },
+  generate: {
+    title: 'Generate a code',
+    prompt:
+      'Create a code and share it with the person whose recordings you want to see. When they enter it, their recordings become visible to you.',
+    generate: 'Generate a code',
+    yourCode: 'Your code',
+    instructions:
+      'Share this code with them. Once they enter it, their recordings appear under your account.',
+    shareCode: 'Share this code',
+    shareMessage: (code: string) => `Connect with me on Luche — enter this code: ${code}`,
+    error: 'Could not create a code right now. Please try again.',
+  },
   about: {
     title: 'About',
     subtitle: 'Movement test recorder',

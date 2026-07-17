@@ -41,6 +41,18 @@ export const it: Dict = {
       generic: 'Qualcosa è andato storto. Riprova.',
     },
   },
+  generate: {
+    title: 'Genera un codice',
+    prompt:
+      'Crea un codice e condividilo con la persona di cui vuoi vedere le registrazioni. Quando lo inserisce, le sue registrazioni diventano visibili a te.',
+    generate: 'Genera un codice',
+    yourCode: 'Il tuo codice',
+    instructions:
+      'Condividi questo codice con lei. Una volta inserito, le sue registrazioni appariranno nel tuo account.',
+    shareCode: 'Condividi il codice',
+    shareMessage: (code: string) => `Collegati a me su Luche — inserisci questo codice: ${code}`,
+    error: 'Impossibile creare un codice al momento. Riprova.',
+  },
   about: {
     title: 'Informazioni',
     subtitle: 'Registratore di test motori',
