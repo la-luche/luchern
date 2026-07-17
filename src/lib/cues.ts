@@ -30,15 +30,6 @@ function say(text: string): void {
 }
 
 export const cues = {
-  /** Shutter tapped → countdown begins. */
-  getReady(text: string): void {
-    buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-    say(text);
-  },
-  /** Each countdown second. Haptic only — no speech, to avoid overlap. */
-  tick(): void {
-    buzz(() => Haptics.selectionAsync());
-  },
   /** Recording actually started → strong buzz + spoken action ("Start walking"). */
   start(text: string): void {
     buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
@@ -48,5 +39,9 @@ export const cues = {
   stop(text: string): void {
     buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
     say(text);
+  },
+  /** Clip submitted → a quiet success buzz (no speech; a toast carries the text). */
+  saved(): void {
+    buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
   },
 };

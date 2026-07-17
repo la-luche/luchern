@@ -21,34 +21,6 @@ export function FramingGuide({ hint }: { hint: string }) {
   );
 }
 
-/** Full-screen "get ready" countdown before recording actually begins. */
-export function CountdownOverlay({
-  count,
-  label,
-  cancelLabel,
-  onCancel,
-}: {
-  count: number;
-  label: string;
-  cancelLabel: string;
-  onCancel: () => void;
-}) {
-  return (
-    <View className="absolute inset-0 items-center justify-center bg-black/45">
-      <Text className="text-[18px] font-semibold text-white/90">{label}</Text>
-      <Text className="mt-1 text-[96px] font-bold leading-[104px] text-white">{count}</Text>
-      <Pressable
-        onPress={onCancel}
-        accessibilityRole="button"
-        accessibilityLabel={cancelLabel}
-        className="mt-8 rounded-full bg-white/20 px-6 py-2.5 active:opacity-70"
-      >
-        <Text className="text-[15px] font-semibold text-white">{cancelLabel}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 /**
  * Review-before-submit panel: replays the clip that was just captured and lets
  * the patient confirm it looks right before anything is uploaded. Submit hands

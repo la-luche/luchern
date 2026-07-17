@@ -5,7 +5,6 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, Text, View } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
@@ -16,6 +15,7 @@ import { useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { advanceSession, endSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
+import { showToast } from '../../lib/toast';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
@@ -53,7 +53,6 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
-  const zoomBase = useRef(0);
 
   // Pending clip awaiting review. Refs mirror it so the unmount cleanup can
   // delete an un-submitted temp file without capturing stale state.
@@ -121,6 +120,8 @@ export default function RecordScreen() {
     try {
       const rec = await addRecording(test.id, tempUri);
       submittedRef.current = true; // storage now owns the file — don't clean it up
+      cues.saved();
+      showToast(t.toast.saved);
       if (session.active) {
         // Guided session: advance to the next test (or finish). A failed upload
         // doesn't block — the clip is saved and retries in the background.
@@ -157,18 +158,6 @@ export default function RecordScreen() {
   const stepZoom = (delta: number) =>
     setZoom((z) => Math.min(1, Math.max(0, Math.round((z + delta) * 100) / 100)));
 
-  // Pinch-to-zoom, only while framing (zoom is frozen for the clip).
-  const pinch = Gesture.Pinch()
-    .enabled(phase === 'framing')
-    .runOnJS(true)
-    .onStart(() => {
-      zoomBase.current = zoom;
-    })
-    .onUpdate((e) => {
-      const next = Math.min(Math.max(zoomBase.current + (e.scale - 1) * 0.4, 0), 1);
-      setZoom(next);
-    });
-
   // --- Permission gate ---------------------------------------------------------
   if (!permissionsGranted) {
     const permanentlyDenied = camPerm && !camPerm.granted && !camPerm.canAskAgain;
@@ -199,9 +188,7 @@ export default function RecordScreen() {
 
   // --- Camera --------------------------------------------------------------------
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <GestureDetector gesture={pinch}>
-        <View className="flex-1 bg-black">
+    <View className="flex-1 bg-black">
           {/* No audio (mute), 720p, and a 3 Mbps HEVC cap. The keypoint model only
               sees ~768px so higher res/bitrate is wasted upload; 3 Mbps HEVC keeps
               keypoint quality. NB: videoQuality presets are Android-only in
@@ -297,13 +284,7 @@ export default function RecordScreen() {
               </View>
             )}
 
-            <View className="flex-1 items-center justify-end pb-4" pointerEvents="none">
-              {phase === 'framing' && zoom === 0 && (
-                <View className="rounded-full bg-black/40 px-3 py-1.5">
-                  <Text className="text-[15px] font-medium text-white/80">{t.record.pinchToZoom}</Text>
-                </View>
-              )}
-            </View>
+            <View className="flex-1" pointerEvents="none" />
 
             {/* Bottom control — Start / End (hidden during review). */}
             {(phase === 'framing' || recording) && (
@@ -350,8 +331,6 @@ export default function RecordScreen() {
               onRetake={retakeClip}
             />
           )}
-        </View>
-      </GestureDetector>
-    </GestureHandlerRootView>
+    </View>
   );
 }

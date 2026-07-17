@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEffect, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Image, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, Text, View } from 'react-native';
 
 import { COLORS } from '../lib/theme';
 
@@ -34,13 +35,33 @@ export function DemoVideo({
   caption: string;
 }) {
   const hasVideo = source != null;
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => {
+      if (active) setReduceMotion(v);
+    });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
+
   const player = useVideoPlayer(source ?? null, (p) => {
     p.loop = true;
     p.muted = true;
-    p.play();
   });
   const { status } = useEvent(player, 'statusChange', { status: player.status });
   const ready = hasVideo && status === 'readyToPlay';
+
+  // Autoplay the loop — unless the OS "reduce motion" setting is on, in which
+  // case hold the first frame still.
+  useEffect(() => {
+    if (source == null) return;
+    if (reduceMotion) player.pause();
+    else player.play();
+  }, [reduceMotion, player, source]);
 
   return (
     <View className="mt-2">
