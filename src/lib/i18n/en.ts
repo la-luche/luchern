@@ -64,9 +64,6 @@ export const en = {
     disclaimerTitle: 'Medical disclaimer',
     disclaimerBody:
       'Luche is a research and wellness tool. It is not a medical device and does not provide a diagnosis. Results are for informational purposes only — always consult a qualified clinician about your health.',
-    privacyTitle: 'Privacy',
-    privacyBody:
-      'Recordings are saved on this device and uploaded securely to our cloud for analysis. Uploaded video, derived keypoints, analysis results, and account identifiers may be retained until you delete the recording. Deleting a completed recording removes the local copy and requests deletion from our server.',
     versionTitle: 'Version',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Latest GitHub commit',

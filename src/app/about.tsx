@@ -74,10 +74,6 @@ export default function AboutScreen() {
           <Text className="text-[15px] leading-6 text-ink/70">{t.about.disclaimerBody}</Text>
         </Section>
 
-        <Section title={t.about.privacyTitle}>
-          <Text className="text-[15px] leading-6 text-ink/70">{t.about.privacyBody}</Text>
-        </Section>
-
         <Section title={t.about.supportTitle}>
           <Text className="mb-3 text-[15px] leading-6 text-ink/70">
             {t.about.diagnosticsBody}

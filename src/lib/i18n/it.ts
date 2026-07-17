@@ -61,9 +61,6 @@ export const it: Dict = {
     disclaimerTitle: 'Avviso medico',
     disclaimerBody:
       'Luche è uno strumento di ricerca e benessere. Non è un dispositivo medico e non fornisce una diagnosi. I risultati sono solo a scopo informativo — consulta sempre un medico qualificato per la tua salute.',
-    privacyTitle: 'Privacy',
-    privacyBody:
-      'Le registrazioni vengono salvate su questo dispositivo e caricate in modo sicuro nel cloud per l’analisi. Il video caricato, i keypoint derivati, i risultati e gli identificatori dell’account possono essere conservati finché non elimini la registrazione. L’eliminazione di una registrazione completata rimuove la copia locale e ne richiede l’eliminazione dal server.',
     versionTitle: 'Versione',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Ultimo commit GitHub',

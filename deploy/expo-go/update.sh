@@ -135,6 +135,13 @@ print(url.path + (("?" + url.query) if url.query else ""))
         rm -f "$bundle_file"
         return 1
     fi
+    if grep -aFq -- \
+        'Recordings are saved on this device and uploaded securely to our cloud for analysis.' \
+        "$bundle_file"; then
+        log "$platform bundle still contains the removed About privacy copy"
+        rm -f "$bundle_file"
+        return 1
+    fi
     rm -f "$bundle_file"
 }
 
