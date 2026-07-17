@@ -60,6 +60,8 @@ export const TESTS: TestConfig[] = [
     id: 'toeTapping',
     updrsItem: 'MDS-UPDRS 3.7',
     icon: 'foot-print',
+    demoVideo: require('../../assets/demos/ToeTappingDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/ToeTappingDemo.jpg'),
   },
   {
     id: 'legAgility',
@@ -86,6 +88,8 @@ export const TESTS: TestConfig[] = [
     id: 'restTremor',
     updrsItem: 'MDS-UPDRS 3.17',
     icon: 'vibrate',
+    demoVideo: require('../../assets/demos/RestTremorDemo.mp4'),
+    demoPoster: require('../../assets/demos/posters/RestTremorDemo.jpg'),
   },
 ];
 
