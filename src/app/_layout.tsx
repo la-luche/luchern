@@ -37,6 +37,7 @@ export default function RootLayout() {
                 <Stack.Screen name="record/[id]" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="results/index" />
                 <Stack.Screen name="results/[id]" />
+                <Stack.Screen name="invite" />
                 <Stack.Screen name="about" options={{ presentation: 'modal' }} />
               </Stack>
               <ToastHost />

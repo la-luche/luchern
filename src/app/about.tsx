@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { Alert, Linking, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
@@ -33,6 +34,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function AboutScreen() {
   const t = useT();
+  const router = useRouter();
   const gitCommit = Constants.expoConfig?.extra?.gitCommit as GitCommit | null | undefined;
 
   const shareDiagnostics = async () => {
@@ -58,6 +60,14 @@ export default function AboutScreen() {
       <ScrollView contentContainerClassName="px-6 pb-10">
         <Text className="mt-2 text-[28px] font-bold text-ink">{t.common.appName}</Text>
         <Text className="mt-1 text-[14px] text-ink-muted">{t.about.subtitle}</Text>
+
+        <Section title={t.invite.title}>
+          <Button
+            title={t.invite.enterButton}
+            variant="secondary"
+            onPress={() => router.push('/invite')}
+          />
+        </Section>
 
         <Section title={t.about.languageTitle}>
           <LanguagePicker />
