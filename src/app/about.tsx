@@ -1,21 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Alert, Linking, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
+import { BUNDLED_GIT_COMMIT, BUNDLE_COMMIT_PREFIX } from '../generated/release';
 import { Header } from '../components/Header';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
 import { exportDiagnostics } from '../lib/diagnostics';
-
-type GitCommit = {
-  message: string;
-  sha: string;
-  url: string;
-};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -31,7 +25,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function AboutScreen() {
   const t = useT();
   const router = useRouter();
-  const gitCommit = Constants.expoConfig?.extra?.gitCommit as GitCommit | null | undefined;
+  const gitCommit = BUNDLED_GIT_COMMIT;
+  const bundledSha = gitCommit?.bundleMarker.startsWith(BUNDLE_COMMIT_PREFIX)
+    ? gitCommit.bundleMarker.slice(BUNDLE_COMMIT_PREFIX.length)
+    : null;
 
   const shareDiagnostics = async () => {
     try {
@@ -93,7 +90,7 @@ export default function AboutScreen() {
         </Section>
 
         <Section title={t.about.commitTitle}>
-          {gitCommit ? (
+          {gitCommit && bundledSha ? (
             <>
               <Text className="text-[15px] leading-6 text-ink/70">{gitCommit.message}</Text>
               <Text
@@ -102,7 +99,7 @@ export default function AboutScreen() {
                 selectable
                 className="mt-2 font-mono text-[13px] leading-5 text-blue-600"
               >
-                {gitCommit.sha}
+                {bundledSha}
               </Text>
             </>
           ) : (

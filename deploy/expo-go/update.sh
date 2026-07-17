@@ -69,14 +69,23 @@ prepare_release_entry() {
     local release=$1
     local sha=$2
     local entry_name=.luche-entry-${sha}.js
+    local commit_subject
+    commit_subject=$(git -C "$release" log -1 --format=%s)
     # Keep the Expo scope stable. Expo Go namespaces local recordings and auth
     # state by this slug, so release-specific slugs make existing data vanish.
     local release_slug=luche-rn
 
     printf "import 'expo-router/entry';\n" > "$release/$entry_name"
-    node - "$release/package.json" "./$entry_name" "$release/app.json" "$release_slug" <<'NODE'
+    node - \
+        "$release/package.json" \
+        "./$entry_name" \
+        "$release/app.json" \
+        "$release_slug" \
+        "$release/src/generated/release.ts" \
+        "$sha" \
+        "$commit_subject" <<'NODE'
 const fs = require('node:fs');
-const [packagePath, main, appPath, slug] = process.argv.slice(2);
+const [packagePath, main, appPath, slug, releaseModulePath, sha, message] = process.argv.slice(2);
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 pkg.main = main;
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
@@ -84,12 +93,25 @@ fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
 app.expo.slug = slug;
 fs.writeFileSync(appPath, `${JSON.stringify(app, null, 2)}\n`);
+
+const repositoryUrl = 'https://github.com/la-luche/luchern';
+const bundledCommit = {
+  bundleMarker: `LUCHE_BUNDLE_COMMIT:${sha}`,
+  message,
+  url: `${repositoryUrl}/commit/${sha}`,
+};
+fs.writeFileSync(
+  releaseModulePath,
+  `export const BUNDLE_COMMIT_PREFIX = 'LUCHE_BUNDLE_COMMIT:';\n\n` +
+    `export const BUNDLED_GIT_COMMIT = ${JSON.stringify(bundledCommit, null, 2)} as const;\n`,
+);
 NODE
 }
 
 warm_platform() {
     local platform=$1
-    local manifest bundle_path
+    local expected_sha=$2
+    local manifest bundle_path bundle_file
 
     manifest=$(curl --fail --silent --show-error --max-time 20 \
         -H "expo-platform: $platform" \
@@ -102,8 +124,18 @@ url = urlsplit(json.load(sys.stdin)["launchAsset"]["url"])
 print(url.path + (("?" + url.query) if url.query else ""))
 ' <<<"$manifest") || return 1
     [[ -n "$bundle_path" ]] || return 1
-    curl --fail --silent --show-error --max-time 120 \
-        "http://127.0.0.1:8089$bundle_path" >/dev/null || return 1
+    bundle_file=$(mktemp "$DEPLOY_STATE/${platform}-bundle.XXXXXX")
+    if ! curl --fail --silent --show-error --max-time 120 \
+        "http://127.0.0.1:8089$bundle_path" >"$bundle_file"; then
+        rm -f "$bundle_file"
+        return 1
+    fi
+    if ! grep -aFq -- "LUCHE_BUNDLE_COMMIT:$expected_sha" "$bundle_file"; then
+        log "$platform bundle does not contain its compiled release identity"
+        rm -f "$bundle_file"
+        return 1
+    fi
+    rm -f "$bundle_file"
 }
 
 log "checking origin/main"
@@ -147,7 +179,7 @@ systemctl --user restart luche-go-expo.service
 
 healthy=0
 for _ in $(seq 1 90); do
-    if warm_platform ios && warm_platform android; then
+    if warm_platform ios "$target_sha" && warm_platform android "$target_sha"; then
         healthy=1
         break
     fi
