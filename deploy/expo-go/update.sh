@@ -69,14 +69,19 @@ prepare_release_entry() {
     local release=$1
     local sha=$2
     local entry_name=.luche-entry-${sha}.js
+    local release_slug=luche-rn-${sha:0:12}
 
     printf "import 'expo-router/entry';\n" > "$release/$entry_name"
-    node - "$release/package.json" "./$entry_name" <<'NODE'
+    node - "$release/package.json" "./$entry_name" "$release/app.json" "$release_slug" <<'NODE'
 const fs = require('node:fs');
-const [packagePath, main] = process.argv.slice(2);
+const [packagePath, main, appPath, slug] = process.argv.slice(2);
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 pkg.main = main;
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
+app.expo.slug = slug;
+fs.writeFileSync(appPath, `${JSON.stringify(app, null, 2)}\n`);
 NODE
 }
 
