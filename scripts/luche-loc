@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve Homebrew/PATH symlinks before deriving the checkout. Without this,
+# `/opt/homebrew/bin/luche-loc -> <repo>/scripts/luche-loc` incorrectly treats
+# `/opt/homebrew` as the project and `npx` downloads the latest Expo globally.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  TARGET="$(readlink "$SOURCE")"
+  if [[ "$TARGET" == /* ]]; then
+    SOURCE="$TARGET"
+  else
+    SOURCE="$SOURCE_DIR/$TARGET"
+  fi
+done
+readonly SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+readonly REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly PORT="8081"
 
 if ! command -v brew >/dev/null 2>&1; then
