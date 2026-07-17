@@ -7,18 +7,16 @@ import {
   RefreshControl,
   ScrollView,
   SectionList,
-  Share,
   Text,
   View,
 } from 'react-native';
 
-import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { RecordingCard } from '../../components/RecordingCard';
 import { ResultsTrends, SharedResultsTrends } from '../../components/ResultsTrends';
 import { Screen } from '../../components/Screen';
 import { SharedRecordingCard } from '../../components/SharedRecordingCard';
-import { localizeSeverity, useT } from '../../lib/i18n';
+import { useT } from '../../lib/i18n';
 import {
   fetchSharedPatients,
   fetchSharedTrials,
@@ -139,29 +137,6 @@ export default function ResultsScreen() {
     if (mounted.current) setRefreshing(false);
   };
 
-  const done = recordings.filter((recording) => recording.status === 'done' && recording.result);
-
-  // Viewing access does not imply permission to redistribute somebody else's
-  // health data, so the share summary only includes this account's recordings.
-  const shareSummary = async () => {
-    const lines = done.map((recording) => {
-      const name = t.tests[recording.testId]?.name ?? t.recordingCard.fallback;
-      const date = new Date(recording.createdAt).toLocaleDateString();
-      const label = localizeSeverity(t, recording.result!.label);
-      const val =
-        recording.result!.updrsGrade != null
-          ? ` (${recording.result!.updrsGrade.toFixed(1)})`
-          : ` (${recording.result!.score.toFixed(2)})`;
-      return `• ${name} — ${date} — ${label}${val}`;
-    });
-    const message = [t.share.summaryHeader, '', ...lines, '', t.share.summaryFooter].join('\n');
-    try {
-      await Share.share({ message });
-    } catch {
-      // User dismissed the sheet.
-    }
-  };
-
   const sections: ResultSection[] = [];
   if (selectedPatientId && sharedRecordings.length > 0) {
     sections.push({
@@ -278,15 +253,6 @@ export default function ResultsScreen() {
             </Text>
             {section.kind === 'local' && (
               <View className="mt-3">
-                {done.length > 0 && (
-                  <View className="pb-4">
-                    <Button
-                      title={t.share.shareResults}
-                      variant="secondary"
-                      onPress={() => void shareSummary()}
-                    />
-                  </View>
-                )}
                 <ResultsTrends recordings={recordings} />
               </View>
             )}

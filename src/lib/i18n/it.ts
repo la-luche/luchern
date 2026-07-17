@@ -178,11 +178,6 @@ export const it: Dict = {
     shareWithDoctor: 'Condividi questo video con il medico',
     backToMenu: 'Torna al menu',
   },
-  share: {
-    shareResults: 'Condividi i risultati con il medico',
-    summaryHeader: 'I miei risultati di movimento Luche:',
-    summaryFooter: 'Registrato con Luche — screening automatico, non una diagnosi.',
-  },
   status: {
     uploading: 'Caricamento…',
     processing: 'Elaborazione…',

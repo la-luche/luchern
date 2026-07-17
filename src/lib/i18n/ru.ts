@@ -178,11 +178,6 @@ export const ru: Dict = {
     shareWithDoctor: 'Поделиться этим видео с врачом',
     backToMenu: 'В меню',
   },
-  share: {
-    shareResults: 'Поделиться результатами с врачом',
-    summaryHeader: 'Мои результаты двигательных тестов Luche:',
-    summaryFooter: 'Записано в Luche — автоматический скрининг, а не диагноз.',
-  },
   status: {
     uploading: 'Загрузка…',
     processing: 'Обработка…',
