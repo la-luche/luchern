@@ -68,7 +68,8 @@ export const en = {
     instructions:
       'This code never changes. Share it with them; once they approve it, their recordings appear under your account.',
     shareCode: 'Share this code',
-    shareMessage: (code: string) => `Connect with me on Luche — enter this code: ${code}`,
+    shareMessage: (code: string) =>
+      `Share your data with me on Luche! Tap the button in the top right of the main screen, then tap “Enter a doctor’s code” and paste this code: ${code}`,
     copyCode: 'Copy sharing code',
     tapToCopy: 'Tap to copy',
     copied: 'Code copied',

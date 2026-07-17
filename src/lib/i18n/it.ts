@@ -65,7 +65,8 @@ export const it: Dict = {
     instructions:
       'Questo codice non cambia mai. Condividilo con questa persona; dopo la sua approvazione, le registrazioni appariranno nel tuo account.',
     shareCode: 'Condividi il codice',
-    shareMessage: (code: string) => `Collegati a me su Luche — inserisci questo codice: ${code}`,
+    shareMessage: (code: string) =>
+      `Condividi i tuoi dati con me su Luche! Tocca il pulsante in alto a destra nella schermata principale, poi tocca “Inserisci il codice del medico” e incolla questo codice: ${code}`,
     copyCode: 'Copia il codice di condivisione',
     tapToCopy: 'Tocca per copiare',
     copied: 'Codice copiato',
