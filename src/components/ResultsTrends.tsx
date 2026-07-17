@@ -39,9 +39,11 @@ export function ResultsTrends({ recordings }: { recordings: Recording[] }) {
 
       {sections.map(({ test, points }) => (
         <View key={test.id} className="rounded-2xl border border-ink-faint bg-white p-4">
-          <View className="mb-1 flex-row items-baseline justify-between">
+          <View className="mb-1">
             <Text className="text-[16px] font-semibold text-ink">{t.tests[test.id].name}</Text>
-            <Text className="text-[14px] text-ink-muted">{t.tests[test.id].descriptor}</Text>
+            <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
+              {t.tests[test.id].descriptor}
+            </Text>
           </View>
           <TrendChart
             points={points}
@@ -92,9 +94,11 @@ export function SharedResultsTrends({
 
       {sections.map((section) => (
         <View key={section.testId} className="rounded-2xl border border-ink-faint bg-white p-4">
-          <View className="mb-1 flex-row items-baseline justify-between">
+          <View className="mb-1">
             <Text className="text-[16px] font-semibold text-ink">{section.name}</Text>
-            <Text className="text-[14px] text-ink-muted">{section.descriptor}</Text>
+            <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
+              {section.descriptor}
+            </Text>
           </View>
           <TrendChart
             points={section.points}
