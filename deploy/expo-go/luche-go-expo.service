@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/pi-rus/Downloads/feral-remote/luche-go/app
+WorkingDirectory=/home/pi-rus/Downloads/feral-remote/luche-go/current
 Environment=CI=1
 Environment=EXPO_NO_TELEMETRY=1
 Environment=EXPO_PACKAGER_PROXY_URL=https://go.luche.ai
 Environment=NODE_OPTIONS=--max-old-space-size=3072
-ExecStart=/usr/bin/node node_modules/expo/bin/cli start --go --lan --port 8091 --no-dev --minify --max-workers 2
+ExecStart=/usr/bin/node node_modules/expo/bin/cli start --go --lan --port 8091 --no-dev --minify --max-workers 2 --clear
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

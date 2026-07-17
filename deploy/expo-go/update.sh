@@ -69,7 +69,9 @@ prepare_release_entry() {
     local release=$1
     local sha=$2
     local entry_name=.luche-entry-${sha}.js
-    local release_slug=luche-rn-${sha:0:12}
+    # Keep the Expo scope stable. Expo Go namespaces local recordings and auth
+    # state by this slug, so release-specific slugs make existing data vanish.
+    local release_slug=luche-rn
 
     printf "import 'expo-router/entry';\n" > "$release/$entry_name"
     node - "$release/package.json" "./$entry_name" "$release/app.json" "$release_slug" <<'NODE'
