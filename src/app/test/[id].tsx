@@ -120,9 +120,11 @@ export default function InstructionScreen() {
           />
         </View>
 
-        {/* Quiet footer: clinical reference + the not-a-diagnosis reminder. */}
+        {/* Quiet footer: clinical reference only. The not-a-diagnosis reminder
+            lives on the result screen (and the first-launch disclaimer) — no
+            need to repeat it before every test. */}
         <Text className="mt-6 text-center text-[12px] leading-5 text-ink-muted">
-          {test.updrsItem} · {t.instruction.notDiagnosis}
+          {test.updrsItem}
         </Text>
       </ScrollView>
     </Screen>
