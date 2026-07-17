@@ -133,7 +133,7 @@ export const en = {
     deleteFailedTitle: 'Could not delete recording',
     deleteFailedBody: 'Nothing was removed. Check your connection and try again.',
     cloudAnalysis: 'Your result',
-    scoreHint: 'Lower is better. This is an automated estimate, not a diagnosis.',
+    scoreHint: 'Lower is better · not a diagnosis',
     gradeLabel: (label: string) => `Severity · ${label}`,
     samplePill: 'SAMPLE — placeholder result, not real analysis',
     noScoreTitle: 'No score could be produced',
@@ -218,9 +218,7 @@ export const en = {
     leftSide: 'Left',
     rightSide: 'Right',
     ready: 'I’m ready',
-    reassurance: 'There’s no wrong way to do this. You can retake it anytime.',
-    notDiagnosis: 'An automated check, not a diagnosis.',
-  },
+    reassurance: 'There’s no wrong way to do this. You can retake it anytime.',  },
   tests: {
     gait: {
       name: 'Walking',

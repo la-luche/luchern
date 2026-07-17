@@ -129,7 +129,7 @@ export const it: Dict = {
     deleteFailedTitle: 'Impossibile eliminare la registrazione',
     deleteFailedBody: 'Non è stato rimosso nulla. Controlla la connessione e riprova.',
     cloudAnalysis: 'Il tuo risultato',
-    scoreHint: 'Più basso è meglio. È una stima automatica, non una diagnosi.',
+    scoreHint: 'Più basso è meglio · non è una diagnosi',
     gradeLabel: (label: string) => `Gravità · ${label}`,
     samplePill: 'ESEMPIO — risultato fittizio, non un’analisi reale',
     noScoreTitle: 'Impossibile produrre un punteggio',
@@ -212,9 +212,7 @@ export const it: Dict = {
     leftSide: 'Sinistra',
     rightSide: 'Destra',
     ready: 'Sono pronto',
-    reassurance: 'Non c’è un modo sbagliato di farlo. Puoi rifarlo quando vuoi.',
-    notDiagnosis: 'Un controllo automatico, non una diagnosi.',
-  },
+    reassurance: 'Non c’è un modo sbagliato di farlo. Puoi rifarlo quando vuoi.',  },
   tests: {
     gait: {
       name: 'Camminata',
