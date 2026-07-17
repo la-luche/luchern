@@ -193,6 +193,16 @@ fi
 switched=0
 printf '%s\n' "$target_sha" > "$DEPLOY_STATE/last-successful-sha"
 log "deployed ${target_sha:0:12}"
+
+# The timer executes an installed copy outside the Git worktree. Refresh that
+# copy only after a release has passed both bundle checks, so deploy safeguards
+# committed with the app are available to the next release.
+if ! cmp -s "$release/deploy/expo-go/update.sh" "$DEPLOY_STATE/update.sh"; then
+    install -m 0755 "$release/deploy/expo-go/update.sh" "$DEPLOY_STATE/update.sh.next"
+    mv -f "$DEPLOY_STATE/update.sh.next" "$DEPLOY_STATE/update.sh"
+    log "updated deployment runner"
+fi
+
 commit_subject=$(git -C "$release" log -1 --format=%s)
 if ! notify_success "$target_sha" "$commit_subject"; then
     log "Telegram success notification failed"
