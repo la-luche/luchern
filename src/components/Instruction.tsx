@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEvent } from 'expo';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { VideoView, type VideoPlayer } from 'expo-video';
 import { useEffect, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Image, Text, View } from 'react-native';
 
+import { useDemoVideoPlayer } from './DemoVideoProvider';
 import { COLORS } from '../lib/theme';
 
 type MCIName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -17,11 +17,9 @@ const GOOD = '#1F9D57';
 const AVOID = '#C77700';
 
 /**
- * Looping, muted demo clip with a branded placeholder that stays on top until
- * the player reports `readyToPlay`. Without it the user sees a flash of empty
- * box while the clip loads — very noticeable in Expo Go, where the asset streams
- * over the dev tunnel. Swapping in the video only once the first frame is ready
- * removes the perceived lag/pop.
+ * Looping, muted demo clip backed by the app-lifetime player cache. The poster
+ * stays on top until VideoView confirms that it rendered a frame; player status
+ * alone is too early and briefly exposes the empty native video surface.
  */
 export function DemoVideo({
   source,
@@ -34,8 +32,10 @@ export function DemoVideo({
   icon: MCIName;
   caption: string;
 }) {
-  const hasVideo = source != null;
+  const player = useDemoVideoPlayer(source);
+  const hasVideo = player != null;
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [renderedPlayer, setRenderedPlayer] = useState<VideoPlayer | null>(null);
   useEffect(() => {
     let active = true;
     AccessibilityInfo.isReduceMotionEnabled().then((v) => {
@@ -48,20 +48,18 @@ export function DemoVideo({
     };
   }, []);
 
-  const player = useVideoPlayer(source ?? null, (p) => {
-    p.loop = true;
-    p.muted = true;
-  });
-  const { status } = useEvent(player, 'statusChange', { status: player.status });
-  const ready = hasVideo && status === 'readyToPlay';
+  // Comparing by player identity resets the cover immediately when a guided
+  // session replaces one instruction route with the next.
+  const firstFrameRendered = player != null && renderedPlayer === player;
 
   // Autoplay the loop — unless the OS "reduce motion" setting is on, in which
   // case hold the first frame still.
   useEffect(() => {
-    if (source == null) return;
+    if (player == null) return;
     if (reduceMotion) player.pause();
     else player.play();
-  }, [reduceMotion, player, source]);
+    return () => player.pause();
+  }, [reduceMotion, player]);
 
   return (
     <View className="mt-2">
@@ -73,9 +71,10 @@ export function DemoVideo({
             contentFit="contain"
             nativeControls={false}
             accessibilityLabel={caption}
+            onFirstFrameRender={() => setRenderedPlayer(player)}
           />
         )}
-        {!ready &&
+        {!firstFrameRendered &&
           (poster != null ? (
             <Image
               source={poster}
