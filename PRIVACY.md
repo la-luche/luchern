@@ -8,6 +8,7 @@ submission.
 
 - Account identifiers required for sign-in and account ownership.
 - Movement-test videos recorded without audio.
+- Temporary on-device face bounding boxes when optional face blurring is enabled.
 - Pose keypoints derived from uploaded videos.
 - Automated experimental movement metrics and analysis status.
 - A bounded on-device diagnostics log containing timestamps, technical state
@@ -19,13 +20,21 @@ submission.
 ## Storage and processing
 
 The local recording is moved into the app's documents directory after capture.
-The app uploads the video directly to Cloudflare R2 using a short-lived signed
-URL. Uploaded clips remain on the recording device for three days, then the
-local copy is deleted. Opening an older recording requests a fresh short-lived
-cloud URL instead of restoring a permanent local copy. The analysis service
-reads the video and writes derived keypoints to R2. Account/trial metadata and
-results are stored in the Luche database and synchronize to other devices
-signed in with the same account.
+**Blur faces before upload** is optional and off by default. When enabled, the
+same bundled face detector runs locally on iOS and Android. Video frames and
+face boxes do not leave the device during this step. Luche writes a sanitized
+copy, durably switches the recording to that copy, and permanently deletes the
+original before upload starts. Face boxes are not saved. If preprocessing
+fails, nothing uploads until the user retries or explicitly chooses **Send
+without face blurring**; in that case the original is uploaded.
+
+The app uploads the selected video directly to Cloudflare R2 using a short-lived
+signed URL. Uploaded clips remain on the recording device for three days, then
+the local copy is deleted. Opening an older recording requests a fresh
+short-lived cloud URL instead of restoring a permanent local copy. The analysis
+service reads the video and writes derived keypoints to R2. Account/trial
+metadata and results are stored in the Luche database and synchronize to other
+devices signed in with the same account.
 
 ## Deletion
 

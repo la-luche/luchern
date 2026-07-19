@@ -84,6 +84,13 @@ export const it: Dict = {
     commitTitle: 'Ultimo commit su GitHub',
     commitUnavailable: 'Dati sul commit non disponibili',
     languageTitle: 'Lingua',
+    privacyTitle: 'Privacy dei video',
+    faceBlurTitle: 'Sfoca i volti prima del caricamento',
+    faceBlurBody:
+      'Disattivato per impostazione predefinita. Se lo attivi, Luche elabora ogni registrazione approvata sul dispositivo, elimina definitivamente l’originale e carica solo la copia con i volti sfocati.',
+    faceBlurA11y: 'Sfoca i volti prima del caricamento',
+    faceBlurSaveFailedTitle: 'Impossibile salvare questa impostazione',
+    faceBlurSaveFailedBody: 'Rimane attiva l’impostazione precedente. Riprova.',
     supportTitle: 'Assistenza',
     diagnosticsBody:
       'Esporta gli ultimi 200 eventi tecnici per aiutarci a individuare eventuali problemi di registrazione, caricamento o creazione del risultato. Il file non contiene video, punti chiave, indirizzi email, token di autenticazione o link privati ai video.',
@@ -175,6 +182,16 @@ export const it: Dict = {
     retry: 'Riprova',
     failedRetry: 'Qualcosa non ha funzionato. Luche continuerà a riprovare; se vuoi, tocca Riprova.',
     permanentFailed: 'Impossibile caricare questa registrazione. Registrala di nuovo.',
+    faceBlurFailedTitle: 'La sfocatura dei volti non è riuscita',
+    faceBlurFailedBody:
+      'Il video non è stato caricato e l’originale è ancora solo su questo dispositivo. Puoi riprovare oppure scegliere esplicitamente di inviare l’originale senza sfocatura.',
+    retryFaceBlur: 'Riprova a sfocare i volti',
+    sendWithoutFaceBlur: 'Invia senza sfocare i volti',
+    sendWithoutFaceBlurConfirmTitle: 'Inviare il video originale?',
+    sendWithoutFaceBlurConfirmBody:
+      'I volti potrebbero essere visibili. Se continui, Luche caricherà la registrazione originale senza sfocatura.',
+    faceBlurring: 'Sfocatura dei volti sul dispositivo…',
+    uploadStartsAfterFaceBlur: 'Il caricamento inizia solo quando la copia con i volti sfocati è pronta.',
     uploading: 'Invio della registrazione al server…',
     processing: 'Preparazione del risultato…',
     processingWait: 'Preparare il risultato può richiedere alcuni minuti. Puoi uscire da questa schermata e tornare più tardi.',
@@ -183,6 +200,8 @@ export const it: Dict = {
     backToMenu: 'Torna al menu',
   },
   status: {
+    preparing: 'Sfocatura dei volti…',
+    blur_failed: 'Controlla la sfocatura dei volti',
     uploading: 'Caricamento in corso',
     processing: 'Preparazione del risultato',
     done: 'Pronto',
@@ -190,6 +209,10 @@ export const it: Dict = {
     failed: 'Da controllare',
   },
   uploadBanner: {
+    faceBlurring: (n: number) =>
+      `Sfocatura dei volti prima del caricamento${n > 1 ? ` · ${n} registrazioni` : ''}`,
+    faceBlurFailed: (n: number) =>
+      `${n} registrazion${n === 1 ? 'e richiede' : 'i richiedono'} una scelta sulla sfocatura`,
     keepOpen: (n: number) =>
       `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'}`,
     retrying: 'Caricamento non riuscito: nuovo tentativo in corso',

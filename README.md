@@ -88,11 +88,19 @@ createAnalysisTrial(uploadId, ...) -> Promise<{ jobId }>
 pollResult(jobId, testId)          -> Promise<CloudResult>
 ```
 
-`storage.ts` drives `uploading -> processing -> done`, persists the upload ID
+`storage.ts` optionally drives `preparing -> uploading -> processing -> done`, persists the upload ID
 immediately after the video reaches R2, and persists the job ID before polling.
 This makes relaunch/retry avoid retransmitting a completed upload. It also
 hydrates metadata from `GET /me/trials`, keeps uploaded videos locally for
 three days, and requests a signed cloud URL when an older video is opened.
+
+When **Blur faces before upload** is enabled in About (off by default), a local
+Expo module runs the same bundled full-range BlazeFace model directly through
+TensorFlow Lite/LiteRT on iOS and Android (without MediaPipe Tasks telemetry),
+redacts every decoded frame, and writes a new MP4 before `uploadRecording` can
+run. The sanitized URI is persisted before the original is permanently deleted.
+If preprocessing fails, upload remains blocked until the user retries or
+explicitly confirms **Send without face blurring**.
 
 ### Data model
 

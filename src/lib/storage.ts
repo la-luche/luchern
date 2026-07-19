@@ -14,6 +14,8 @@ import {
   uploadRecording,
 } from './cloud';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { FaceBlurCancelledError, prepareFaceBlurredVideo } from './faceBlur';
+import { getFaceBlurEnabled } from './faceBlurSettings';
 import {
   deleteAllRecordingFiles,
   deleteRecordingFile,
@@ -52,6 +54,9 @@ const operations = new Map<
 // One byte upload at a time. Parallel videos compete on weak uplinks and can
 // all overrun their presigned URL lifetimes.
 const serialUpload = createSerialQueue();
+// Native video exporters are intentionally serialized. Two simultaneous
+// detector/encoder jobs are especially punishing on older patient phones.
+const serialFaceBlur = createSerialQueue();
 
 function storageKey(accountId: string): string {
   return `${STORAGE_KEY_PREFIX}${accountId}`;
@@ -336,31 +341,135 @@ async function driveOnce(
 
 async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
   try {
-    const finalPatch = await driveOnce(rec, {
+    let uploadRecording = rec;
+    if (
+      rec.faceBlurRequested &&
+      rec.faceBlurState !== 'completed' &&
+      rec.faceBlurState !== 'bypassed' &&
+      !rec.uploadId &&
+      !rec.jobId
+    ) {
+      const sourceVideoUri = rec.faceBlurOriginalUri ?? rec.videoUri;
+      if (!sourceVideoUri) {
+        await patch(rec.id, {
+          status: 'blur_failed',
+          faceBlurState: 'failed',
+          faceBlurProgress: undefined,
+          failReason: 'recording file missing',
+          resumable: false,
+        }, epoch);
+        return;
+      }
+
+      await patch(rec.id, {
+        status: 'preparing',
+        faceBlurState: 'processing',
+        faceBlurProgress: 0,
+        failReason: undefined,
+        resumable: undefined,
+        permanent: undefined,
+      }, epoch);
+      recordDiagnostic('face_blur_started', { recordingId: rec.id });
+
+      try {
+        const originalUri = sourceVideoUri;
+        const prepared = await serialFaceBlur(() =>
+          prepareFaceBlurredVideo(
+            rec.id,
+            originalUri,
+            (faceBlurProgress) => patchVolatile(rec.id, { faceBlurProgress }, epoch),
+            signal,
+          ),
+        );
+        throwIfCancelled(signal);
+        const preparedRecording: Recording = {
+          ...rec,
+          videoUri: prepared.videoUri,
+          faceBlurOriginalUri: originalUri,
+          status: 'preparing',
+          faceBlurState: 'processing',
+          faceBlurProgress: undefined,
+          faceBlurFramesProcessed: prepared.recovered
+            ? rec.faceBlurFramesProcessed
+            : prepared.framesProcessed,
+          faceBlurFramesWithFaces: prepared.recovered
+            ? rec.faceBlurFramesWithFaces
+            : prepared.framesWithFaces,
+          faceBlurDetections: prepared.recovered
+            ? rec.faceBlurDetections
+            : prepared.detections,
+          failReason: undefined,
+          resumable: undefined,
+          permanent: undefined,
+        };
+        // Crash-safe privacy commit: persist both paths, delete the original,
+        // then clear its reference and permit upload.
+        await patch(rec.id, preparedRecording, epoch);
+        if (!isCurrent(epoch)) return;
+        if (originalUri !== prepared.videoUri) {
+          await deleteRecordingFile(originalUri);
+        }
+        uploadRecording = {
+          ...preparedRecording,
+          faceBlurOriginalUri: undefined,
+          status: 'uploading',
+          faceBlurState: 'completed',
+          uploadProgress: 0,
+          uploadAttempt: 1,
+          uploadRetrying: false,
+        };
+        await patch(rec.id, uploadRecording, epoch);
+        if (!isCurrent(epoch)) return;
+        recordDiagnostic('face_blur_completed', {
+          recordingId: rec.id,
+          framesProcessed: prepared.framesProcessed,
+          framesWithFaces: prepared.framesWithFaces,
+          detections: prepared.detections,
+          recovered: prepared.recovered,
+        });
+      } catch (error) {
+        if (error instanceof FaceBlurCancelledError || signal.aborted) throw error;
+        await patch(rec.id, {
+          status: 'blur_failed',
+          faceBlurState: 'failed',
+          faceBlurProgress: undefined,
+          failReason: error instanceof Error ? error.message : String(error),
+          resumable: false,
+          permanent: false,
+        }, epoch);
+        recordDiagnostic('face_blur_failed', {
+          recordingId: rec.id,
+          ...diagnosticErrorData(error),
+        });
+        return;
+      }
+    }
+
+    const finalPatch = await driveOnce(uploadRecording, {
       signal,
       onUploadProgress: (uploadProgress) =>
-        patchVolatile(rec.id, { uploadProgress }, epoch),
+        patchVolatile(uploadRecording.id, { uploadProgress }, epoch),
       onUploadAttempt: (uploadAttempt) =>
         patchVolatile(
-          rec.id,
+          uploadRecording.id,
           { uploadAttempt, uploadRetrying: false, uploadProgress: 0 },
           epoch,
         ),
       onUploadRetry: (uploadAttempt, delayMs) => {
         patchVolatile(
-          rec.id,
+          uploadRecording.id,
           { uploadAttempt, uploadRetrying: true, uploadProgress: 0 },
           epoch,
         );
         recordDiagnostic('upload_retry_scheduled', {
-          recordingId: rec.id,
+          recordingId: uploadRecording.id,
           attempt: uploadAttempt,
           delayMs,
         });
       },
       onBytesUploaded: (uploadId) =>
         patch(
-          rec.id,
+          uploadRecording.id,
           {
             status: 'processing',
             uploadId,
@@ -370,11 +479,11 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
           },
           epoch,
         ).then(() => {
-          recordDiagnostic('upload_completed', { recordingId: rec.id, uploadId });
+          recordDiagnostic('upload_completed', { recordingId: uploadRecording.id, uploadId });
         }),
       onUploadExpired: () =>
         patch(
-          rec.id,
+          uploadRecording.id,
           {
             status: 'uploading',
             uploadId: undefined,
@@ -384,14 +493,14 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
           },
           epoch,
         ).then(() => {
-          recordDiagnostic('upload_intent_expired', { recordingId: rec.id });
+          recordDiagnostic('upload_intent_expired', { recordingId: uploadRecording.id });
         }),
       onTrialCreated: (jobId) =>
-        patch(rec.id, { status: 'processing', jobId }, epoch).then(() => {
-          recordDiagnostic('trial_created', { recordingId: rec.id, jobId });
+        patch(uploadRecording.id, { status: 'processing', jobId }, epoch).then(() => {
+          recordDiagnostic('trial_created', { recordingId: uploadRecording.id, jobId });
         }),
     });
-    await patch(rec.id, finalPatch, epoch);
+    await patch(uploadRecording.id, finalPatch, epoch);
     if (isCurrent(epoch)) {
       recordDiagnostic('pipeline_state', {
         recordingId: rec.id,
@@ -496,6 +605,7 @@ async function add(
   const list = await ensureLoaded();
   const epoch = accountEpoch;
   const id = makeId();
+  const faceBlurRequested = await getFaceBlurEnabled();
   const durableUri = await persistRecordingFile(videoUri, id);
   const rec: Recording = {
     id,
@@ -503,10 +613,13 @@ async function add(
     evaluatedSide,
     createdAt: Date.now(),
     videoUri: durableUri,
-    status: 'uploading',
-    uploadProgress: 0,
-    uploadAttempt: 1,
-    uploadRetrying: false,
+    status: faceBlurRequested ? 'preparing' : 'uploading',
+    faceBlurRequested,
+    faceBlurState: faceBlurRequested ? 'pending' : undefined,
+    faceBlurProgress: faceBlurRequested ? 0 : undefined,
+    uploadProgress: faceBlurRequested ? undefined : 0,
+    uploadAttempt: faceBlurRequested ? undefined : 1,
+    uploadRetrying: faceBlurRequested ? undefined : false,
   };
   if (!isCurrent(epoch)) {
     await deleteRecordingFile(durableUri).catch(() => {});
@@ -521,7 +634,12 @@ async function add(
     throw error;
   }
   emit();
-  recordDiagnostic('recording_saved', { recordingId: id, testId, uri: 'documents' });
+  recordDiagnostic('recording_saved', {
+    recordingId: id,
+    testId,
+    uri: 'documents',
+    faceBlurRequested,
+  });
   void drive(rec);
   return rec;
 }
@@ -553,6 +671,12 @@ async function removeById(id: string) {
   }
   if (jobId) await deleteRemoteRecording(jobId);
   if (recording.videoUri) await deleteRecordingFile(recording.videoUri);
+  if (
+    recording.faceBlurOriginalUri &&
+    recording.faceBlurOriginalUri !== recording.videoUri
+  ) {
+    await deleteRecordingFile(recording.faceBlurOriginalUri);
+  }
   cache = (cache ?? list).filter((item) => item.id !== id);
   await persist();
   emit();
@@ -565,7 +689,11 @@ async function removeById(id: string) {
 function resumePending() {
   if (!cache || suspended) return;
   for (const recording of cache) {
-    if (recording.status === 'uploading' || recording.status === 'processing') {
+    if (
+      recording.status === 'preparing' ||
+      recording.status === 'uploading' ||
+      recording.status === 'processing'
+    ) {
       void drive(recording);
     } else if (recording.status === 'failed' && recording.resumable) {
       void resume(recording.id);
@@ -576,6 +704,14 @@ function resumePending() {
 async function resume(id: string) {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing) return;
+  if (
+    existing.faceBlurRequested &&
+    existing.faceBlurState !== 'completed' &&
+    existing.faceBlurState !== 'bypassed'
+  ) {
+    await retryFaceBlur(id);
+    return;
+  }
   await patch(id, {
     status: existing.uploadId ? 'processing' : 'uploading',
     uploadProgress: existing.uploadId ? undefined : 0,
@@ -586,6 +722,47 @@ async function resume(id: string) {
     permanent: undefined,
     resumable: undefined,
   });
+  const recording = (cache ?? []).find((item) => item.id === id);
+  if (recording) void drive(recording);
+}
+
+async function retryFaceBlur(id: string) {
+  const existing = (await ensureLoaded()).find((recording) => recording.id === id);
+  if (!existing?.videoUri || existing.uploadId || existing.jobId) return;
+  await patch(id, {
+    status: 'preparing',
+    faceBlurRequested: true,
+    faceBlurState: 'pending',
+    faceBlurProgress: 0,
+    failReason: undefined,
+    permanent: undefined,
+    resumable: undefined,
+  });
+  const recording = (cache ?? []).find((item) => item.id === id);
+  if (recording) void drive(recording);
+}
+
+async function sendWithoutFaceBlur(id: string) {
+  const existing = (await ensureLoaded()).find((recording) => recording.id === id);
+  if (!existing?.videoUri || existing.uploadId || existing.jobId) return;
+  const unblurredUri = existing.faceBlurOriginalUri ?? existing.videoUri;
+  const sanitizedUri = existing.videoUri !== unblurredUri ? existing.videoUri : undefined;
+  await patch(id, {
+    videoUri: unblurredUri,
+    faceBlurOriginalUri: undefined,
+    status: 'uploading',
+    faceBlurRequested: false,
+    faceBlurState: 'bypassed',
+    faceBlurProgress: undefined,
+    uploadProgress: 0,
+    uploadAttempt: 1,
+    uploadRetrying: false,
+    failReason: undefined,
+    permanent: undefined,
+    resumable: undefined,
+  });
+  if (sanitizedUri) await deleteRecordingFile(sanitizedUri).catch(() => {});
+  recordDiagnostic('face_blur_bypassed', { recordingId: id });
   const recording = (cache ?? []).find((item) => item.id === id);
   if (recording) void drive(recording);
 }
@@ -652,6 +829,8 @@ export function useRecordings() {
   const addRecording = useCallback(add, []);
   const remove = useCallback(removeById, []);
   const retry = useCallback((id: string) => void resume(id), []);
+  const retryFaceBlurring = useCallback((id: string) => void retryFaceBlur(id), []);
+  const uploadWithoutFaceBlurring = useCallback((id: string) => void sendWithoutFaceBlur(id), []);
   const refresh = useCallback(() => refreshFromServer(), []);
   const logoutAndPurge = useCallback(() => purgeForLogout(), []);
   const unuploadedCount = useMemo(
@@ -665,6 +844,8 @@ export function useRecordings() {
     addRecording,
     remove,
     retry,
+    retryFaceBlurring,
+    uploadWithoutFaceBlurring,
     refresh,
     logoutAndPurge,
     unuploadedCount,

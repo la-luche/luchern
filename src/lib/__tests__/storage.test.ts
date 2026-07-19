@@ -16,6 +16,13 @@ jest.mock('../api', () => ({
     }
   },
 }));
+jest.mock('../faceBlur', () => ({
+  FaceBlurCancelledError: class FaceBlurCancelledError extends Error {},
+  prepareFaceBlurredVideo: jest.fn(),
+}));
+jest.mock('../faceBlurSettings', () => ({
+  getFaceBlurEnabled: jest.fn().mockResolvedValue(false),
+}));
 
 import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
 

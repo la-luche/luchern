@@ -11,7 +11,9 @@ import {
   __testing,
   deleteAllRecordingFiles,
   deleteRecordingFile,
+  faceBlurFileUris,
   persistRecordingFile,
+  promoteFaceBlurredFile,
 } from '../recordingFiles';
 
 describe('recording file lifecycle', () => {
@@ -49,6 +51,20 @@ describe('recording file lifecycle', () => {
     );
   });
 
+  it('fails closed if a copied camera-cache original cannot be deleted', async () => {
+    (FileSystem.moveAsync as jest.Mock).mockRejectedValueOnce(new Error('provider move failed'));
+    (FileSystem.deleteAsync as jest.Mock).mockRejectedValueOnce(new Error('cache delete failed'));
+
+    await expect(
+      persistRecordingFile('file:///cache/capture.mp4', 'rec-private'),
+    ).rejects.toThrow('cache delete failed');
+
+    expect(FileSystem.deleteAsync).toHaveBeenLastCalledWith(
+      'file:///documents/recordings/rec-private.mp4',
+      { idempotent: true },
+    );
+  });
+
   it('deletes local files idempotently', async () => {
     await deleteRecordingFile('file:///documents/recordings/rec-1.mov');
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(
@@ -63,5 +79,24 @@ describe('recording file lifecycle', () => {
       'file:///documents/recordings/',
       { idempotent: true },
     );
+  });
+
+  it('uses deterministic pending and final face-blur paths', () => {
+    expect(faceBlurFileUris('rec-3')).toEqual({
+      pendingUri: 'file:///documents/recordings/rec-3.face-blurred.pending.mp4',
+      finalUri: 'file:///documents/recordings/rec-3.face-blurred.mp4',
+    });
+  });
+
+  it('promotes a complete face-blurred file without touching the original', async () => {
+    const finalUri = await promoteFaceBlurredFile(
+      'rec-4',
+      'file:///documents/recordings/rec-4.face-blurred.pending.mp4',
+    );
+    expect(finalUri).toBe('file:///documents/recordings/rec-4.face-blurred.mp4');
+    expect(FileSystem.moveAsync).toHaveBeenCalledWith({
+      from: 'file:///documents/recordings/rec-4.face-blurred.pending.mp4',
+      to: finalUri,
+    });
   });
 });

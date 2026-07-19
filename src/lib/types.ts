@@ -1,12 +1,26 @@
 import type { EvaluatedSide, TestId } from './tests';
 
 /**
- * Lifecycle of a recording as it moves through the cloud
- * pipeline. `uploading` → `processing` → `done`; an unscoreable capture ends
- * at `needs_retry`, while system/upload errors end at `failed`.
+ * Lifecycle of a recording as it moves through the local privacy stage and
+ * cloud pipeline. With face blur enabled this begins at `preparing`, then
+ * continues through `uploading` → `processing` → `done`.
  * Mirrors the status pill shown on each results card.
  */
-export type RecordingStatus = 'uploading' | 'processing' | 'done' | 'needs_retry' | 'failed';
+export type RecordingStatus =
+  | 'preparing'
+  | 'blur_failed'
+  | 'uploading'
+  | 'processing'
+  | 'done'
+  | 'needs_retry'
+  | 'failed';
+
+export type FaceBlurState =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'bypassed';
 
 /** Analysis result from the cloud keypoint→MDS-UPDRS pipeline (see cloud.ts). */
 export interface CloudResult {
@@ -38,7 +52,24 @@ export interface Recording {
   createdAt: number;
   /** Durable local file URI while the captured video is retained on-device. */
   videoUri?: string;
+  /**
+   * Original URI retained only across the crash-safe sanitized-file commit.
+   * Upload cannot start while this field exists.
+   */
+  faceBlurOriginalUri?: string;
   status: RecordingStatus;
+  /** Snapshot of the device setting when the user approved this capture. */
+  faceBlurRequested?: boolean;
+  /** Durable local preprocessing state; old recordings omit it. */
+  faceBlurState?: FaceBlurState;
+  /** In-memory face-redaction fraction; safe to lose across a relaunch. */
+  faceBlurProgress?: number;
+  /** Number of decoded frames scanned by the detector. */
+  faceBlurFramesProcessed?: number;
+  /** Number of frames where at least one face was redacted. */
+  faceBlurFramesWithFaces?: number;
+  /** Total face boxes redacted across all frames. */
+  faceBlurDetections?: number;
   /** Server upload intent, persisted after the video bytes reach R2. */
   uploadId?: string;
   /** In-memory upload fraction; safe to lose across a relaunch. */

@@ -1,3 +1,5 @@
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,6 +17,33 @@ export function UploadBanner() {
   const insets = useSafeAreaInsets();
   const t = useT();
   const n = uploadingCount(recordings);
+
+  const preparing = recordings.filter((recording) => recording.status === 'preparing');
+  useEffect(() => {
+    const tag = 'luche-face-blur';
+    if (preparing.length > 0) {
+      void activateKeepAwakeAsync(tag);
+      return () => {
+        void deactivateKeepAwake(tag);
+      };
+    }
+    return undefined;
+  }, [preparing.length]);
+
+  if (preparing.length > 0) {
+    const progress = Math.round(
+      (preparing.reduce((sum, recording) => sum + (recording.faceBlurProgress ?? 0), 0) /
+        preparing.length) *
+        100,
+    );
+    return (
+      <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-violet-600">
+        <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
+          {t.uploadBanner.faceBlurring(preparing.length)} · {progress}%
+        </Text>
+      </View>
+    );
+  }
 
   if (n > 0) {
     const uploading = recordings.filter((r) => r.status === 'uploading');
@@ -58,6 +87,17 @@ export function UploadBanner() {
         >
           <Text className="text-[13px] font-bold text-white">{t.uploadBanner.retryAll}</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  const blurFailed = recordings.filter((recording) => recording.status === 'blur_failed');
+  if (blurFailed.length > 0) {
+    return (
+      <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-red-600">
+        <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
+          {t.uploadBanner.faceBlurFailed(blurFailed.length)}
+        </Text>
       </View>
     );
   }
