@@ -31,6 +31,22 @@ export const it: Dict = {
     logoutAndDelete: 'Esci ed elimina i video',
     logoutFailedTitle: 'Impossibile uscire dall’account',
     logoutFailedBody: 'Non è stato possibile completare la rimozione dei file da questo dispositivo. Riprova.',
+    deleteAccount: 'Elimina account',
+    deletingAccount: 'Eliminazione…',
+    deleteWarningTitle: 'Eliminare il tuo account Luche?',
+    deleteWarningBody:
+      'Questa azione elimina definitivamente tutto: account e identità di accesso, registrazioni e video, punti chiave del movimento, stime sperimentali e risultati, codici e relazioni di condivisione e tutti i record Luche collegati a te. Non può essere annullata.',
+    deleteCountdownTitle: 'Prenditi un momento',
+    deleteCountdownBody: (seconds: number) =>
+      `La conferma finale apparirà tra ${seconds} second${seconds === 1 ? 'o' : 'i'}. Puoi ancora conservare il tuo account.`,
+    deleteFinalTitle: 'Sei davvero sicuro?',
+    deleteFinalBody:
+      'L’eliminazione è immediata e irreversibile. Perderai l’accesso a tutte le registrazioni e a tutti i risultati Luche.',
+    keepAccount: 'Conserva il mio account',
+    deleteEverything: 'Elimina tutto',
+    deleteFailedTitle: 'Impossibile completare l’eliminazione',
+    deleteFailedBody:
+      'L’eliminazione dell’account non è stata completata. Controlla la connessione e riprova. Luche non mostra mai un esito positivo finché il server non ha completato l’eliminazione.',
   },
   session: {
     progress: (n: number, total: number) => `Movimento ${n} di ${total}`,
@@ -78,7 +94,7 @@ export const it: Dict = {
     title: 'Informazioni',
     disclaimerTitle: 'Avvertenza sulla salute',
     disclaimerBody:
-      'Luche è uno strumento per la ricerca e il benessere. Non è un dispositivo medico e non fornisce diagnosi. I risultati hanno solo scopo informativo. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato.',
+      'Luche è uno strumento per la ricerca e il benessere. Ogni punteggio è una stima sperimentale, non una diagnosi. Luche non è un dispositivo medico. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato.',
     versionTitle: 'Versione',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Ultimo commit su GitHub',
@@ -98,7 +114,7 @@ export const it: Dict = {
     notMedicalDevice: 'un dispositivo medico',
     body1tail: ' e non fornisce diagnosi.',
     body2:
-      'I risultati hanno solo scopo informativo. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato. Non usare Luche per prendere decisioni mediche.',
+      'Ogni punteggio è una stima sperimentale, non una diagnosi. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato. Non usare Luche per prendere decisioni mediche.',
   },
   record: {
     cameraAccessNeeded: 'Serve l’accesso alla fotocamera',
@@ -165,8 +181,8 @@ export const it: Dict = {
     deleteA11y: 'Elimina registrazione',
     deleteFailedTitle: 'Impossibile eliminare la registrazione',
     deleteFailedBody: 'Non è stato eliminato nulla. Controlla la connessione e riprova.',
-    cloudAnalysis: 'Il tuo risultato',
-    scoreHint: 'Più basso è il numero, meglio è · non è una diagnosi',
+    cloudAnalysis: 'Stima sperimentale',
+    scoreHint: 'Stima sperimentale · non è una diagnosi',
     gradeLabel: (label: string) => `Livello · ${label}`,
     samplePill: 'ESEMPIO — risultato di prova, non un’analisi reale',
     noScoreTitle: 'Risultato non disponibile',

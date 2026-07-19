@@ -121,6 +121,11 @@ export async function ensurePatientOnboarded(): Promise<void> {
   }
 }
 
+/** Permanently delete the signed-in Luche account and all server-side data. */
+export async function deleteAccount(): Promise<void> {
+  await apiFetch<{ status: 'deleted' }>('/me', { method: 'DELETE' });
+}
+
 /** JSON request with the current Clerk account bearer attached. */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();

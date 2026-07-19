@@ -43,7 +43,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Luche uses the camera to record short movement tests for analysis.",
+          "cameraPermission": "Luche uses the camera to record short movement tests for research and wellness and to create experimental estimates.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

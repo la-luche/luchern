@@ -1,8 +1,8 @@
 # Luche privacy notes
 
-This file is the source copy for the public Luche privacy page. It must be
-reviewed and published at `https://getferal.ai/luche-privacy` before store
-submission.
+This file summarizes the public policy at `https://luche.ai/privacy-policy`.
+The public account-deletion instructions and request path are at
+`https://luche.ai/delete-account`.
 
 ## Data used by Luche
 
@@ -40,6 +40,25 @@ cache. If any video has not reached a server trial, Luche warns that logging out
 will permanently delete it before continuing. Uploaded videos, results, and
 trial metadata remain in the account and reappear after sign-in; they are only
 deleted from the server through the recording's explicit Delete action.
+
+Deleting an account is separate from logging out. The red **Delete account**
+button beside **Log out** warns that deletion is irreversible, enforces a
+five-second countdown, and asks for a final confirmation. After confirmation,
+Luche stops local uploads and deletes local recordings and diagnostics, then
+the server cancels active analysis and deletes all owned videos, derived
+keypoints, experimental estimates/results, ratings, upload records, invites,
+sharing relationships, account/database records, and the Clerk identity. A
+share-code allocation tombstone remains without the Clerk identifier so the
+old four-digit code can never be reassigned.
+
+People who cannot access the app can request verified account deletion at
+`https://luche.ai/delete-account`.
+
+## Medical wording
+
+Luche is a research and wellness tool. Every automated score is an
+experimental estimate, not a diagnosis. The scores are not clinically
+validated, and Luche is not a medical device.
 
 ## Important deployment requirement
 

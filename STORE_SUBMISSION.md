@@ -19,8 +19,10 @@ so both stores will scrutinize permissions, privacy, and medical claims.
 | Bundle identifiers | `ai.getferal.luche` (iOS + Android) |
 | First-launch medical disclaimer | `src/components/DisclaimerGate.tsx` |
 | In-app privacy/about screen | `src/app/about.tsx` |
-| Automated results labeled **ESTIMATE** | `src/app/results/[id].tsx`, `src/lib/cloud.ts` (`isEstimate`) |
+| Automated results labeled **EXPERIMENTAL ESTIMATE · NOT A DIAGNOSIS** | `src/app/results/[id].tsx`, `src/lib/i18n/*` |
 | Durable local recording + local/server deletion flow | `src/lib/recordingFiles.ts`, `feral-api DELETE /trials/<id>` |
+| In-app account deletion with warning, 5-second countdown, final confirmation | `src/app/about.tsx`, `feral-api DELETE /me` |
+| Public deletion-request page | `https://luche.ai/delete-account` |
 
 ---
 
@@ -32,16 +34,10 @@ uncalibrated thresholds. Keep estimates explicitly experimental and avoid store
 copy implying clinical validation. Prefer exposing measured movement features
 until a labeled evaluation exists.
 
-### 2. Live privacy policy
-Required by **both** stores for any app that uses the camera. Currently a
-placeholder URL in `src/app/about.tsx`:
-```
-https://getferal.ai/luche-privacy   ← must be a real, reachable page
-```
-Host it (getferal.ai is already CNAME-served) and confirm the same URL is entered
-in App Store Connect + Play Console listings.
-
-The source copy is maintained in `PRIVACY.md`.
+### 2. Store listing URLs
+Use `https://luche.ai/privacy-policy` for the privacy policy and
+`https://luche.ai/delete-account` for Google Play's account-deletion URL.
+Confirm both public routes are reachable after every website deploy.
 
 ### 3. App Store Privacy "nutrition label" (App Store Connect)
 Declare account identifiers, uploaded user video, derived keypoints/results, and
@@ -89,7 +85,7 @@ available.
 
 - [ ] Experimental result labeling is intact and honest
 - [ ] Matching `feral-api` deletion endpoints are deployed and tested
-- [ ] Privacy policy URL live and matches store listings
+- [ ] Privacy-policy and account-deletion URLs are live and match store listings
 - [ ] App Store Privacy label + Play Data Safety filled
 - [ ] Final icon/splash, screenshots, description (no diagnostic claims)
 - [ ] `npx tsc --noEmit` clean · `npx expo export` succeeds

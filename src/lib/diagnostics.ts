@@ -86,3 +86,9 @@ export async function exportDiagnostics(): Promise<string> {
     2,
   );
 }
+
+/** Remove the account-associated support log during irreversible deletion. */
+export async function clearDiagnostics(): Promise<void> {
+  await writeTail;
+  await AsyncStorage.removeItem(DIAGNOSTICS_KEY);
+}

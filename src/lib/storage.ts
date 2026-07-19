@@ -654,6 +654,10 @@ export function useRecordings() {
   const retry = useCallback((id: string) => void resume(id), []);
   const refresh = useCallback(() => refreshFromServer(), []);
   const logoutAndPurge = useCallback(() => purgeForLogout(), []);
+  const restoreAfterFailedPurge = useCallback(
+    () => (accountId ? activateAccount(accountId) : Promise.resolve()),
+    [accountId],
+  );
   const unuploadedCount = useMemo(
     () => recordings.filter((recording) => recording.videoUri && !recording.jobId).length,
     [recordings],
@@ -667,6 +671,7 @@ export function useRecordings() {
     retry,
     refresh,
     logoutAndPurge,
+    restoreAfterFailedPurge,
     unuploadedCount,
   };
 }

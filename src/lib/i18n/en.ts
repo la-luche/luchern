@@ -32,6 +32,22 @@ export const en = {
     logoutAndDelete: 'Log out and delete videos',
     logoutFailedTitle: 'We couldn’t log you out',
     logoutFailedBody: 'Luche couldn’t finish removing the files from this device. Please try again.',
+    deleteAccount: 'Delete account',
+    deletingAccount: 'Deleting…',
+    deleteWarningTitle: 'Delete your Luche account?',
+    deleteWarningBody:
+      'This permanently deletes everything: your account and sign-in identity, recordings and videos, movement keypoints, experimental estimates and results, sharing codes and relationships, and all Luche database records linked to you. This cannot be undone.',
+    deleteCountdownTitle: 'Take a moment',
+    deleteCountdownBody: (seconds: number) =>
+      `The final confirmation will appear in ${seconds} second${seconds === 1 ? '' : 's'}. You can still keep your account.`,
+    deleteFinalTitle: 'Are you absolutely sure?',
+    deleteFinalBody:
+      'Deleting everything is immediate and irreversible. You will lose access to every Luche recording and result.',
+    keepAccount: 'Keep my account',
+    deleteEverything: 'Delete everything',
+    deleteFailedTitle: 'We couldn’t finish deleting your account',
+    deleteFailedBody:
+      'Your account deletion did not finish. Check your connection and try again. Luche will never report success unless the server completes the deletion.',
   },
   session: {
     progress: (n: number, total: number) => `Movement ${n} of ${total}`,
@@ -79,7 +95,7 @@ export const en = {
     title: 'About Luche',
     disclaimerTitle: 'Important health information',
     disclaimerBody:
-      'Luche is a research and wellness tool. It is not a medical device and does not provide a diagnosis. Results are for informational purposes only — always consult a qualified clinician about your health.',
+      'Luche is a research and wellness tool. Every score is an experimental estimate, not a diagnosis. Luche is not a medical device. Always consult a qualified clinician about your health.',
     versionTitle: 'Version',
     versionValue: '1.0.0 (beta)',
     commitTitle: 'Latest GitHub commit',
@@ -99,7 +115,7 @@ export const en = {
     notMedicalDevice: 'not a medical device',
     body1tail: ' and does not provide a diagnosis.',
     body2:
-      'Results are for informational purposes only. Always consult a qualified clinician about your health, and do not use Luche to make medical decisions.',
+      'Every score is an experimental estimate, not a diagnosis. Always consult a qualified clinician about your health, and do not use Luche to make medical decisions.',
   },
   record: {
     cameraAccessNeeded: 'Luche needs camera access',
@@ -167,8 +183,8 @@ export const en = {
     deleteA11y: 'Delete recording',
     deleteFailedTitle: 'We couldn’t delete this recording',
     deleteFailedBody: 'Nothing was removed. Check your connection and try again.',
-    cloudAnalysis: 'Your result',
-    scoreHint: 'Lower numbers are better · not a diagnosis',
+    cloudAnalysis: 'Experimental estimate',
+    scoreHint: 'Experimental estimate · not a diagnosis',
     gradeLabel: (label: string) => `Level · ${label}`,
     samplePill: 'EXAMPLE — placeholder only, not a real result',
     noScoreTitle: 'We couldn’t create a result',

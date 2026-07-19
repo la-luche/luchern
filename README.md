@@ -56,6 +56,11 @@ Menu ──select test──▶ Instructions ──Continue──▶ Recording �
 A first-launch **medical disclaimer** gate (`DisclaimerGate`) wraps everything;
 an **About** screen (`/about`) is reachable from the menu.
 
+The About/Profile screen also owns irreversible account deletion: an explicit
+warning, cancellable five-second countdown, and separate final confirmation
+call `DELETE /me`, then clear local account files and state. Public instructions
+and an email fallback live at `https://luche.ai/delete-account`.
+
 ### Directory map
 
 ```
