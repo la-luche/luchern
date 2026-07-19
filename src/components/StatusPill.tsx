@@ -12,6 +12,8 @@ const STYLE: Record<
   RecordingStatus,
   { bg: string; fg: string; spin: boolean; icon?: IconName; iconColor?: string }
 > = {
+  preparing: { bg: 'bg-violet-100', fg: 'text-violet-700', spin: true },
+  blur_failed: { bg: 'bg-red-100', fg: 'text-red-700', spin: false, icon: 'shield-outline', iconColor: '#b91c1c' },
   uploading: { bg: 'bg-blue-100', fg: 'text-blue-700', spin: true },
   processing: { bg: 'bg-amber-100', fg: 'text-amber-700', spin: true },
   done: { bg: 'bg-emerald-100', fg: 'text-emerald-700', spin: false, icon: 'checkmark-circle', iconColor: '#047857' },

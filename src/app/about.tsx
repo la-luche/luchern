@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Linking, Modal, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Modal, ScrollView, Switch, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { BUNDLED_GIT_COMMIT, BUNDLE_COMMIT_PREFIX } from '../generated/release';
@@ -16,6 +16,7 @@ import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
+import { useFaceBlurSetting } from '../lib/faceBlurSettings';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
 
@@ -36,6 +37,7 @@ export default function AboutScreen() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { logoutAndPurge, restoreAfterFailedPurge, unuploadedCount } = useRecordings();
+  const faceBlur = useFaceBlurSetting();
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState<number | null>(null);
@@ -151,6 +153,14 @@ export default function AboutScreen() {
   const email = user?.primaryEmailAddress?.emailAddress;
   const displayName = user?.fullName || user?.firstName || email || t.profile.account;
 
+  const updateFaceBlur = async (enabled: boolean) => {
+    try {
+      await faceBlur.setEnabled(enabled);
+    } catch {
+      Alert.alert(t.about.faceBlurSaveFailedTitle, t.about.faceBlurSaveFailedBody);
+    }
+  };
+
   return (
     <Screen>
       <Header title={t.about.title} />
@@ -224,6 +234,23 @@ export default function AboutScreen() {
 
         <Section title={t.about.languageTitle}>
           <LanguagePicker />
+        </Section>
+
+        <Section title={t.about.privacyTitle}>
+          <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
+            <View className="mr-4 flex-1">
+              <Text className="text-[16px] font-semibold text-ink">{t.about.faceBlurTitle}</Text>
+              <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
+                {t.about.faceBlurBody}
+              </Text>
+            </View>
+            <Switch
+              value={faceBlur.enabled}
+              disabled={faceBlur.isLoading}
+              onValueChange={(enabled) => void updateFaceBlur(enabled)}
+              accessibilityLabel={t.about.faceBlurA11y}
+            />
+          </View>
         </Section>
 
         <Section title={t.about.disclaimerTitle}>

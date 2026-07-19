@@ -28,7 +28,14 @@ function RecordingVideo({ uri }: { uri: string }) {
 export default function ResultDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { recordings, loading, remove, retry } = useRecordings();
+  const {
+    recordings,
+    loading,
+    remove,
+    retry,
+    retryFaceBlurring,
+    uploadWithoutFaceBlurring,
+  } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
   const [remoteVideoUri, setRemoteVideoUri] = useState<string | null>(null);
@@ -75,8 +82,14 @@ export default function ResultDetailScreen() {
   if (!recording) return <Redirect href="/results" />;
 
   const test = getTest(recording.testId);
+  const privacyPending = Boolean(
+    recording.faceBlurRequested &&
+      recording.faceBlurState !== 'completed' &&
+      recording.faceBlurState !== 'bypassed',
+  );
 
   const shareVideo = async () => {
+    if (privacyPending) return;
     if (!(await Sharing.isAvailableAsync())) {
       Alert.alert(t.result.sharingUnavailableTitle, t.result.sharingUnavailableBody);
       return;
@@ -128,6 +141,17 @@ export default function ResultDetailScreen() {
             Alert.alert(t.result.deleteFailedTitle, t.result.deleteFailedBody);
           }
         },
+      },
+    ]);
+  };
+
+  const confirmUnblurredUpload = () => {
+    Alert.alert(t.result.sendWithoutFaceBlurConfirmTitle, t.result.sendWithoutFaceBlurConfirmBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.result.sendWithoutFaceBlur,
+        style: 'destructive',
+        onPress: () => uploadWithoutFaceBlurring(recording.id),
       },
     ]);
   };
@@ -240,6 +264,24 @@ export default function ResultDetailScreen() {
                 </View>
               ))}
             </View>
+          ) : recording.status === 'blur_failed' ? (
+            <View className="mt-3 gap-3">
+              <Text className="text-[15px] font-semibold text-red-700">
+                {t.result.faceBlurFailedTitle}
+              </Text>
+              <Text className="text-[14px] leading-5 text-ink-muted">
+                {t.result.faceBlurFailedBody}
+              </Text>
+              <Button
+                title={t.result.retryFaceBlur}
+                onPress={() => retryFaceBlurring(recording.id)}
+              />
+              <Button
+                title={t.result.sendWithoutFaceBlur}
+                variant="secondary"
+                onPress={confirmUnblurredUpload}
+              />
+            </View>
           ) : recording.status === 'failed' ? (
             <View className="mt-3 gap-3">
               <Text className="text-[14px] text-red-600">
@@ -262,8 +304,15 @@ export default function ResultDetailScreen() {
                     ? recording.uploadRetrying
                       ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
                       : t.result.uploading
-                    : t.result.processing}
+                    : recording.status === 'preparing'
+                      ? `${t.result.faceBlurring} · ${Math.round((recording.faceBlurProgress ?? 0) * 100)}%`
+                      : t.result.processing}
                 </Text>
+                {recording.status === 'preparing' && (
+                  <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
+                    {t.result.uploadStartsAfterFaceBlur}
+                  </Text>
+                )}
                 {recording.status === 'processing' && (
                   <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
                     {t.result.processingWait}
@@ -279,7 +328,7 @@ export default function ResultDetailScreen() {
             title={t.result.shareWithDoctor}
             variant="secondary"
             onPress={shareVideo}
-            disabled={videoLoading}
+            disabled={videoLoading || privacyPending}
           />
           <View className="mt-3">
             <Button title={t.result.backToMenu} onPress={() => router.navigate('/')} />
