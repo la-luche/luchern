@@ -1,8 +1,5 @@
-import { useAuth, useSSO, useSignIn, useSignUp } from '@clerk/clerk-expo';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import * as AuthSession from 'expo-auth-session';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
-import * as WebBrowser from 'expo-web-browser';
+import { useAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,37 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensurePatientOnboarded } from '../lib/api';
-import { recordDiagnostic } from '../lib/diagnostics';
 import { useT } from '../lib/i18n';
 import { Button } from './Button';
-import { SocialButton } from './SocialButton';
-
-// Required so the OAuth browser redirect can resolve back into the app.
-WebBrowser.maybeCompleteAuthSession();
-
-/**
- * Use a real callback path rather than reopening the experience root. Expo Go
- * owns the exp/exps schemes; our public preview is HTTPS-only, so its callback
- * must be exps. Native builds own the `luche` scheme declared in app.json.
- */
-function ssoRedirectUrl(): string {
-  if (Platform.OS === 'web') {
-    return AuthSession.makeRedirectUri({ path: 'sso-callback' });
-  }
-  const scheme =
-    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ? 'exps' : 'luche';
-  return AuthSession.makeRedirectUri({ scheme, path: 'sso-callback' });
-}
-
-/** Warm up / cool down the in-app browser — smooths the Android OAuth cold start. */
-function useWarmUpBrowser() {
-  useEffect(() => {
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
-  }, []);
-}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <View className="flex-1 items-center justify-center bg-white">{children}</View>;
@@ -55,8 +23,6 @@ function SignInScreen() {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
-  const { startSSOFlow } = useSSO();
-  useWarmUpBrowser();
   const t = useT();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -127,44 +93,6 @@ function SignInScreen() {
     }
   }
 
-  const onSSO = useCallback(
-    async (strategy: 'oauth_apple' | 'oauth_google') => {
-      if (busy) return;
-      setBusy(true);
-      setError(null);
-      const redirectUrl = ssoRedirectUrl();
-      let resultType = 'none';
-      try {
-        const { createdSessionId, setActive, authSessionResult } = await startSSOFlow({
-          strategy,
-          redirectUrl,
-        });
-        resultType = authSessionResult?.type ?? 'none';
-        // User backed out of the browser → silent no-op, stay on the screen.
-        if (authSessionResult?.type === 'cancel' || authSessionResult?.type === 'dismiss') {
-          return;
-        }
-        if (createdSessionId) {
-          await setActive!({ session: createdSessionId });
-          return; // AuthGate's isSignedIn effect runs onboarding.
-        }
-        // Only reached on an unexpected incomplete/transfer state.
-        throw new Error(t.auth.genericError);
-      } catch (e: any) {
-        recordDiagnostic('auth_sso_failed', {
-          strategy,
-          resultType,
-          redirectScheme: redirectUrl.split(':', 1)[0],
-          errorCode: e?.errors?.[0]?.code ?? e?.code ?? e?.name ?? 'unknown',
-        });
-        setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.genericError);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, startSSOFlow, t],
-  );
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -187,28 +115,6 @@ function SignInScreen() {
             <Text className="mt-1 text-[13px] leading-5 text-ink-muted">
               {t.auth.developmentNoticeBody}
             </Text>
-          </View>
-        )}
-
-        {step === 'email' && (
-          <View className="mt-5">
-            <SocialButton
-              provider="apple"
-              onPress={() => onSSO('oauth_apple')}
-              disabled={busy || !ready}
-            />
-            <View className="mt-3">
-              <SocialButton
-                provider="google"
-                onPress={() => onSSO('oauth_google')}
-                disabled={busy || !ready}
-              />
-            </View>
-            <View className="mt-6 flex-row items-center">
-              <View className="h-px flex-1 bg-ink-faint" />
-              <Text className="mx-3 text-[13px] text-ink-muted">{t.auth.orContinueWithEmail}</Text>
-              <View className="h-px flex-1 bg-ink-faint" />
-            </View>
           </View>
         )}
 
