@@ -50,17 +50,9 @@ function SignInScreen() {
         });
         setMode('signIn');
       } catch {
-        // No account yet → sign-up with an emailed code. The instance currently
-        // also requires username + password, so we auto-generate both (the UX is
-        // still passwordless email-code). If the instance is relaxed to
-        // email-code-only, these extra fields are simply ignored.
-        const local = email.trim().split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'user';
-        const rand = Math.random().toString(36).slice(2, 8);
-        await signUp!.create({
-          emailAddress: email.trim(),
-          username: `${local}_${rand}`.slice(0, 24),
-          password: `Lz-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
-        });
+        // No account yet → sign up with the same emailed-code flow. Production
+        // Clerk intentionally has username and password authentication disabled.
+        await signUp!.create({ emailAddress: email.trim() });
         await signUp!.prepareEmailAddressVerification({ strategy: 'email_code' });
         setMode('signUp');
       }
