@@ -224,6 +224,14 @@ export default function AboutScreen() {
 
         <Section title={t.about.supportTitle}>
           <Text className="mb-3 text-[15px] leading-6 text-ink/70">
+            {t.about.supportBody}
+          </Text>
+          <Button
+            title={t.about.emailSupport}
+            variant="secondary"
+            onPress={() => Linking.openURL('mailto:founders@luche.ai?subject=Luche%20support')}
+          />
+          <Text className="mb-3 mt-4 text-[15px] leading-6 text-ink/70">
             {t.about.diagnosticsBody}
           </Text>
           <Button title={t.about.exportDiagnostics} variant="secondary" onPress={shareDiagnostics} />

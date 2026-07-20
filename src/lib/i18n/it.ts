@@ -96,11 +96,13 @@ export const it: Dict = {
     disclaimerBody:
       'Luche è uno strumento per la ricerca e il benessere. Ogni punteggio è una stima sperimentale, non una diagnosi. Luche non è un dispositivo medico. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato.',
     versionTitle: 'Versione',
-    versionValue: '1.0.0 (beta)',
+    versionValue: '1.0.0',
     commitTitle: 'Ultimo commit su GitHub',
     commitUnavailable: 'Dati sul commit non disponibili',
     languageTitle: 'Lingua',
     supportTitle: 'Assistenza',
+    supportBody: 'Per domande o problemi, contatta il team Luche all’indirizzo founders@luche.ai.',
+    emailSupport: 'Contatta l’assistenza',
     diagnosticsBody:
       'Esporta gli ultimi 200 eventi tecnici per aiutarci a individuare eventuali problemi di registrazione, caricamento o creazione del risultato. Il file non contiene video, punti chiave, indirizzi email, token di autenticazione o link privati ai video.',
     exportDiagnostics: 'Esporta i dettagli tecnici',
@@ -243,9 +245,6 @@ export const it: Dict = {
     verify: 'Verifica',
     useDifferentEmail: 'Usa un’altra email',
     orContinueWithEmail: 'oppure usa l’email',
-    developmentNoticeTitle: 'Siamo ancora in fase di sviluppo',
-    developmentNoticeBody:
-      'L’accesso a Luche è gestito da Clerk, il nostro servizio di autenticazione. Clerk riceve solo le informazioni di base dell’account, come nome ed email, e mai i video, le registrazioni o i risultati di Luche.',
     genericError: 'Non è stato possibile accedere. Riprova.',
   },
   severity: {

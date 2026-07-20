@@ -4,12 +4,14 @@
     "slug": "luche-rn",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/luche-app-icon.png",
     "scheme": "luche",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/luche-app-icon.png",
       "bundleIdentifier": "ai.getferal.luche",
+      "buildNumber": "1",
+      "appleTeamId": "CVR9PS8CQG",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -23,7 +25,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "static",
@@ -34,9 +39,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#000C27",
+          "image": "./assets/images/luche-app-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
         }
       ],
       "expo-video",
@@ -54,6 +60,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cf2e8b60-4dd8-4730-b1bc-80b3d55418a4"
+      }
+    },
+    "owner": "sposiboh"
   }
 }

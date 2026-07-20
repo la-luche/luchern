@@ -99,17 +99,6 @@ function SignInScreen() {
           {step === 'email' ? t.auth.emailSubtitle : t.auth.codeSubtitle(email)}
         </Text>
 
-        {step === 'email' && (
-          <View className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <Text className="text-[15px] font-semibold text-ink">
-              {t.auth.developmentNoticeTitle}
-            </Text>
-            <Text className="mt-1 text-[13px] leading-5 text-ink-muted">
-              {t.auth.developmentNoticeBody}
-            </Text>
-          </View>
-        )}
-
         {step === 'email' ? (
           <TextInput
             className="mt-6 h-[52px] rounded-2xl border border-ink-faint px-4 text-[17px] text-ink"

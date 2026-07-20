@@ -97,11 +97,13 @@ export const en = {
     disclaimerBody:
       'Luche is a research and wellness tool. Every score is an experimental estimate, not a diagnosis. Luche is not a medical device. Always consult a qualified clinician about your health.',
     versionTitle: 'Version',
-    versionValue: '1.0.0 (beta)',
+    versionValue: '1.0.0',
     commitTitle: 'Latest GitHub commit',
     commitUnavailable: 'Build details unavailable',
     languageTitle: 'Language',
     supportTitle: 'Help and support',
+    supportBody: 'Questions or problems? Contact the Luche team at founders@luche.ai.',
+    emailSupport: 'Email support',
     diagnosticsBody:
       'Export the 200 most recent technical events to help us understand problems with recording, uploading, or getting a result. This file never includes videos, keypoint data, your email, sign-in tokens, or private video links.',
     exportDiagnostics: 'Export technical details',
@@ -245,9 +247,6 @@ export const en = {
     verify: 'Continue',
     useDifferentEmail: 'Use a different email',
     orContinueWithEmail: 'or continue with email',
-    developmentNoticeTitle: 'We’re still in development',
-    developmentNoticeBody:
-      'Sign-in is handled by Clerk, our authentication provider. Clerk receives basic account information such as your name and email, but never your Luche videos, recordings, or results.',
     genericError: 'We couldn’t sign you in. Please try again.',
   },
   severity: {

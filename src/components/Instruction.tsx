@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
 import { useEffect, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Image, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
 import { useDemoVideoPlayer } from './DemoVideoProvider';
 import { COLORS } from '../lib/theme';
@@ -26,11 +26,13 @@ export function DemoVideo({
   poster,
   icon,
   caption,
+  fullScreen = false,
 }: {
   source?: number;
   poster?: number;
   icon: MCIName;
   caption: string;
+  fullScreen?: boolean;
 }) {
   const player = useDemoVideoPlayer(source);
   const hasVideo = player != null;
@@ -61,32 +63,49 @@ export function DemoVideo({
     return () => player.pause();
   }, [reduceMotion, player]);
 
+  const video = (
+    <>
+      {hasVideo && (
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit={fullScreen ? 'cover' : 'contain'}
+          nativeControls={false}
+          // Android's default SurfaceView can sit above React Native overlays.
+          // TextureView keeps the scrim and instructions reliably on top.
+          surfaceType="textureView"
+          accessibilityLabel={caption}
+          onFirstFrameRender={() => setRenderedPlayer(player)}
+        />
+      )}
+      {!firstFrameRendered &&
+        (poster != null ? (
+          <Image
+            source={poster}
+            resizeMode={fullScreen ? 'cover' : 'contain'}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
+            <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+            {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
+          </View>
+        ))}
+    </>
+  );
+
+  if (fullScreen) {
+    return (
+      <View pointerEvents="none" className="absolute inset-0 overflow-hidden bg-ink">
+        {video}
+      </View>
+    );
+  }
+
   return (
     <View className="mt-2">
       <View className="aspect-video w-full overflow-hidden rounded-3xl bg-ink-faint">
-        {hasVideo && (
-          <VideoView
-            player={player}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="contain"
-            nativeControls={false}
-            accessibilityLabel={caption}
-            onFirstFrameRender={() => setRenderedPlayer(player)}
-          />
-        )}
-        {!firstFrameRendered &&
-          (poster != null ? (
-            <Image
-              source={poster}
-              resizeMode="contain"
-              style={{ position: 'absolute', width: '100%', height: '100%' }}
-            />
-          ) : (
-            <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
-              <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
-              {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
-            </View>
-          ))}
+        {video}
       </View>
       <Text className="mt-2 text-center text-[13px] text-ink-muted">{caption}</Text>
     </View>
