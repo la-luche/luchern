@@ -10,7 +10,6 @@
     "ios": {
       "icon": "./assets/images/luche-app-icon.png",
       "bundleIdentifier": "ai.getferal.luche",
-      "buildNumber": "1",
       "appleTeamId": "CVR9PS8CQG",
       "supportsTablet": false,
       "infoPlist": {
