@@ -13,6 +13,7 @@
       "appleTeamId": "CVR9PS8CQG",
       "supportsTablet": false,
       "infoPlist": {
+        "CFBundleDisplayName": "Luche",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
