@@ -74,6 +74,22 @@ eas submit -p ios
 eas submit -p android
 ```
 
+### Direct Android beta APK
+
+The public Android beta is also available as a signed APK from
+`https://luche.ai/downloads/luche-android.apk`. Build it with the `preview`
+profile:
+
+```bash
+eas build --platform android --profile preview
+```
+
+That profile explicitly selects `android.buildType: apk`, uses EAS internal
+distribution signing, and increments the remote Android `versionCode` on every
+build. Keep using the EAS-managed keystore so users can install each new APK
+over the previous release. The website repo README and the shared Pi runbook
+contain the atomic publish commands for replacing the stable download.
+
 ### Node version note
 Use the Node version supported by the current Expo SDK 54 toolchain. This app is
 intentionally not being upgraded to SDK 57 until the required iOS Expo client is
