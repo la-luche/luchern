@@ -12,7 +12,7 @@ so both stores will scrutinize permissions, privacy, and medical claims.
 | Item | Where |
 | --- | --- |
 | Camera permission usage string | `app.json` → `plugins.expo-camera.cameraPermission` |
-| Audio disabled | `microphonePermission: false`, `recordAudioAndroid: false`, camera `mute` |
+| Audio disabled | `microphonePermission: false`, `recordAudioAndroid: false`, camera `mute`; `android.blockedPermissions` removes transitive microphone/storage/overlay declarations from the final manifest |
 | Runtime permission request + graceful "denied" screen | `src/app/record/[id].tsx` (permission gate, Open-Settings fallback) |
 | Export-compliance (skip encryption questionnaire) | `app.json` → `ios.infoPlist.ITSAppUsesNonExemptEncryption: false` |
 | iPhone-only (no broken iPad review) | `app.json` → `ios.supportsTablet: false` |
