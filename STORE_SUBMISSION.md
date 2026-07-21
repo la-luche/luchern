@@ -81,14 +81,18 @@ The public Android beta is also available as a signed APK from
 profile:
 
 ```bash
-eas build --platform android --profile preview
+eas build --platform android --profile preview --local \
+  --output Luche-Android.apk
 ```
 
 That profile explicitly selects `android.buildType: apk`, uses EAS internal
 distribution signing, and increments the remote Android `versionCode` on every
-build. Keep using the EAS-managed keystore so users can install each new APK
-over the previous release. The website repo README and the shared Pi runbook
-contain the atomic publish commands for replacing the stable download.
+build. Local builds are the default for this beta; they require JDK 17 and the
+Android SDK but still fetch the EAS-managed keystore and remote version. Omit
+`--local` only when a cloud worker is intentionally preferred. Keep using the
+same keystore so users can install each new APK over the previous release. The
+website repo README and the shared Pi runbook contain the verification and
+atomic publish commands for replacing the stable download.
 
 ### Node version note
 Use the Node version supported by the current Expo SDK 54 toolchain. This app is
