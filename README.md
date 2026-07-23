@@ -42,6 +42,15 @@ npx tsc --noEmit                    # typecheck
 npx expo export --platform ios      # bundle smoke test (no device needed)
 ```
 
+### Adjust instruction-video framing
+
+Run `npm run framing`, then open
+`http://localhost:4173/tools/video-framing/`. The desktop tool uses the real
+demo clips and instruction overlay. Trackpad-pinch or scroll to zoom, drag to
+reposition, and copy the source-ready `demoFraming` value into the matching test
+in `src/lib/tests.ts`. Drafts persist in the browser. Framing uses normalized
+screen offsets, so the same values work across device sizes.
+
 ## Architecture
 
 ### Screen flow (mirrors the Swift app, minus local inference)

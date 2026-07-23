@@ -3,7 +3,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { DemoVideo } from '../../components/Instruction';
@@ -18,21 +18,64 @@ const TEXT_SHADOW = {
   textShadowRadius: 5,
 } as const;
 
-/** Strong lower scrim: copy stays readable over every light or busy demo frame. */
+const SCRIM_FADE_HEIGHT = 220;
+
+const styles = StyleSheet.create({
+  lowerScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    top: -SCRIM_FADE_HEIGHT,
+  },
+  scrimFade: {
+    height: SCRIM_FADE_HEIGHT,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  scrimBody: {
+    backgroundColor: '#000',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: SCRIM_FADE_HEIGHT,
+  },
+  bottomSafeArea: {
+    backgroundColor: '#000',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 10,
+  },
+});
+
+/** A content-sized lower scrim: dark behind copy, transparent above it. */
 function InstructionScrim() {
   return (
-    <Svg pointerEvents="none" width="100%" height="100%" style={StyleSheet.absoluteFill}>
-      <Defs>
-        <SvgLinearGradient id="instruction-scrim" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#000" stopOpacity={0.08} />
-          <Stop offset="0.2" stopColor="#000" stopOpacity={0.16} />
-          <Stop offset="0.38" stopColor="#000" stopOpacity={0.74} />
-          <Stop offset="0.55" stopColor="#000" stopOpacity={0.94} />
-          <Stop offset="1" stopColor="#000" stopOpacity={0.98} />
-        </SvgLinearGradient>
-      </Defs>
-      <Rect width="100%" height="100%" fill="url(#instruction-scrim)" />
-    </Svg>
+    <View pointerEvents="none" style={styles.lowerScrim}>
+      <Svg width="100%" height={SCRIM_FADE_HEIGHT} style={styles.scrimFade}>
+        <Defs>
+          <SvgLinearGradient id="instruction-scrim" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#000" stopOpacity={0} />
+            <Stop offset="0.2" stopColor="#000" stopOpacity={0.02} />
+            <Stop offset="0.35" stopColor="#000" stopOpacity={0.06} />
+            <Stop offset="0.48" stopColor="#000" stopOpacity={0.14} />
+            <Stop offset="0.6" stopColor="#000" stopOpacity={0.28} />
+            <Stop offset="0.72" stopColor="#000" stopOpacity={0.48} />
+            <Stop offset="0.82" stopColor="#000" stopOpacity={0.68} />
+            <Stop offset="0.9" stopColor="#000" stopOpacity={0.84} />
+            <Stop offset="0.96" stopColor="#000" stopOpacity={0.94} />
+            <Stop offset="1" stopColor="#000" stopOpacity={1} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#instruction-scrim)" />
+      </Svg>
+      <View style={styles.scrimBody} />
+    </View>
   );
 }
 
@@ -59,9 +102,9 @@ function OverlaySteps({ steps }: { steps: readonly string[] }) {
 
 /**
  * Per-test instruction guide, kept intentionally minimal for an older patient:
- * a demo clip (shows the movement), the test name, a few big plain-language
- * steps (phone setup folded into step 1), and one large button. During a
- * guided session it also shows "Test N of M" + a Skip control.
+ * a demo clip (shows the movement), a few big plain-language steps (phone setup
+ * folded into step 1), and one large button. During a guided session it also
+ * shows "Test N of M" + a Skip control.
  */
 export default function InstructionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -69,6 +112,7 @@ export default function InstructionScreen() {
   const test = getTest(id);
   const t = useT();
   const session = useSession();
+  const insets = useSafeAreaInsets();
   useKeepAwake(); // don't let the screen dim/lock while a helper reads the steps
 
   if (!test) return <Redirect href="/" />;
@@ -96,10 +140,13 @@ export default function InstructionScreen() {
         poster={test.demoPoster}
         icon={test.icon}
         caption={test.demoVideo != null ? t.instruction.demoCaption : t.instruction.demoSoon}
+        framing={test.demoFraming}
       />
-      <InstructionScrim />
 
-      <SafeAreaView edges={['top', 'bottom', 'left', 'right']} className="flex-1">
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        className="flex-1"
+      >
         <View className="h-16 flex-row items-center justify-between px-4">
           <Pressable
             onPress={() => router.back()}
@@ -135,23 +182,24 @@ export default function InstructionScreen() {
         <View className="flex-1 justify-end">
           {/* The action never scrolls off-screen. Only unusually long localized
               copy scrolls within the dark lower panel above it. */}
-          <View style={{ maxHeight: '82%' }}>
+          <View style={{ maxHeight: '82%', backgroundColor: '#000' }}>
+            <InstructionScrim />
             <ScrollView
               style={{ flexShrink: 1 }}
-              contentContainerClassName="px-6 pb-4 pt-3"
+              contentContainerClassName="px-6 pb-3 pt-1"
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <Text className="text-[34px] font-bold leading-[40px] text-white" style={TEXT_SHADOW}>
-                {tt.title}
-              </Text>
-
-              <View className="mt-5">
-                <OverlaySteps steps={tt.steps} />
-              </View>
+              <OverlaySteps steps={tt.steps} />
             </ScrollView>
 
-            <View className="px-6 pb-3 pt-2">
+            <View
+              className="px-6 pt-2"
+              style={{
+                backgroundColor: '#000',
+                paddingBottom: Math.max(insets.bottom, 12),
+              }}
+            >
               <Pressable
                 onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
                 accessibilityRole="button"
@@ -164,6 +212,10 @@ export default function InstructionScreen() {
           </View>
         </View>
       </SafeAreaView>
+      <View
+        pointerEvents="none"
+        style={[styles.bottomSafeArea, { height: Math.max(insets.bottom, 12) }]}
+      />
     </View>
   );
 }

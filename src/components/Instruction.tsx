@@ -5,6 +5,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
 import { useDemoVideoPlayer } from './DemoVideoProvider';
+import { DEFAULT_DEMO_FRAMING, type DemoFraming } from '../lib/demoFraming';
 import { COLORS } from '../lib/theme';
 
 type MCIName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -27,17 +28,20 @@ export function DemoVideo({
   icon,
   caption,
   fullScreen = false,
+  framing = DEFAULT_DEMO_FRAMING,
 }: {
   source?: number;
   poster?: number;
   icon: MCIName;
   caption: string;
   fullScreen?: boolean;
+  framing?: DemoFraming;
 }) {
   const player = useDemoVideoPlayer(source);
   const hasVideo = player != null;
   const [reduceMotion, setReduceMotion] = useState(false);
   const [renderedPlayer, setRenderedPlayer] = useState<VideoPlayer | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useEffect(() => {
     let active = true;
     AccessibilityInfo.isReduceMotionEnabled().then((v) => {
@@ -94,18 +98,43 @@ export function DemoVideo({
     </>
   );
 
+  const framedVideo = (
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          transform: [
+            { translateX: framing.x * viewport.width },
+            { translateY: framing.y * viewport.height },
+          ],
+        },
+      ]}
+    >
+      <View style={[StyleSheet.absoluteFill, { transform: [{ scale: framing.scale }] }]}>
+        {video}
+      </View>
+    </View>
+  );
+
   if (fullScreen) {
     return (
-      <View pointerEvents="none" className="absolute inset-0 overflow-hidden bg-ink">
-        {video}
+      <View
+        pointerEvents="none"
+        className="absolute inset-0 overflow-hidden bg-ink"
+        onLayout={({ nativeEvent }) => setViewport(nativeEvent.layout)}
+      >
+        {framedVideo}
       </View>
     );
   }
 
   return (
     <View className="mt-2">
-      <View className="aspect-video w-full overflow-hidden rounded-3xl bg-ink-faint">
-        {video}
+      <View
+        className="aspect-video w-full overflow-hidden rounded-3xl bg-ink-faint"
+        onLayout={({ nativeEvent }) => setViewport(nativeEvent.layout)}
+      >
+        {framedVideo}
       </View>
       <Text className="mt-2 text-center text-[13px] text-ink-muted">{caption}</Text>
     </View>

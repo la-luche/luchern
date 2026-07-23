@@ -1,6 +1,8 @@
 import type { ComponentProps } from 'react';
 import type { MaterialCommunityIcons } from '@expo/vector-icons';
 
+import type { DemoFraming } from './demoFraming';
+
 type MCIName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 /**
@@ -35,6 +37,8 @@ export interface TestConfig {
   demoVideo?: number;
   /** First-frame image shown instantly while the demo video loads. */
   demoPoster?: number;
+  /** Per-demo crop used by the full-screen instruction guide. */
+  demoFraming?: DemoFraming;
 }
 
 // Ordered by MDS-UPDRS item number.
@@ -46,6 +50,7 @@ export const TESTS: TestConfig[] = [
     sideSpecific: true,
     demoVideo: require('../../assets/demos/FingerTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/FingerTappingDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.08 },
   },
   {
     id: 'handMovements',
@@ -54,6 +59,7 @@ export const TESTS: TestConfig[] = [
     sideSpecific: true,
     demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandMovementsDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.09 },
   },
   {
     id: 'pronationSupination',
@@ -62,6 +68,7 @@ export const TESTS: TestConfig[] = [
     sideSpecific: true,
     demoVideo: require('../../assets/demos/HandTurnsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandTurnsDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.09 },
   },
   {
     id: 'toeTapping',
@@ -70,6 +77,7 @@ export const TESTS: TestConfig[] = [
     sideSpecific: true,
     demoVideo: require('../../assets/demos/ToeTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ToeTappingDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.13 },
   },
   {
     id: 'legAgility',
@@ -78,6 +86,7 @@ export const TESTS: TestConfig[] = [
     sideSpecific: true,
     demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/LegAgilityDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.14 },
   },
   {
     id: 'arisingFromChair',
@@ -85,6 +94,7 @@ export const TESTS: TestConfig[] = [
     icon: 'seat',
     demoVideo: require('../../assets/demos/ChairDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ChairDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.29 },
   },
   {
     id: 'gait',
@@ -92,6 +102,7 @@ export const TESTS: TestConfig[] = [
     icon: 'walk',
     demoVideo: require('../../assets/demos/WalkingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/WalkingDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: 0 },
   },
   {
     id: 'restTremor',
@@ -99,6 +110,7 @@ export const TESTS: TestConfig[] = [
     icon: 'vibrate',
     demoVideo: require('../../assets/demos/RestTremorDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/RestTremorDemo.jpg'),
+    demoFraming: { scale: 1, x: 0, y: -0.15 },
   },
 ];
 
