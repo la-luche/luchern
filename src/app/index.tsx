@@ -17,8 +17,6 @@ export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
   const { user } = useUser();
-  const email = user?.primaryEmailAddress?.emailAddress;
-  const profileName = user?.fullName || user?.firstName || email || t.profile.account;
 
   const startFullCheck = () => {
     startSession(TESTS.map((test) => test.id));
@@ -52,7 +50,7 @@ export default function MenuScreen() {
             </View>
           )}
           <Text numberOfLines={1} className="shrink text-[15px] font-medium text-ink">
-            {profileName}
+            {t.profile.myAccount}
           </Text>
         </Pressable>
       </View>

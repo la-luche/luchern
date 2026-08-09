@@ -18,6 +18,8 @@ export const it: Dict = {
   profile: {
     title: 'Il tuo account',
     account: 'Account',
+    myAccount: 'Il mio account',
+    scienceMethodology: 'Scienza e metodologia',
     openProfileA11y: 'Apri account e impostazioni',
     syncDescription: 'Le registrazioni e i risultati già caricati sono disponibili su tutti i dispositivi su cui accedi con questo account. I video recenti restano su questo dispositivo per 3 giorni; in seguito, quando li apri, vengono scaricati dal cloud.',
     logout: 'Esci',
@@ -185,6 +187,7 @@ export const it: Dict = {
     deleteFailedBody: 'Non è stato eliminato nulla. Controlla la connessione e riprova.',
     cloudAnalysis: 'Stima sperimentale',
     scoreHint: 'Stima sperimentale · non è una diagnosi',
+    howScoreCalculated: 'Come viene calcolato questo punteggio?',
     gradeLabel: (label: string) => `Livello · ${label}`,
     samplePill: 'ESEMPIO — risultato di prova, non un’analisi reale',
     noScoreTitle: 'Risultato non disponibile',

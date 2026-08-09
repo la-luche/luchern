@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 
 import { useT } from '../lib/i18n';
+import { METHODOLOGY_URL } from '../lib/links';
 import type { SharedRecording } from '../lib/sharedRecordings';
 import { getTest, TESTS } from '../lib/tests';
 import type { Recording } from '../lib/types';
+import { Button } from './Button';
 import { TrendChart, type TrendPoint } from './TrendChart';
 
 /**
@@ -51,6 +53,12 @@ export function ResultsTrends({ recordings }: { recordings: Recording[] }) {
           />
         </View>
       ))}
+
+      <Button
+        title={t.profile.scienceMethodology}
+        variant="secondary"
+        onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+      />
     </View>
   );
 }
@@ -111,6 +119,12 @@ export function SharedResultsTrends({
           />
         </View>
       ))}
+
+      <Button
+        title={t.profile.scienceMethodology}
+        variant="secondary"
+        onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+      />
     </View>
   );
 }

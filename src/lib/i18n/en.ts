@@ -21,6 +21,8 @@ export const en = {
   profile: {
     title: 'Account and settings',
     account: 'Account',
+    myAccount: 'My Account',
+    scienceMethodology: 'Science and methodology',
     openProfileA11y: 'Open account and settings',
     syncDescription: 'Your uploaded recordings and results are available on every device signed in to this account. Recent videos also stay on this device for 3 days; after that, they load from your online account when you open them.',
     logout: 'Log out',
@@ -187,6 +189,7 @@ export const en = {
     deleteFailedBody: 'Nothing was removed. Check your connection and try again.',
     cloudAnalysis: 'Experimental estimate',
     scoreHint: 'Experimental estimate · not a diagnosis',
+    howScoreCalculated: 'How is this score calculated?',
     gradeLabel: (label: string) => `Level · ${label}`,
     samplePill: 'EXAMPLE — placeholder only, not a real result',
     noScoreTitle: 'We couldn’t create a result',

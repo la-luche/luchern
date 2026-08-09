@@ -14,6 +14,7 @@ import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
+import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
@@ -195,6 +196,13 @@ export default function AboutScreen() {
               onPress={confirmAccountDeletion}
               disabled={loggingOut || deletingAccount}
               className="flex-1 px-3"
+            />
+          </View>
+          <View className="mt-3">
+            <Button
+              title={t.profile.scienceMethodology}
+              variant="secondary"
+              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
             />
           </View>
         </Section>

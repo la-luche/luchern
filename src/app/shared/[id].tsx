@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
@@ -13,6 +13,7 @@ import {
   type SharedTrialDetail,
 } from '../../lib/sharedRecordings';
 import { getTest } from '../../lib/tests';
+import { METHODOLOGY_URL } from '../../lib/links';
 import { COLORS } from '../../lib/theme';
 
 function RemoteVideo({ uri }: { uri: string }) {
@@ -150,6 +151,13 @@ export default function SharedResultDetailScreen() {
                   <Text className="mt-2 text-center text-[15px] leading-5 text-ink-muted">
                     {t.result.scoreHint}
                   </Text>
+                  <View className="mt-4 w-full">
+                    <Button
+                      title={t.result.howScoreCalculated}
+                      variant="secondary"
+                      onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+                    />
+                  </View>
                 </View>
               )}
             </View>

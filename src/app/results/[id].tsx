@@ -4,13 +4,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
 import { formatAnalysisFailureReason, localizeSeverity, useT } from '../../lib/i18n';
+import { METHODOLOGY_URL } from '../../lib/links';
 import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
@@ -214,6 +215,13 @@ export default function ResultDetailScreen() {
                   </Text>
                 </View>
               )}
+              <View className="mt-4 w-full">
+                <Button
+                  title={t.result.howScoreCalculated}
+                  variant="secondary"
+                  onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+                />
+              </View>
             </View>
           ) : recording.status === 'needs_retry' ? (
             <View className="mt-3 gap-2">
