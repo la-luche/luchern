@@ -5,10 +5,11 @@ import {
   blurVideoAsync,
   cancelAsync,
   type FaceBlurResult,
+  type PrivacyBlurOptions,
 } from '../../modules/face-blur';
 import {
-  faceBlurFileUris,
-  promoteFaceBlurredFile,
+  privacyBlurFileUris,
+  promotePrivacyBlurredFile,
 } from './recordingFiles';
 
 export class FaceBlurCancelledError extends Error {
@@ -36,10 +37,11 @@ async function hasUsableFile(uri: string): Promise<boolean> {
 export async function prepareFaceBlurredVideo(
   recordingId: string,
   inputUri: string,
+  options: Omit<PrivacyBlurOptions, 'sdkKey'>,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
 ): Promise<PreparedFaceBlur> {
-  const { pendingUri, finalUri } = faceBlurFileUris(recordingId);
+  const { pendingUri, finalUri } = privacyBlurFileUris(recordingId);
   if (await hasUsableFile(finalUri)) {
     onProgress(1);
     return {
@@ -47,7 +49,8 @@ export async function prepareFaceBlurredVideo(
       outputUri: finalUri,
       framesProcessed: 0,
       framesWithFaces: 0,
-      detections: 0,
+      framesWithBackgroundBlur: 0,
+      poseSamples: 0,
       recovered: true,
     };
   }
@@ -65,18 +68,27 @@ export async function prepareFaceBlurredVideo(
   signal?.addEventListener('abort', abort, { once: true });
 
   try {
-    const result = await blurVideoAsync(inputUri, pendingUri, operationId);
+    const result = await blurVideoAsync(inputUri, pendingUri, operationId, {
+      ...options,
+      sdkKey: process.env.EXPO_PUBLIC_QUICKPOSE_SDK_KEY ?? '',
+    });
     if (signal?.aborted) throw new FaceBlurCancelledError();
     if (result.framesProcessed <= 0) {
       throw new Error('no video frames could be scanned for faces');
     }
-    if (result.detections <= 0) {
-      throw new Error('no face could be detected in this video');
+    if (result.poseSamples <= 0) {
+      throw new Error('no person pose could be detected in this video');
+    }
+    if (options.blurFaces && result.framesWithFaces <= 0) {
+      throw new Error('no face could be located from the detected pose');
+    }
+    if (options.blurBackground && result.framesWithBackgroundBlur <= 0) {
+      throw new Error('the person could not be isolated from the background');
     }
     if (!(await hasUsableFile(pendingUri))) {
       throw new Error('face-blurred video is empty');
     }
-    const videoUri = await promoteFaceBlurredFile(recordingId, pendingUri);
+    const videoUri = await promotePrivacyBlurredFile(recordingId, pendingUri);
     onProgress(1);
     return { ...result, videoUri, recovered: false };
   } catch (error) {

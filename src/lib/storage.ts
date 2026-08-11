@@ -15,7 +15,7 @@ import {
 } from './cloud';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import { FaceBlurCancelledError, prepareFaceBlurredVideo } from './faceBlur';
-import { getFaceBlurEnabled } from './faceBlurSettings';
+import { getPrivacyBlurSettings } from './faceBlurSettings';
 import {
   deleteAllRecordingFiles,
   deleteRecordingFile,
@@ -56,7 +56,7 @@ const operations = new Map<
 const serialUpload = createSerialQueue();
 // Native video exporters are intentionally serialized. Two simultaneous
 // detector/encoder jobs are especially punishing on older patient phones.
-const serialFaceBlur = createSerialQueue();
+const serialPrivacyBlur = createSerialQueue();
 
 function storageKey(accountId: string): string {
   return `${STORAGE_KEY_PREFIX}${accountId}`;
@@ -343,18 +343,18 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
   try {
     let uploadRecording = rec;
     if (
-      rec.faceBlurRequested &&
-      rec.faceBlurState !== 'completed' &&
-      rec.faceBlurState !== 'bypassed' &&
+      (rec.faceBlurRequested || rec.backgroundBlurRequested) &&
+      rec.privacyBlurState !== 'completed' &&
+      rec.privacyBlurState !== 'bypassed' &&
       !rec.uploadId &&
       !rec.jobId
     ) {
-      const sourceVideoUri = rec.faceBlurOriginalUri ?? rec.videoUri;
+      const sourceVideoUri = rec.privacyBlurOriginalUri ?? rec.videoUri;
       if (!sourceVideoUri) {
         await patch(rec.id, {
           status: 'blur_failed',
-          faceBlurState: 'failed',
-          faceBlurProgress: undefined,
+          privacyBlurState: 'failed',
+          privacyBlurProgress: undefined,
           failReason: 'recording file missing',
           resumable: false,
         }, epoch);
@@ -363,21 +363,30 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
 
       await patch(rec.id, {
         status: 'preparing',
-        faceBlurState: 'processing',
-        faceBlurProgress: 0,
+        privacyBlurState: 'processing',
+        privacyBlurProgress: 0,
         failReason: undefined,
         resumable: undefined,
         permanent: undefined,
       }, epoch);
-      recordDiagnostic('face_blur_started', { recordingId: rec.id });
+      recordDiagnostic('privacy_blur_started', {
+        recordingId: rec.id,
+        faces: Boolean(rec.faceBlurRequested),
+        background: Boolean(rec.backgroundBlurRequested),
+      });
 
       try {
         const originalUri = sourceVideoUri;
-        const prepared = await serialFaceBlur(() =>
+        const prepared = await serialPrivacyBlur(() =>
           prepareFaceBlurredVideo(
             rec.id,
             originalUri,
-            (faceBlurProgress) => patchVolatile(rec.id, { faceBlurProgress }, epoch),
+            {
+              blurFaces: Boolean(rec.faceBlurRequested),
+              blurBackground: Boolean(rec.backgroundBlurRequested),
+              poseSampleIntervalMs: 200,
+            },
+            (privacyBlurProgress) => patchVolatile(rec.id, { privacyBlurProgress }, epoch),
             signal,
           ),
         );
@@ -385,19 +394,22 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
         const preparedRecording: Recording = {
           ...rec,
           videoUri: prepared.videoUri,
-          faceBlurOriginalUri: originalUri,
+          privacyBlurOriginalUri: originalUri,
           status: 'preparing',
-          faceBlurState: 'processing',
-          faceBlurProgress: undefined,
-          faceBlurFramesProcessed: prepared.recovered
-            ? rec.faceBlurFramesProcessed
+          privacyBlurState: 'processing',
+          privacyBlurProgress: undefined,
+          privacyBlurFramesProcessed: prepared.recovered
+            ? rec.privacyBlurFramesProcessed
             : prepared.framesProcessed,
-          faceBlurFramesWithFaces: prepared.recovered
-            ? rec.faceBlurFramesWithFaces
+          privacyBlurFramesWithFaces: prepared.recovered
+            ? rec.privacyBlurFramesWithFaces
             : prepared.framesWithFaces,
-          faceBlurDetections: prepared.recovered
-            ? rec.faceBlurDetections
-            : prepared.detections,
+          privacyBlurFramesWithBackground: prepared.recovered
+            ? rec.privacyBlurFramesWithBackground
+            : prepared.framesWithBackgroundBlur,
+          privacyBlurPoseSamples: prepared.recovered
+            ? rec.privacyBlurPoseSamples
+            : prepared.poseSamples,
           failReason: undefined,
           resumable: undefined,
           permanent: undefined,
@@ -411,33 +423,34 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
         }
         uploadRecording = {
           ...preparedRecording,
-          faceBlurOriginalUri: undefined,
+          privacyBlurOriginalUri: undefined,
           status: 'uploading',
-          faceBlurState: 'completed',
+          privacyBlurState: 'completed',
           uploadProgress: 0,
           uploadAttempt: 1,
           uploadRetrying: false,
         };
         await patch(rec.id, uploadRecording, epoch);
         if (!isCurrent(epoch)) return;
-        recordDiagnostic('face_blur_completed', {
+        recordDiagnostic('privacy_blur_completed', {
           recordingId: rec.id,
           framesProcessed: prepared.framesProcessed,
           framesWithFaces: prepared.framesWithFaces,
-          detections: prepared.detections,
+          framesWithBackgroundBlur: prepared.framesWithBackgroundBlur,
+          poseSamples: prepared.poseSamples,
           recovered: prepared.recovered,
         });
       } catch (error) {
         if (error instanceof FaceBlurCancelledError || signal.aborted) throw error;
         await patch(rec.id, {
           status: 'blur_failed',
-          faceBlurState: 'failed',
-          faceBlurProgress: undefined,
+          privacyBlurState: 'failed',
+          privacyBlurProgress: undefined,
           failReason: error instanceof Error ? error.message : String(error),
           resumable: false,
           permanent: false,
         }, epoch);
-        recordDiagnostic('face_blur_failed', {
+        recordDiagnostic('privacy_blur_failed', {
           recordingId: rec.id,
           ...diagnosticErrorData(error),
         });
@@ -605,7 +618,10 @@ async function add(
   const list = await ensureLoaded();
   const epoch = accountEpoch;
   const id = makeId();
-  const faceBlurRequested = await getFaceBlurEnabled();
+  const privacyBlur = await getPrivacyBlurSettings();
+  const faceBlurRequested = privacyBlur.face;
+  const backgroundBlurRequested = privacyBlur.background;
+  const privacyBlurRequested = faceBlurRequested || backgroundBlurRequested;
   const durableUri = await persistRecordingFile(videoUri, id);
   const rec: Recording = {
     id,
@@ -613,13 +629,14 @@ async function add(
     evaluatedSide,
     createdAt: Date.now(),
     videoUri: durableUri,
-    status: faceBlurRequested ? 'preparing' : 'uploading',
+    status: privacyBlurRequested ? 'preparing' : 'uploading',
     faceBlurRequested,
-    faceBlurState: faceBlurRequested ? 'pending' : undefined,
-    faceBlurProgress: faceBlurRequested ? 0 : undefined,
-    uploadProgress: faceBlurRequested ? undefined : 0,
-    uploadAttempt: faceBlurRequested ? undefined : 1,
-    uploadRetrying: faceBlurRequested ? undefined : false,
+    backgroundBlurRequested,
+    privacyBlurState: privacyBlurRequested ? 'pending' : undefined,
+    privacyBlurProgress: privacyBlurRequested ? 0 : undefined,
+    uploadProgress: privacyBlurRequested ? undefined : 0,
+    uploadAttempt: privacyBlurRequested ? undefined : 1,
+    uploadRetrying: privacyBlurRequested ? undefined : false,
   };
   if (!isCurrent(epoch)) {
     await deleteRecordingFile(durableUri).catch(() => {});
@@ -639,6 +656,7 @@ async function add(
     testId,
     uri: 'documents',
     faceBlurRequested,
+    backgroundBlurRequested,
   });
   void drive(rec);
   return rec;
@@ -672,10 +690,10 @@ async function removeById(id: string) {
   if (jobId) await deleteRemoteRecording(jobId);
   if (recording.videoUri) await deleteRecordingFile(recording.videoUri);
   if (
-    recording.faceBlurOriginalUri &&
-    recording.faceBlurOriginalUri !== recording.videoUri
+    recording.privacyBlurOriginalUri &&
+    recording.privacyBlurOriginalUri !== recording.videoUri
   ) {
-    await deleteRecordingFile(recording.faceBlurOriginalUri);
+    await deleteRecordingFile(recording.privacyBlurOriginalUri);
   }
   cache = (cache ?? list).filter((item) => item.id !== id);
   await persist();
@@ -705,11 +723,11 @@ async function resume(id: string) {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing) return;
   if (
-    existing.faceBlurRequested &&
-    existing.faceBlurState !== 'completed' &&
-    existing.faceBlurState !== 'bypassed'
+    (existing.faceBlurRequested || existing.backgroundBlurRequested) &&
+    existing.privacyBlurState !== 'completed' &&
+    existing.privacyBlurState !== 'bypassed'
   ) {
-    await retryFaceBlur(id);
+    await retryPrivacyBlur(id);
     return;
   }
   await patch(id, {
@@ -726,14 +744,13 @@ async function resume(id: string) {
   if (recording) void drive(recording);
 }
 
-async function retryFaceBlur(id: string) {
+async function retryPrivacyBlur(id: string) {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing?.videoUri || existing.uploadId || existing.jobId) return;
   await patch(id, {
     status: 'preparing',
-    faceBlurRequested: true,
-    faceBlurState: 'pending',
-    faceBlurProgress: 0,
+    privacyBlurState: 'pending',
+    privacyBlurProgress: 0,
     failReason: undefined,
     permanent: undefined,
     resumable: undefined,
@@ -742,18 +759,19 @@ async function retryFaceBlur(id: string) {
   if (recording) void drive(recording);
 }
 
-async function sendWithoutFaceBlur(id: string) {
+async function sendWithoutPrivacyBlur(id: string) {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing?.videoUri || existing.uploadId || existing.jobId) return;
-  const unblurredUri = existing.faceBlurOriginalUri ?? existing.videoUri;
+  const unblurredUri = existing.privacyBlurOriginalUri ?? existing.videoUri;
   const sanitizedUri = existing.videoUri !== unblurredUri ? existing.videoUri : undefined;
   await patch(id, {
     videoUri: unblurredUri,
-    faceBlurOriginalUri: undefined,
+    privacyBlurOriginalUri: undefined,
     status: 'uploading',
     faceBlurRequested: false,
-    faceBlurState: 'bypassed',
-    faceBlurProgress: undefined,
+    backgroundBlurRequested: false,
+    privacyBlurState: 'bypassed',
+    privacyBlurProgress: undefined,
     uploadProgress: 0,
     uploadAttempt: 1,
     uploadRetrying: false,
@@ -762,7 +780,7 @@ async function sendWithoutFaceBlur(id: string) {
     resumable: undefined,
   });
   if (sanitizedUri) await deleteRecordingFile(sanitizedUri).catch(() => {});
-  recordDiagnostic('face_blur_bypassed', { recordingId: id });
+  recordDiagnostic('privacy_blur_bypassed', { recordingId: id });
   const recording = (cache ?? []).find((item) => item.id === id);
   if (recording) void drive(recording);
 }
@@ -829,8 +847,11 @@ export function useRecordings() {
   const addRecording = useCallback(add, []);
   const remove = useCallback(removeById, []);
   const retry = useCallback((id: string) => void resume(id), []);
-  const retryFaceBlurring = useCallback((id: string) => void retryFaceBlur(id), []);
-  const uploadWithoutFaceBlurring = useCallback((id: string) => void sendWithoutFaceBlur(id), []);
+  const retryPrivacyBlurring = useCallback((id: string) => void retryPrivacyBlur(id), []);
+  const uploadWithoutPrivacyBlurring = useCallback(
+    (id: string) => void sendWithoutPrivacyBlur(id),
+    [],
+  );
   const refresh = useCallback(() => refreshFromServer(), []);
   const logoutAndPurge = useCallback(() => purgeForLogout(), []);
   const restoreAfterFailedPurge = useCallback(
@@ -848,8 +869,8 @@ export function useRecordings() {
     addRecording,
     remove,
     retry,
-    retryFaceBlurring,
-    uploadWithoutFaceBlurring,
+    retryPrivacyBlurring,
+    uploadWithoutPrivacyBlurring,
     refresh,
     logoutAndPurge,
     restoreAfterFailedPurge,

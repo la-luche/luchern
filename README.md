@@ -108,13 +108,19 @@ This makes relaunch/retry avoid retransmitting a completed upload. It also
 hydrates metadata from `GET /me/trials`, keeps uploaded videos locally for
 three days, and requests a signed cloud URL when an older video is opened.
 
-When **Blur faces before upload** is enabled in About (off by default), a local
-Expo module runs the same bundled full-range BlazeFace model directly through
-TensorFlow Lite/LiteRT on iOS and Android (without MediaPipe Tasks telemetry),
-redacts every decoded frame, and writes a new MP4 before `uploadRecording` can
-run. The sanitized URI is persisted before the original is permanently deleted.
-If preprocessing fails, upload remains blocked until the user retries or
-explicitly confirms **Send without face blurring**.
+About contains two independent, off-by-default options: **Blur faces before
+upload** and **Blur the background before upload**. A local Expo module uses
+QuickPose on iOS and Android to estimate pose every 200 ms, then interpolates a
+tight face box and a generous whole-person box while exporting one sanitized
+MP4. Face blur stays close to the head; background blur keeps the expanded
+person region clear and blurs everything outside it. Set
+`EXPO_PUBLIC_QUICKPOSE_SDK_KEY` for native development/release builds.
+QuickPose raises the Android minimum to API 26 (Android 8.0); the local config
+plugin applies that requirement during Expo prebuild.
+
+The sanitized URI is persisted before the original is permanently deleted. If
+QuickPose cannot find a person or preprocessing otherwise fails, upload remains
+blocked until the user retries or explicitly confirms sending the original.
 
 ### Data model
 

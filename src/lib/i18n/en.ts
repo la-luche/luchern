@@ -106,10 +106,16 @@ export const en = {
     privacyTitle: 'Video privacy',
     faceBlurTitle: 'Blur faces before upload',
     faceBlurBody:
-      'Off by default. When on, Luche processes each approved recording on this device, permanently deletes the original, and uploads only the face-blurred copy.',
+      'Off by default. Uses a close box around the face so the rest of the movement stays clear.',
     faceBlurA11y: 'Blur faces before upload',
-    faceBlurSaveFailedTitle: 'We couldn’t save this setting',
-    faceBlurSaveFailedBody: 'Your previous face-blur setting is still in use. Please try again.',
+    backgroundBlurTitle: 'Blur the background before upload',
+    backgroundBlurBody:
+      'Off by default. Keeps a generous area around the person clear and blurs everything outside it.',
+    backgroundBlurA11y: 'Blur the background before upload',
+    privacyBlurTechnicalBody:
+      'Pose is estimated on this device every few frames and interpolated between them. QuickPose receives app and device identifiers only to validate its SDK license; it never receives video frames or pose coordinates.',
+    privacyBlurSaveFailedTitle: 'We couldn’t save this setting',
+    privacyBlurSaveFailedBody: 'Your previous video-privacy settings are still in use. Please try again.',
     supportTitle: 'Help and support',
     supportBody: 'Questions or problems? Contact the Luche team at founders@luche.ai.',
     emailSupport: 'Email support',
@@ -205,16 +211,16 @@ export const en = {
     retry: 'Retry',
     failedRetry: 'Something went wrong. Luche will keep trying, or you can tap Retry.',
     permanentFailed: 'This recording couldn’t be uploaded. Please make a new recording.',
-    faceBlurFailedTitle: 'Face blurring didn’t finish',
-    faceBlurFailedBody:
-      'Nothing has uploaded, and the original recording is still only on this device. You can try again or explicitly send the original without face blurring.',
-    retryFaceBlur: 'Retry face blurring',
-    sendWithoutFaceBlur: 'Send without face blurring',
-    sendWithoutFaceBlurConfirmTitle: 'Send the original video?',
-    sendWithoutFaceBlurConfirmBody:
-      'Faces may be visible. If you continue, Luche will upload the original recording without face blurring.',
-    faceBlurring: 'Blurring faces on this device…',
-    uploadStartsAfterFaceBlur: 'Upload starts only after the face-blurred copy is ready.',
+    privacyBlurFailedTitle: 'Video privacy blurring didn’t finish',
+    privacyBlurFailedBody:
+      'Nothing has uploaded, and the original recording is still only on this device. You can try again or explicitly send the original without the selected blurring.',
+    retryPrivacyBlur: 'Retry privacy blurring',
+    sendWithoutPrivacyBlur: 'Send the original video',
+    sendWithoutPrivacyBlurConfirmTitle: 'Send the original video?',
+    sendWithoutPrivacyBlurConfirmBody:
+      'Faces and the background may be visible. If you continue, Luche will upload the original recording without either privacy blur.',
+    privacyBlurring: 'Applying video privacy on this device…',
+    uploadStartsAfterPrivacyBlur: 'Upload starts only after the privacy-safe copy is ready.',
     uploading: 'Uploading your recording…',
     processing: 'Getting your result…',
     processingWait: 'Getting your result may take a few minutes. You can leave this screen and come back later.',
@@ -223,8 +229,8 @@ export const en = {
     backToMenu: 'Back to home',
   },
   status: {
-    preparing: 'Blurring faces…',
-    blur_failed: 'Face blur needs attention',
+    preparing: 'Applying video privacy…',
+    blur_failed: 'Video privacy needs attention',
     uploading: 'Uploading…',
     processing: 'Getting result…',
     done: 'Ready',
@@ -232,10 +238,10 @@ export const en = {
     failed: 'Needs attention',
   },
   uploadBanner: {
-    faceBlurring: (n: number) =>
-      `Blurring faces before upload${n > 1 ? ` · ${n} recordings` : ''}`,
-    faceBlurFailed: (n: number) =>
-      `${n} recording${n === 1 ? ' needs' : 's need'} a face-blur choice`,
+    privacyBlurring: (n: number) =>
+      `Applying video privacy before upload${n > 1 ? ` · ${n} recordings` : ''}`,
+    privacyBlurFailed: (n: number) =>
+      `${n} recording${n === 1 ? ' needs' : 's need'} a video-privacy choice`,
     keepOpen: (n: number) =>
       `Keep Luche open while ${n} recording${n === 1 ? ' uploads' : 's upload'}`,
     retrying: 'Upload paused — Luche is trying again',

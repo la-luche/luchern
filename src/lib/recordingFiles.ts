@@ -55,14 +55,14 @@ export async function deleteAllRecordingFiles(): Promise<void> {
 }
 
 /** Stable and temporary paths used by the native face-redaction encoder. */
-export function faceBlurFileUris(recordingId: string): {
+export function privacyBlurFileUris(recordingId: string): {
   pendingUri: string;
   finalUri: string;
 } {
   if (!RECORDINGS_DIR) throw new Error('recordings directory unavailable');
   return {
-    pendingUri: `${RECORDINGS_DIR}${recordingId}.face-blurred.pending.mp4`,
-    finalUri: `${RECORDINGS_DIR}${recordingId}.face-blurred.mp4`,
+    pendingUri: `${RECORDINGS_DIR}${recordingId}.privacy-blurred.pending.mp4`,
+    finalUri: `${RECORDINGS_DIR}${recordingId}.privacy-blurred.mp4`,
   };
 }
 
@@ -70,11 +70,11 @@ export function faceBlurFileUris(recordingId: string): {
  * Atomically promote a completed encoder output. The caller must persist this
  * URI before deleting the original recording.
  */
-export async function promoteFaceBlurredFile(
+export async function promotePrivacyBlurredFile(
   recordingId: string,
   pendingUri: string,
 ): Promise<string> {
-  const { finalUri } = faceBlurFileUris(recordingId);
+  const { finalUri } = privacyBlurFileUris(recordingId);
   await FileSystem.makeDirectoryAsync(RECORDINGS_DIR!, { intermediates: true });
   await FileSystem.deleteAsync(finalUri, { idempotent: true });
   await FileSystem.moveAsync({ from: pendingUri, to: finalUri });

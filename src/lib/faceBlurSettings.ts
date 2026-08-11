@@ -1,27 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'luche.face-blur.enabled.v1';
+const FACE_STORAGE_KEY = 'luche.face-blur.enabled.v1';
+const BACKGROUND_STORAGE_KEY = 'luche.background-blur.enabled.v1';
 
-let cached: boolean | null = null;
-let loading: Promise<boolean> | null = null;
-const listeners = new Set<(enabled: boolean) => void>();
+export type PrivacyBlurSettings = {
+  face: boolean;
+  background: boolean;
+};
 
-function emit(enabled: boolean) {
-  for (const listener of listeners) listener(enabled);
+let cached: PrivacyBlurSettings | null = null;
+let loading: Promise<PrivacyBlurSettings> | null = null;
+const listeners = new Set<(settings: PrivacyBlurSettings) => void>();
+
+function emit(settings: PrivacyBlurSettings) {
+  for (const listener of listeners) listener(settings);
 }
 
-export async function getFaceBlurEnabled(): Promise<boolean> {
+export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
   if (cached != null) return cached;
   if (!loading) {
-    loading = AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        cached = value === 'true';
+    loading = AsyncStorage.multiGet([FACE_STORAGE_KEY, BACKGROUND_STORAGE_KEY])
+      .then((entries) => {
+        const values = Object.fromEntries(entries);
+        cached = {
+          face: values[FACE_STORAGE_KEY] === 'true',
+          background: values[BACKGROUND_STORAGE_KEY] === 'true',
+        };
         return cached;
       })
       .catch(() => {
-        cached = false;
-        return false;
+        cached = { face: false, background: false };
+        return cached;
       })
       .finally(() => {
         loading = null;
@@ -30,25 +40,31 @@ export async function getFaceBlurEnabled(): Promise<boolean> {
   return loading;
 }
 
-export async function setFaceBlurEnabled(enabled: boolean): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, enabled ? 'true' : 'false');
-  cached = enabled;
-  emit(enabled);
+export async function setPrivacyBlurSetting(
+  setting: keyof PrivacyBlurSettings,
+  enabled: boolean,
+): Promise<void> {
+  const key = setting === 'face' ? FACE_STORAGE_KEY : BACKGROUND_STORAGE_KEY;
+  await AsyncStorage.setItem(key, enabled ? 'true' : 'false');
+  cached = { ...(cached ?? await getPrivacyBlurSettings()), [setting]: enabled };
+  emit(cached);
 }
 
-export function useFaceBlurSetting() {
-  const [enabled, setEnabledState] = useState(cached ?? false);
+export function usePrivacyBlurSettings() {
+  const [settings, setSettings] = useState<PrivacyBlurSettings>(
+    cached ?? { face: false, background: false },
+  );
   const [isLoading, setIsLoading] = useState(cached == null);
 
   useEffect(() => {
     let mounted = true;
-    const listener = (next: boolean) => {
-      if (mounted) setEnabledState(next);
+    const listener = (next: PrivacyBlurSettings) => {
+      if (mounted) setSettings(next);
     };
     listeners.add(listener);
-    void getFaceBlurEnabled().then((next) => {
+    void getPrivacyBlurSettings().then((next) => {
       if (!mounted) return;
-      setEnabledState(next);
+      setSettings(next);
       setIsLoading(false);
     });
     return () => {
@@ -57,17 +73,18 @@ export function useFaceBlurSetting() {
     };
   }, []);
 
-  const update = useCallback(async (next: boolean) => {
-    setEnabledState(next);
+  const update = useCallback(async (setting: keyof PrivacyBlurSettings, next: boolean) => {
+    const previous = settings;
+    setSettings({ ...settings, [setting]: next });
     try {
-      await setFaceBlurEnabled(next);
+      await setPrivacyBlurSetting(setting, next);
     } catch (error) {
-      setEnabledState(!next);
+      setSettings(previous);
       throw error;
     }
-  }, []);
+  }, [settings]);
 
-  return { enabled, isLoading, setEnabled: update };
+  return { ...settings, isLoading, setEnabled: update };
 }
 
 export const __testing = {
@@ -76,5 +93,6 @@ export const __testing = {
     loading = null;
     listeners.clear();
   },
-  storageKey: STORAGE_KEY,
+  faceStorageKey: FACE_STORAGE_KEY,
+  backgroundStorageKey: BACKGROUND_STORAGE_KEY,
 };

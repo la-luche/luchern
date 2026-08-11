@@ -8,7 +8,9 @@ The public account-deletion instructions and request path are at
 
 - Account identifiers required for sign-in and account ownership.
 - Movement-test videos recorded without audio.
-- Temporary on-device face bounding boxes when optional face blurring is enabled.
+- Temporary on-device pose, face, and person bounding boxes when an optional
+  video-privacy blur is enabled.
+- App and device identifiers used by QuickPose to validate its SDK license.
 - Pose keypoints derived from uploaded videos.
 - Automated experimental movement metrics and analysis status.
 - A bounded on-device diagnostics log containing timestamps, technical state
@@ -20,13 +22,15 @@ The public account-deletion instructions and request path are at
 ## Storage and processing
 
 The local recording is moved into the app's documents directory after capture.
-**Blur faces before upload** is optional and off by default. When enabled, the
-same bundled face detector runs locally on iOS and Android. Video frames and
-face boxes do not leave the device during this step. Luche writes a sanitized
-copy, durably switches the recording to that copy, and permanently deletes the
-original before upload starts. Face boxes are not saved. If preprocessing
-fails, nothing uploads until the user retries or explicitly chooses **Send
-without face blurring**; in that case the original is uploaded.
+**Blur faces before upload** and **Blur the background before upload** are
+independent, optional, and off by default. When either is enabled, QuickPose
+estimates pose locally on iOS or Android every few frames. Luche interpolates
+the temporary regions, writes a sanitized copy, durably switches the recording
+to that copy, and permanently deletes the original before upload starts. Video
+frames, pose coordinates, and blur regions are not sent to QuickPose or saved.
+QuickPose receives app and device identifiers to validate its SDK license. If
+preprocessing fails, nothing uploads until the user retries or explicitly
+chooses to send the original without the selected blurring.
 
 The app uploads the selected video directly to Cloudflare R2 using a short-lived
 signed URL. Uploaded clips remain on the recording device for three days, then

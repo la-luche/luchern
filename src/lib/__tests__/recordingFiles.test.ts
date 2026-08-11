@@ -11,9 +11,9 @@ import {
   __testing,
   deleteAllRecordingFiles,
   deleteRecordingFile,
-  faceBlurFileUris,
+  privacyBlurFileUris,
   persistRecordingFile,
-  promoteFaceBlurredFile,
+  promotePrivacyBlurredFile,
 } from '../recordingFiles';
 
 describe('recording file lifecycle', () => {
@@ -81,21 +81,21 @@ describe('recording file lifecycle', () => {
     );
   });
 
-  it('uses deterministic pending and final face-blur paths', () => {
-    expect(faceBlurFileUris('rec-3')).toEqual({
-      pendingUri: 'file:///documents/recordings/rec-3.face-blurred.pending.mp4',
-      finalUri: 'file:///documents/recordings/rec-3.face-blurred.mp4',
+  it('uses deterministic pending and final privacy-blur paths', () => {
+    expect(privacyBlurFileUris('rec-3')).toEqual({
+      pendingUri: 'file:///documents/recordings/rec-3.privacy-blurred.pending.mp4',
+      finalUri: 'file:///documents/recordings/rec-3.privacy-blurred.mp4',
     });
   });
 
-  it('promotes a complete face-blurred file without touching the original', async () => {
-    const finalUri = await promoteFaceBlurredFile(
+  it('promotes a complete privacy-blurred file without touching the original', async () => {
+    const finalUri = await promotePrivacyBlurredFile(
       'rec-4',
-      'file:///documents/recordings/rec-4.face-blurred.pending.mp4',
+      'file:///documents/recordings/rec-4.privacy-blurred.pending.mp4',
     );
-    expect(finalUri).toBe('file:///documents/recordings/rec-4.face-blurred.mp4');
+    expect(finalUri).toBe('file:///documents/recordings/rec-4.privacy-blurred.mp4');
     expect(FileSystem.moveAsync).toHaveBeenCalledWith({
-      from: 'file:///documents/recordings/rec-4.face-blurred.pending.mp4',
+      from: 'file:///documents/recordings/rec-4.privacy-blurred.pending.mp4',
       to: finalUri,
     });
   });

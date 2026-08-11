@@ -2,67 +2,293 @@ import AVFoundation
 import CoreImage
 import CoreVideo
 import ExpoModulesCore
-import TensorFlowLiteC
+import QuickPoseCore
 
 private let progressEvent = "onFaceBlurProgress"
-private let modelName = "luche_blaze_face_full_range"
-private let maximumFaces = 8
-private let detectorSize: CGFloat = 192
-private let detectorSide = 192
-private let anchorGridSide = 48
-private let boxCount = 2304
-private let boxValueCount = 16
-private let minimumScore: Float = 0.45
-private let nmsIouThreshold: CGFloat = 0.3
+private let scanProgressShare = 0.45
+private let maximumPoseDimension: CGFloat = 512
+private let additionalFacePaddingPerEdge: CGFloat = 0.20
 
-private struct FaceBlurStats {
+private struct PrivacyBlurStats {
   var framesProcessed = 0
   var framesWithFaces = 0
-  var detections = 0
+  var framesWithBackgroundBlur = 0
 }
 
-private struct DetectionBox {
+/** Normalized top-left coordinates, matching QuickPose/MediaPipe landmarks. */
+private struct NormalizedRect {
   let left: CGFloat
   let top: CGFloat
   let right: CGFloat
   let bottom: CGFloat
-  let score: Float
+
+  var isEmpty: Bool { right <= left || bottom <= top }
+  var width: CGFloat { max(0, right - left) }
+  var height: CGFloat { max(0, bottom - top) }
+
+  func interpolated(to other: NormalizedRect, fraction: CGFloat) -> NormalizedRect {
+    let t = min(1, max(0, fraction))
+    return NormalizedRect(
+      left: left + (other.left - left) * t,
+      top: top + (other.top - top) * t,
+      right: right + (other.right - right) * t,
+      bottom: bottom + (other.bottom - bottom) * t
+    )
+  }
+
+  func coreImageRect(in extent: CGRect) -> CGRect {
+    CGRect(
+      x: extent.minX + left * extent.width,
+      y: extent.minY + (1 - bottom) * extent.height,
+      width: (right - left) * extent.width,
+      height: (bottom - top) * extent.height
+    ).intersection(extent)
+  }
 }
 
-/** Direct BlazeFace TFLite runner. No MediaPipe Tasks telemetry is linked. */
-private final class BlazeFaceDetector {
-  private let model: OpaquePointer
-  private let interpreter: OpaquePointer
-  private let pixelBuffer: CVPixelBuffer
-  private let colorSpace = CGColorSpaceCreateDeviceRGB()
-  private var inputValues = [Float](repeating: 0, count: detectorSide * detectorSide * 3)
-  private var rawBoxes = [Float](repeating: 0, count: boxCount * boxValueCount)
-  private var rawScores = [Float](repeating: 0, count: boxCount)
+private struct PoseKeyframe {
+  let seconds: Double
+  let person: NormalizedRect?
+  let face: NormalizedRect?
+}
 
-  init(modelPath: String) throws {
-    guard let createdModel = modelPath.withCString({ TfLiteModelCreateFromFile($0) }) else {
-      throw Self.error(7, "The bundled face detector model could not be opened.")
-    }
-    guard let options = TfLiteInterpreterOptionsCreate() else {
-      TfLiteModelDelete(createdModel)
-      throw Self.error(7, "The face detector options could not be created.")
-    }
-    TfLiteInterpreterOptionsSetNumThreads(options, 2)
-    guard let createdInterpreter = TfLiteInterpreterCreate(createdModel, options) else {
-      TfLiteInterpreterOptionsDelete(options)
-      TfLiteModelDelete(createdModel)
-      throw Self.error(7, "The face detector could not be created.")
-    }
-    TfLiteInterpreterOptionsDelete(options)
-    guard TfLiteInterpreterAllocateTensors(createdInterpreter) == kTfLiteOk else {
-      TfLiteInterpreterDelete(createdInterpreter)
-      TfLiteModelDelete(createdModel)
-      throw Self.error(7, "The face detector tensors could not be allocated.")
-    }
-    model = createdModel
-    interpreter = createdInterpreter
+private struct PrivacyRects {
+  let person: NormalizedRect?
+  let face: NormalizedRect?
+}
 
-    var createdBuffer: CVPixelBuffer?
+private struct PoseTimeline {
+  let keyframes: [PoseKeyframe]
+
+  var poseSamples: Int { keyframes.filter { $0.person != nil }.count }
+  var faceSamples: Int { keyframes.filter { $0.face != nil }.count }
+
+  var isReliableForFace: Bool {
+    guard !keyframes.isEmpty else { return false }
+    return faceSamples >= Int(ceil(Double(keyframes.count) * 0.4))
+  }
+
+  var isReliableForBackground: Bool {
+    guard !keyframes.isEmpty else { return false }
+    let minimumReliableSamples = Int(ceil(Double(keyframes.count) * 0.6))
+    guard poseSamples >= minimumReliableSamples else { return false }
+    let reliableSamples = keyframes.filter { keyframe in
+      guard let person = keyframe.person, let face = keyframe.face,
+            person.width > 0, person.height > 0 else {
+        return false
+      }
+      // Reject the characteristic failure where BlazePose merges a nearby
+      // hand with a different, smaller person elsewhere in the frame.
+      let bodyAspect = person.height / person.width
+      let relativeFaceWidth = face.width / person.width
+      return bodyAspect >= 1.05 && relativeFaceWidth >= 0.10
+    }.count
+    return reliableSamples >= minimumReliableSamples
+  }
+
+  func rects(at seconds: Double) -> PrivacyRects? {
+    guard let first = keyframes.first else { return nil }
+    if seconds <= first.seconds {
+      return PrivacyRects(person: first.person, face: first.face)
+    }
+    guard let last = keyframes.last else { return nil }
+    if seconds >= last.seconds {
+      return PrivacyRects(person: last.person, face: last.face)
+    }
+
+    var low = 0
+    var high = keyframes.count - 1
+    while low + 1 < high {
+      let middle = (low + high) / 2
+      if keyframes[middle].seconds <= seconds {
+        low = middle
+      } else {
+        high = middle
+      }
+    }
+
+    let before = keyframes[low]
+    let after = keyframes[high]
+    let span = max(0.000_001, after.seconds - before.seconds)
+    let fraction = CGFloat((seconds - before.seconds) / span)
+    let person: NormalizedRect?
+    switch (before.person, after.person) {
+    case let (.some(a), .some(b)):
+      person = a.interpolated(to: b, fraction: fraction)
+    default:
+      person = fraction < 0.5 ? before.person : after.person
+    }
+    let face: NormalizedRect?
+    switch (before.face, after.face) {
+    case let (.some(a), .some(b)):
+      face = a.interpolated(to: b, fraction: fraction)
+    default:
+      face = fraction < 0.5 ? before.face : after.face
+    }
+    return PrivacyRects(person: person, face: face)
+  }
+}
+
+private enum CapturedPose {
+  case landmarks(QuickPose.Landmarks)
+  case noPerson
+  case invalidSDKKey
+}
+
+private final class PoseCaptureWaiter {
+  private let lock = NSLock()
+  private var semaphore: DispatchSemaphore?
+  private var result: CapturedPose?
+
+  func begin() -> DispatchSemaphore {
+    lock.lock()
+    defer { lock.unlock() }
+    let next = DispatchSemaphore(value: 0)
+    semaphore = next
+    result = nil
+    return next
+  }
+
+  func finish(status: QuickPose.Status, landmarks: QuickPose.Landmarks?) {
+    lock.lock()
+    guard let semaphore else {
+      lock.unlock()
+      return
+    }
+    switch status {
+    case .success:
+      result = landmarks.map(CapturedPose.landmarks) ?? .noPerson
+    case .noPersonFound:
+      result = .noPerson
+    case .sdkValidationError:
+      result = .invalidSDKKey
+    }
+    self.semaphore = nil
+    lock.unlock()
+    semaphore.signal()
+  }
+
+  func take() -> CapturedPose? {
+    lock.lock()
+    defer { lock.unlock() }
+    let captured = result
+    result = nil
+    return captured
+  }
+}
+
+private final class QuickPoseVideoScanner {
+  private let asset: AVURLAsset
+  private let sdkKey: String
+  private let sampleInterval: Double
+  private let progress: (Double) -> Void
+  private let isCancelled: () -> Bool
+  private let ciContext = CIContext(options: [.cacheIntermediates: false])
+
+  init(
+    asset: AVURLAsset,
+    sdkKey: String,
+    sampleIntervalMilliseconds: Int,
+    progress: @escaping (Double) -> Void,
+    isCancelled: @escaping () -> Bool
+  ) {
+    self.asset = asset
+    self.sdkKey = sdkKey
+    self.sampleInterval = Double(min(1_000, max(100, sampleIntervalMilliseconds))) / 1_000
+    self.progress = progress
+    self.isCancelled = isCancelled
+  }
+
+  func scan() throws -> PoseTimeline {
+    guard !sdkKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw Self.error(20, "QuickPose SDK key is not configured for this build.")
+    }
+    let duration = CMTimeGetSeconds(asset.duration)
+    guard duration.isFinite, duration > 0 else {
+      throw Self.error(21, "The recording duration could not be read.")
+    }
+
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: maximumPoseDimension, height: maximumPoseDimension)
+    generator.requestedTimeToleranceBefore = CMTime(seconds: sampleInterval / 2, preferredTimescale: 600)
+    generator.requestedTimeToleranceAfter = CMTime(seconds: sampleInterval / 2, preferredTimescale: 600)
+
+    var sampleSeconds = stride(from: 0.0, to: duration, by: sampleInterval).map { $0 }
+    let finalSample = max(0, duration - 1.0 / 600.0)
+    if sampleSeconds.isEmpty || finalSample - (sampleSeconds.last ?? 0) > sampleInterval / 3 {
+      sampleSeconds.append(finalSample)
+    }
+
+    let waiter = PoseCaptureWaiter()
+    let started = DispatchSemaphore(value: 0)
+    let quickPose = QuickPose(sdkKey: sdkKey)
+    quickPose.disableLogging()
+    quickPose.start(
+      features: [.showPoints(style: QuickPose.Style(hidden: true))],
+      modelConfig: QuickPose.ModelConfig(
+        detailedFaceTracking: false,
+        detailedHandTracking: false,
+        modelComplexity: .light,
+        rotationDegrees: 0
+      ),
+      onStart: { started.signal() },
+      onFrame: { status, _, _, _, landmarks in
+        waiter.finish(status: status, landmarks: landmarks)
+      }
+    )
+    defer { quickPose.stop() }
+    guard started.wait(timeout: .now() + 8) == .success else {
+      throw Self.error(22, "QuickPose did not become ready.")
+    }
+
+    var keyframes: [PoseKeyframe] = []
+    for (index, requestedSeconds) in sampleSeconds.enumerated() {
+      if isCancelled() { throw Self.cancelledError() }
+      var actualTime = CMTime.zero
+      let image = try generator.copyCGImage(
+        at: CMTime(seconds: requestedSeconds, preferredTimescale: 600),
+        actualTime: &actualTime
+      )
+      let pixelBuffer = try makePixelBuffer(from: image)
+      let semaphore = waiter.begin()
+      quickPose.captureAVOutput(
+        didOutput: pixelBuffer,
+        timestamp: actualTime,
+        isFrontCamera: false
+      )
+      guard semaphore.wait(timeout: .now() + 8) == .success else {
+        throw Self.error(23, "QuickPose timed out while reading the recording.")
+      }
+      if isCancelled() { throw Self.cancelledError() }
+      switch waiter.take() {
+      case .landmarks(let landmarks):
+        let person = personRect(from: landmarks)
+        keyframes.append(PoseKeyframe(
+          seconds: max(0, CMTimeGetSeconds(actualTime)),
+          person: person,
+          face: person == nil ? nil : faceRect(from: landmarks)
+        ))
+      case .invalidSDKKey:
+        throw Self.error(24, "The QuickPose SDK key is not valid for this app.")
+      case .noPerson, .none:
+        keyframes.append(PoseKeyframe(
+          seconds: max(0, CMTimeGetSeconds(actualTime)),
+          person: nil,
+          face: nil
+        ))
+      }
+      progress(scanProgressShare * Double(index + 1) / Double(sampleSeconds.count))
+    }
+
+    guard keyframes.contains(where: { $0.person != nil }) else {
+      throw Self.error(25, "QuickPose could not detect a person in this recording.")
+    }
+    return PoseTimeline(keyframes: keyframes.sorted { $0.seconds < $1.seconds })
+  }
+
+  private func makePixelBuffer(from image: CGImage) throws -> CVPixelBuffer {
+    var buffer: CVPixelBuffer?
     let attributes: [CFString: Any] = [
       kCVPixelBufferCGImageCompatibilityKey: true,
       kCVPixelBufferCGBitmapContextCompatibilityKey: true,
@@ -70,163 +296,91 @@ private final class BlazeFaceDetector {
     ]
     let status = CVPixelBufferCreate(
       kCFAllocatorDefault,
-      detectorSide,
-      detectorSide,
+      image.width,
+      image.height,
       kCVPixelFormatType_32BGRA,
       attributes as CFDictionary,
-      &createdBuffer
+      &buffer
     )
-    guard status == kCVReturnSuccess, let createdBuffer else {
-      throw NSError(
-        domain: "FaceBlur",
-        code: 7,
-        userInfo: [NSLocalizedDescriptionKey: "The face detector image buffer could not be created."]
-      )
+    guard status == kCVReturnSuccess, let buffer else {
+      throw Self.error(26, "A pose-estimation image buffer could not be created.")
     }
-    pixelBuffer = createdBuffer
-  }
-
-  deinit {
-    TfLiteInterpreterDelete(interpreter)
-    TfLiteModelDelete(model)
-  }
-
-  func detect(image: CIImage, context: CIContext) throws -> [CGRect] {
-    let bounds = CGRect(x: 0, y: 0, width: detectorSide, height: detectorSide)
-    context.render(
-      image,
-      to: pixelBuffer,
-      bounds: bounds,
-      colorSpace: colorSpace
+    ciContext.render(
+      CIImage(cgImage: image),
+      to: buffer,
+      bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+      colorSpace: CGColorSpaceCreateDeviceRGB()
     )
-
-    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-    guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-      throw NSError(
-        domain: "FaceBlur",
-        code: 8,
-        userInfo: [NSLocalizedDescriptionKey: "The face detector image could not be read."]
-      )
-    }
-    let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
-    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-    var valueIndex = 0
-    for y in 0..<detectorSide {
-      for x in 0..<detectorSide {
-        let offset = y * bytesPerRow + x * 4
-        inputValues[valueIndex] = Float(bytes[offset + 2]) / 127.5 - 1
-        inputValues[valueIndex + 1] = Float(bytes[offset + 1]) / 127.5 - 1
-        inputValues[valueIndex + 2] = Float(bytes[offset]) / 127.5 - 1
-        valueIndex += 3
-      }
-    }
-
-    guard let inputTensor = TfLiteInterpreterGetInputTensor(interpreter, 0) else {
-      throw Self.error(9, "The face detector input tensor is missing.")
-    }
-    let copiedInput = inputValues.withUnsafeBufferPointer { buffer in
-      TfLiteTensorCopyFromBuffer(
-        inputTensor,
-        buffer.baseAddress,
-        buffer.count * MemoryLayout<Float>.size
-      )
-    }
-    guard copiedInput == kTfLiteOk, TfLiteInterpreterInvoke(interpreter) == kTfLiteOk else {
-      throw Self.error(9, "The face detector could not process this frame.")
-    }
-    guard let boxesTensor = TfLiteInterpreterGetOutputTensor(interpreter, 0),
-          let scoresTensor = TfLiteInterpreterGetOutputTensor(interpreter, 1) else {
-      throw Self.error(9, "The face detector output tensors are missing.")
-    }
-    let copiedBoxes = rawBoxes.withUnsafeMutableBufferPointer { buffer in
-      TfLiteTensorCopyToBuffer(
-        boxesTensor,
-        buffer.baseAddress,
-        buffer.count * MemoryLayout<Float>.size
-      )
-    }
-    let copiedScores = rawScores.withUnsafeMutableBufferPointer { buffer in
-      TfLiteTensorCopyToBuffer(
-        scoresTensor,
-        buffer.baseAddress,
-        buffer.count * MemoryLayout<Float>.size
-      )
-    }
-    guard copiedBoxes == kTfLiteOk, copiedScores == kTfLiteOk else {
-      throw Self.error(9, "The face detector returned an invalid result.")
-    }
-
-    var candidates: [DetectionBox] = []
-    candidates.reserveCapacity(32)
-    for index in 0..<boxCount {
-      let logit = min(100, max(-100, rawScores[index]))
-      let score = 1 / (1 + exp(-logit))
-      if score < minimumScore { continue }
-
-      let offset = index * boxValueCount
-      let anchorX = (CGFloat(index % anchorGridSide) + 0.5) / CGFloat(anchorGridSide)
-      let anchorY = (CGFloat(index / anchorGridSide) + 0.5) / CGFloat(anchorGridSide)
-      // MediaPipe's BlazeFace export uses reverse_output_order: y, x, h, w.
-      let centerX = CGFloat(rawBoxes[offset + 1]) / detectorSize + anchorX
-      let centerY = CGFloat(rawBoxes[offset]) / detectorSize + anchorY
-      let width = CGFloat(rawBoxes[offset + 3]) / detectorSize
-      let height = CGFloat(rawBoxes[offset + 2]) / detectorSize
-      candidates.append(DetectionBox(
-        left: centerX - width / 2,
-        top: centerY - height / 2,
-        right: centerX + width / 2,
-        bottom: centerY + height / 2,
-        score: score
-      ))
-    }
-
-    var remaining = candidates.sorted(by: { $0.score > $1.score })
-    var selected: [DetectionBox] = []
-    while !remaining.isEmpty && selected.count < maximumFaces {
-      let seed = remaining.removeFirst()
-      var overlapping = [seed]
-      remaining.removeAll { candidate in
-        if intersectionOverUnion(seed, candidate) > nmsIouThreshold {
-          overlapping.append(candidate)
-          return true
-        }
-        return false
-      }
-      let scoreSum = overlapping.reduce(CGFloat.zero) { $0 + CGFloat($1.score) }
-      selected.append(DetectionBox(
-        left: overlapping.reduce(0) { $0 + $1.left * CGFloat($1.score) } / scoreSum,
-        top: overlapping.reduce(0) { $0 + $1.top * CGFloat($1.score) } / scoreSum,
-        right: overlapping.reduce(0) { $0 + $1.right * CGFloat($1.score) } / scoreSum,
-        bottom: overlapping.reduce(0) { $0 + $1.bottom * CGFloat($1.score) } / scoreSum,
-        score: seed.score
-      ))
-    }
-    return selected.map { box in
-      CGRect(
-        x: box.left * detectorSize,
-        y: box.top * detectorSize,
-        width: (box.right - box.left) * detectorSize,
-        height: (box.bottom - box.top) * detectorSize
-      )
-    }
+    return buffer
   }
 
-  private func intersectionOverUnion(_ a: DetectionBox, _ b: DetectionBox) -> CGFloat {
-    let intersectionWidth = max(0, min(a.right, b.right) - max(a.left, b.left))
-    let intersectionHeight = max(0, min(a.bottom, b.bottom) - max(a.top, b.top))
-    let intersection = intersectionWidth * intersectionHeight
-    let areaA = max(0, a.right - a.left) * max(0, a.bottom - a.top)
-    let areaB = max(0, b.right - b.left) * max(0, b.bottom - b.top)
-    let union = areaA + areaB - intersection
-    return union > 0 ? intersection / union : 0
+  private func personRect(from landmarks: QuickPose.Landmarks) -> NormalizedRect? {
+    let points = landmarks.allLandmarksForBody().compactMap(normalizedPoint)
+    guard points.count >= 6 else { return nil }
+    let bounds = bounds(of: points)
+    let width = max(0.05, bounds.right - bounds.left)
+    let height = max(0.1, bounds.bottom - bounds.top)
+    return NormalizedRect(
+      left: max(0, bounds.left - max(0.10, width * 0.32)),
+      top: max(0, bounds.top - max(0.08, height * 0.22)),
+      right: min(1, bounds.right + max(0.10, width * 0.32)),
+      bottom: min(1, bounds.bottom + max(0.10, height * 0.18))
+    )
+  }
+
+  private func faceRect(from landmarks: QuickPose.Landmarks) -> NormalizedRect? {
+    let joints: [QuickPose.Landmarks.Body] = [
+      .nose,
+      .eyeInner(side: .left), .eye(side: .left), .eyeOuter(side: .left),
+      .eyeInner(side: .right), .eye(side: .right), .eyeOuter(side: .right),
+      .ear(side: .left), .ear(side: .right),
+      .mouth(side: .left), .mouth(side: .right)
+    ]
+    let points = joints.compactMap { normalizedPoint(landmarks.landmark(forBody: $0)) }
+    guard points.count >= 3 else { return nil }
+    let bounds = bounds(of: points)
+    let width = max(0.025, bounds.right - bounds.left)
+    let height = max(0.035, bounds.bottom - bounds.top)
+    // Production-video review found the prior face mask too tight. Expand
+    // every edge by another 20% of the measured head width/height while
+    // preserving the existing asymmetric forehead/chin padding.
+    return NormalizedRect(
+      left: max(0, bounds.left - width * (0.20 + additionalFacePaddingPerEdge)),
+      top: max(0, bounds.top - height * (0.50 + additionalFacePaddingPerEdge)),
+      right: min(1, bounds.right + width * (0.20 + additionalFacePaddingPerEdge)),
+      bottom: min(1, bounds.bottom + height * (0.25 + additionalFacePaddingPerEdge))
+    )
+  }
+
+  private func normalizedPoint(_ point: QuickPose.Point3d) -> CGPoint? {
+    guard point.visibility >= 0.25, point.presence >= 0.25 else { return nil }
+    let projected = point.cgPoint(scaledTo: CGSize(width: 1, height: 1))
+    guard projected.x.isFinite, projected.y.isFinite,
+          projected.x >= -0.1, projected.x <= 1.1,
+          projected.y >= -0.1, projected.y <= 1.1 else {
+      return nil
+    }
+    return CGPoint(x: min(1, max(0, projected.x)), y: min(1, max(0, projected.y)))
+  }
+
+  private func bounds(of points: [CGPoint]) -> NormalizedRect {
+    NormalizedRect(
+      left: points.map(\.x).min() ?? 0,
+      top: points.map(\.y).min() ?? 0,
+      right: points.map(\.x).max() ?? 0,
+      bottom: points.map(\.y).max() ?? 0
+    )
   }
 
   private static func error(_ code: Int, _ message: String) -> NSError {
+    NSError(domain: "FaceBlur", code: code, userInfo: [NSLocalizedDescriptionKey: message])
+  }
+
+  private static func cancelledError() -> NSError {
     NSError(
-      domain: "FaceBlur",
-      code: code,
-      userInfo: [NSLocalizedDescriptionKey: message]
+      domain: NSCocoaErrorDomain,
+      code: NSUserCancelledError,
+      userInfo: [NSLocalizedDescriptionKey: "Video privacy processing was cancelled."]
     )
   }
 }
@@ -234,86 +388,84 @@ private final class BlazeFaceDetector {
 private final class FaceBlurProcessor {
   private let inputURL: URL
   private let outputURL: URL
+  private let sdkKey: String
+  private let blurFaces: Bool
+  private let blurBackground: Bool
+  private let sampleIntervalMilliseconds: Int
   private let progress: (Double) -> Void
   private let completion: (Result<[String: Any], Error>) -> Void
-  private let detector: BlazeFaceDetector
-  private let detectorLock = NSLock()
   private let stateLock = NSLock()
   private let ciContext = CIContext(options: [.cacheIntermediates: false])
-  private let detectorBackground = CIImage(
-    color: CIColor(red: 0, green: 0, blue: 0, alpha: 1)
-  ).cropped(to: CGRect(x: 0, y: 0, width: detectorSize, height: detectorSize))
 
   private var exportSession: AVAssetExportSession?
   private var progressTimer: DispatchSourceTimer?
-  private var stats = FaceBlurStats()
+  private var timeline: PoseTimeline?
+  private var stats = PrivacyBlurStats()
   private var cancelled = false
   private var firstFrameError: Error?
 
   init(
     inputURL: URL,
     outputURL: URL,
+    sdkKey: String,
+    blurFaces: Bool,
+    blurBackground: Bool,
+    sampleIntervalMilliseconds: Int,
     progress: @escaping (Double) -> Void,
     completion: @escaping (Result<[String: Any], Error>) -> Void
   ) throws {
     guard inputURL.isFileURL, outputURL.isFileURL else {
-      throw NSError(
-        domain: "FaceBlur",
-        code: 1,
-        userInfo: [NSLocalizedDescriptionKey: "Face blurring requires local file URLs."]
-      )
+      throw Self.error(1, "Video privacy processing requires local file URLs.")
     }
-    guard let modelPath = Bundle.main.path(forResource: modelName, ofType: "tflite") else {
-      throw NSError(
-        domain: "FaceBlur",
-        code: 2,
-        userInfo: [NSLocalizedDescriptionKey: "The bundled face detector model is missing."]
-      )
+    guard blurFaces || blurBackground else {
+      throw Self.error(2, "At least one video privacy option must be enabled.")
     }
-
     self.inputURL = inputURL
     self.outputURL = outputURL
+    self.sdkKey = sdkKey
+    self.blurFaces = blurFaces
+    self.blurBackground = blurBackground
+    self.sampleIntervalMilliseconds = sampleIntervalMilliseconds
     self.progress = progress
     self.completion = completion
-    self.detector = try BlazeFaceDetector(modelPath: modelPath)
   }
 
   func start() {
-    do {
-      try FileManager.default.createDirectory(
-        at: outputURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try? FileManager.default.removeItem(at: outputURL)
-
-      let asset = AVURLAsset(url: inputURL)
-      guard let exporter = AVAssetExportSession(
-        asset: asset,
-        presetName: AVAssetExportPresetHighestQuality
-      ) else {
-        throw NSError(
-          domain: "FaceBlur",
-          code: 3,
-          userInfo: [NSLocalizedDescriptionKey: "This video cannot be prepared for face blurring."]
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        try FileManager.default.createDirectory(
+          at: self.outputURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
         )
+        try? FileManager.default.removeItem(at: self.outputURL)
+        let asset = AVURLAsset(url: self.inputURL)
+        let scanner = QuickPoseVideoScanner(
+          asset: asset,
+          sdkKey: self.sdkKey,
+          sampleIntervalMilliseconds: self.sampleIntervalMilliseconds,
+          progress: self.progress,
+          isCancelled: { [weak self] in self?.isCancelled ?? true }
+        )
+        let timeline = try scanner.scan()
+        if self.blurFaces && !timeline.isReliableForFace {
+          throw Self.error(28, "QuickPose could not reliably locate a face in this recording.")
+        }
+        if self.blurBackground && !timeline.isReliableForBackground {
+          throw Self.error(
+            27,
+            "QuickPose could not reliably isolate one prominent full-body person for background blur."
+          )
+        }
+        if self.isCancelled { throw Self.cancelledError() }
+        self.stateLock.lock()
+        self.timeline = timeline
+        self.stateLock.unlock()
+        try self.startExport(asset: asset, timeline: timeline)
+      } catch {
+        try? FileManager.default.removeItem(at: self.outputURL)
+        self.completion(.failure(error))
       }
-
-      let composition = AVVideoComposition(asset: asset) { [weak self] request in
-        self?.process(request: request)
-      }
-      exporter.videoComposition = composition
-      exporter.outputURL = outputURL
-      exporter.outputFileType = .mp4
-      exporter.shouldOptimizeForNetworkUse = true
-      exportSession = exporter
-
-      progress(0)
-      startProgressTimer(exporter)
-      exporter.exportAsynchronously { [weak self] in
-        self?.finishExport()
-      }
-    } catch {
-      completion(.failure(error))
     }
   }
 
@@ -325,7 +477,38 @@ private final class FaceBlurProcessor {
     exporter?.cancelExport()
   }
 
-  private func process(request: AVAsynchronousCIImageFilteringRequest) {
+  private var isCancelled: Bool {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return cancelled
+  }
+
+  private func startExport(asset: AVURLAsset, timeline: PoseTimeline) throws {
+    guard let exporter = AVAssetExportSession(
+      asset: asset,
+      presetName: AVAssetExportPresetHighestQuality
+    ) else {
+      throw Self.error(3, "This video cannot be prepared for privacy blurring.")
+    }
+
+    let composition = AVVideoComposition(asset: asset) { [weak self] request in
+      self?.process(request: request, timeline: timeline)
+    }
+    exporter.videoComposition = composition
+    exporter.outputURL = outputURL
+    exporter.outputFileType = .mp4
+    exporter.shouldOptimizeForNetworkUse = true
+    stateLock.lock()
+    exportSession = exporter
+    stateLock.unlock()
+
+    startProgressTimer(exporter)
+    exporter.exportAsynchronously { [weak self] in
+      self?.finishExport()
+    }
+  }
+
+  private func process(request: AVAsynchronousCIImageFilteringRequest, timeline: PoseTimeline) {
     stateLock.lock()
     let shouldCancel = cancelled
     let existingError = firstFrameError
@@ -335,11 +518,7 @@ private final class FaceBlurProcessor {
       return
     }
     if shouldCancel {
-      request.finish(with: NSError(
-        domain: NSCocoaErrorDomain,
-        code: NSUserCancelledError,
-        userInfo: [NSLocalizedDescriptionKey: "Face blurring was cancelled."]
-      ))
+      request.finish(with: Self.cancelledError())
       return
     }
 
@@ -347,79 +526,70 @@ private final class FaceBlurProcessor {
       let source = request.sourceImage
       let extent = source.extent.integral
       guard extent.width > 0, extent.height > 0 else {
-        throw NSError(
-          domain: "FaceBlur",
-          code: 4,
-          userInfo: [NSLocalizedDescriptionKey: "A video frame could not be decoded."]
-        )
+        throw Self.error(4, "A video frame could not be decoded.")
       }
-
-      // Full-range BlazeFace consumes 192×192 input. Downsample on the GPU
-      // before copying into the CPU TFLite buffer so old phones never allocate
-      // a full-resolution CPU bitmap for every video frame.
-      let normalized = source.transformed(by: CGAffineTransform(
-        translationX: -extent.minX,
-        y: -extent.minY
-      ))
-      // Match the official graph: aspect-preserving resize, centered with
-      // zero-value letterbox padding, then project detections back afterward.
-      let scale = min(detectorSize / extent.width, detectorSize / extent.height)
-      let contentWidth = extent.width * scale
-      let contentHeight = extent.height * scale
-      let padX = (detectorSize - contentWidth) / 2
-      let padY = (detectorSize - contentHeight) / 2
-      let scaled = normalized.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-      let positioned = scaled.transformed(by: CGAffineTransform(
-        translationX: padX,
-        y: padY
-      ))
-      let detectorImage = positioned.composited(over: detectorBackground)
-      let detectorContentRect = CGRect(
-        x: padX,
-        y: padY,
-        width: contentWidth,
-        height: contentHeight
-      )
-      detectorLock.lock()
-      let detections: [CGRect]
-      do {
-        detections = try detector.detect(image: detectorImage, context: ciContext)
-        detectorLock.unlock()
-      } catch {
-        detectorLock.unlock()
-        throw error
+      guard let rects = timeline.rects(at: CMTimeGetSeconds(request.compositionTime)) else {
+        throw Self.error(5, "No interpolated pose was available for a video frame.")
       }
 
       var output = source
-      for detected in detections {
-        let expanded = expandedRect(
-          detected,
-          detectorContentRect: detectorContentRect,
-          outputExtent: extent
-        )
-        guard !expanded.isEmpty else { continue }
-
-        let mosaicScale = max(16, min(expanded.width, expanded.height) / 8)
-        let redacted = source
+      if blurBackground {
+        let blurred = source
           .clampedToExtent()
-          .applyingFilter(
-            "CIPixellate",
+          .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 24])
+          .cropped(to: extent)
+        if let normalizedPerson = rects.person {
+          let person = normalizedPerson.coreImageRect(in: extent)
+          guard !person.isEmpty else {
+            throw Self.error(6, "The person region was empty while blurring the background.")
+          }
+          let black = CIImage(color: .black).cropped(to: extent)
+          let whitePerson = CIImage(color: .white).cropped(to: person)
+          let feather = max(8, min(extent.width, extent.height) * 0.015)
+          let mask = whitePerson
+            .composited(over: black)
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: feather])
+            .cropped(to: extent)
+          output = source.applyingFilter(
+            "CIBlendWithMask",
             parameters: [
-              kCIInputScaleKey: mosaicScale,
-              kCIInputCenterKey: CIVector(x: expanded.midX, y: expanded.midY)
+              kCIInputBackgroundImageKey: blurred,
+              kCIInputMaskImageKey: mask
             ]
           )
-          .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10])
-          .cropped(to: expanded)
-        output = redacted.composited(over: output)
+        } else {
+          // If a sparse sample genuinely has no person, the entire frame is
+          // background. Do not preserve a stale person box from another time.
+          output = blurred
+        }
+      }
+
+      var faceWasBlurred = false
+      if blurFaces, let normalizedFace = rects.face {
+        let face = normalizedFace.coreImageRect(in: extent)
+        if !face.isEmpty {
+          let mosaicScale = max(10, min(face.width, face.height) / 7)
+          let redacted = source
+            .clampedToExtent()
+            .applyingFilter(
+              "CIPixellate",
+              parameters: [
+                kCIInputScaleKey: mosaicScale,
+                kCIInputCenterKey: CIVector(x: face.midX, y: face.midY)
+              ]
+            )
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10])
+            .cropped(to: face)
+          output = redacted.composited(over: output)
+          faceWasBlurred = true
+        }
       }
 
       stateLock.lock()
       stats.framesProcessed += 1
-      if !detections.isEmpty { stats.framesWithFaces += 1 }
-      stats.detections += detections.count
+      if faceWasBlurred { stats.framesWithFaces += 1 }
+      if blurBackground { stats.framesWithBackgroundBlur += 1 }
       stateLock.unlock()
-
       request.finish(with: output.cropped(to: extent), context: ciContext)
     } catch {
       stateLock.lock()
@@ -429,43 +599,13 @@ private final class FaceBlurProcessor {
     }
   }
 
-  private func expandedRect(
-    _ box: CGRect,
-    detectorContentRect: CGRect,
-    outputExtent: CGRect
-  ) -> CGRect {
-    // BlazeFace boxes use top-left 192×192 coordinates. Core Image uses the
-    // full-resolution output extent with a bottom-left origin.
-    let horizontalPadding = box.width * 0.35
-    let topPadding = box.height * 0.45
-    let bottomPadding = box.height * 0.25
-    let left = min(1, max(0, (
-      box.minX - detectorContentRect.minX - horizontalPadding
-    ) / detectorContentRect.width))
-    let right = min(1, max(0, (
-      box.maxX - detectorContentRect.minX + horizontalPadding
-    ) / detectorContentRect.width))
-    let top = min(1, max(0, (
-      box.minY - detectorContentRect.minY - topPadding
-    ) / detectorContentRect.height))
-    let bottom = min(1, max(0, (
-      box.maxY - detectorContentRect.minY + bottomPadding
-    ) / detectorContentRect.height))
-    let rect = CGRect(
-      x: outputExtent.minX + left * outputExtent.width,
-      y: outputExtent.minY + (1 - bottom) * outputExtent.height,
-      width: (right - left) * outputExtent.width,
-      height: (bottom - top) * outputExtent.height
-    )
-    return rect.intersection(outputExtent)
-  }
-
   private func startProgressTimer(_ exporter: AVAssetExportSession) {
     let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
     timer.schedule(deadline: .now(), repeating: .milliseconds(250))
     timer.setEventHandler { [weak self, weak exporter] in
       guard let self, let exporter else { return }
-      self.progress(min(0.99, max(0, Double(exporter.progress))))
+      let exportProgress = min(0.99, max(0, Double(exporter.progress)))
+      self.progress(scanProgressShare + exportProgress * (0.99 - scanProgressShare))
     }
     progressTimer = timer
     timer.resume()
@@ -479,18 +619,15 @@ private final class FaceBlurProcessor {
     let wasCancelled = cancelled
     let frameError = firstFrameError
     let finalStats = stats
+    let finalTimeline = timeline
+    let exporter = exportSession
+    exportSession = nil
     stateLock.unlock()
 
-    guard let exporter = exportSession else { return }
-    exportSession = nil
-
+    guard let exporter else { return }
     if wasCancelled || exporter.status == .cancelled {
       try? FileManager.default.removeItem(at: outputURL)
-      completion(.failure(NSError(
-        domain: "FaceBlur",
-        code: 5,
-        userInfo: [NSLocalizedDescriptionKey: "Face blurring was cancelled."]
-      )))
+      completion(.failure(Self.cancelledError()))
       return
     }
     if let error = frameError ?? exporter.error {
@@ -500,11 +637,7 @@ private final class FaceBlurProcessor {
     }
     guard exporter.status == .completed else {
       try? FileManager.default.removeItem(at: outputURL)
-      completion(.failure(NSError(
-        domain: "FaceBlur",
-        code: 6,
-        userInfo: [NSLocalizedDescriptionKey: "Face blurring did not finish."]
-      )))
+      completion(.failure(Self.error(7, "Video privacy processing did not finish.")))
       return
     }
 
@@ -513,8 +646,21 @@ private final class FaceBlurProcessor {
       "outputUri": outputURL.absoluteString,
       "framesProcessed": finalStats.framesProcessed,
       "framesWithFaces": finalStats.framesWithFaces,
-      "detections": finalStats.detections
+      "framesWithBackgroundBlur": finalStats.framesWithBackgroundBlur,
+      "poseSamples": finalTimeline?.poseSamples ?? 0
     ]))
+  }
+
+  private static func error(_ code: Int, _ message: String) -> NSError {
+    NSError(domain: "FaceBlur", code: code, userInfo: [NSLocalizedDescriptionKey: message])
+  }
+
+  private static func cancelledError() -> NSError {
+    NSError(
+      domain: NSCocoaErrorDomain,
+      code: NSUserCancelledError,
+      userInfo: [NSLocalizedDescriptionKey: "Video privacy processing was cancelled."]
+    )
   }
 }
 
@@ -527,7 +673,16 @@ public final class FaceBlurModule: Module {
     Events(progressEvent)
 
     AsyncFunction("blurVideoAsync") {
-      (inputURL: URL, outputURL: URL, operationId: String, promise: Promise) in
+      (
+        inputURL: URL,
+        outputURL: URL,
+        operationId: String,
+        sdkKey: String,
+        blurFaces: Bool,
+        blurBackground: Bool,
+        poseSampleIntervalMilliseconds: Int,
+        promise: Promise
+      ) in
       self.operationsLock.lock()
       let alreadyRunning = self.operations[operationId] != nil
       self.operationsLock.unlock()
@@ -540,6 +695,10 @@ public final class FaceBlurModule: Module {
         let processor = try FaceBlurProcessor(
           inputURL: inputURL,
           outputURL: outputURL,
+          sdkKey: sdkKey,
+          blurFaces: blurFaces,
+          blurBackground: blurBackground,
+          sampleIntervalMilliseconds: poseSampleIntervalMilliseconds,
           progress: { [weak self] value in
             DispatchQueue.main.async {
               self?.sendEvent(progressEvent, [

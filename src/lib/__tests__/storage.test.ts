@@ -21,7 +21,7 @@ jest.mock('../faceBlur', () => ({
   prepareFaceBlurredVideo: jest.fn(),
 }));
 jest.mock('../faceBlurSettings', () => ({
-  getFaceBlurEnabled: jest.fn().mockResolvedValue(false),
+  getPrivacyBlurSettings: jest.fn().mockResolvedValue({ face: false, background: false }),
 }));
 
 import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';

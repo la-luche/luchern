@@ -20,7 +20,7 @@ export function UploadBanner() {
 
   const preparing = recordings.filter((recording) => recording.status === 'preparing');
   useEffect(() => {
-    const tag = 'luche-face-blur';
+    const tag = 'luche-privacy-blur';
     if (preparing.length > 0) {
       void activateKeepAwakeAsync(tag);
       return () => {
@@ -32,14 +32,14 @@ export function UploadBanner() {
 
   if (preparing.length > 0) {
     const progress = Math.round(
-      (preparing.reduce((sum, recording) => sum + (recording.faceBlurProgress ?? 0), 0) /
+      (preparing.reduce((sum, recording) => sum + (recording.privacyBlurProgress ?? 0), 0) /
         preparing.length) *
         100,
     );
     return (
       <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-violet-600">
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
-          {t.uploadBanner.faceBlurring(preparing.length)} · {progress}%
+          {t.uploadBanner.privacyBlurring(preparing.length)} · {progress}%
         </Text>
       </View>
     );
@@ -96,7 +96,7 @@ export function UploadBanner() {
     return (
       <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-red-600">
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
-          {t.uploadBanner.faceBlurFailed(blurFailed.length)}
+          {t.uploadBanner.privacyBlurFailed(blurFailed.length)}
         </Text>
       </View>
     );

@@ -9,11 +9,19 @@ export type FaceBlurProgressEvent = {
   progress: number;
 };
 
+export type PrivacyBlurOptions = {
+  blurFaces: boolean;
+  blurBackground: boolean;
+  sdkKey: string;
+  poseSampleIntervalMs?: number;
+};
+
 export type FaceBlurResult = {
   outputUri: string;
   framesProcessed: number;
   framesWithFaces: number;
-  detections: number;
+  framesWithBackgroundBlur: number;
+  poseSamples: number;
 };
 
 type FaceBlurEvents = {
@@ -21,7 +29,15 @@ type FaceBlurEvents = {
 };
 
 declare class FaceBlurNativeModule extends NativeModule<FaceBlurEvents> {
-  blurVideoAsync(inputUri: string, outputUri: string, operationId: string): Promise<FaceBlurResult>;
+  blurVideoAsync(
+    inputUri: string,
+    outputUri: string,
+    operationId: string,
+    sdkKey: string,
+    blurFaces: boolean,
+    blurBackground: boolean,
+    poseSampleIntervalMs: number,
+  ): Promise<FaceBlurResult>;
   cancelAsync(operationId: string): Promise<void>;
 }
 
@@ -31,8 +47,17 @@ export function blurVideoAsync(
   inputUri: string,
   outputUri: string,
   operationId: string,
+  options: PrivacyBlurOptions,
 ): Promise<FaceBlurResult> {
-  return nativeModule.blurVideoAsync(inputUri, outputUri, operationId);
+  return nativeModule.blurVideoAsync(
+    inputUri,
+    outputUri,
+    operationId,
+    options.sdkKey,
+    options.blurFaces,
+    options.blurBackground,
+    options.poseSampleIntervalMs ?? 200,
+  );
 }
 
 export function cancelAsync(operationId: string): Promise<void> {

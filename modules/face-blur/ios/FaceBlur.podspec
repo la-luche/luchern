@@ -1,8 +1,8 @@
 Pod::Spec.new do |s|
   s.name             = 'FaceBlur'
   s.version          = '1.0.0'
-  s.summary          = 'On-device face redaction for Luche recordings'
-  s.description      = 'A local Expo module that redacts faces before a recording can be uploaded.'
+  s.summary          = 'On-device privacy blurring for Luche recordings'
+  s.description      = 'A local Expo module that uses QuickPose to blur faces and backgrounds before upload.'
   s.license          = { :type => 'MIT' }
   s.author           = { 'Luche' => 'peter.skovorodnikov@gmail.com' }
   s.homepage         = 'https://github.com/la-luche/luchern'
@@ -12,10 +12,9 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  s.dependency 'TensorFlowLiteC', '2.17.0'
+  s.dependency 'QuickPoseCore'
 
   s.source_files = '**/*.{h,m,mm,swift}'
-  s.resources = 'Resources/*.tflite'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES'
   }

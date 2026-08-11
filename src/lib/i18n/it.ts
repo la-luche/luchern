@@ -105,10 +105,16 @@ export const it: Dict = {
     privacyTitle: 'Privacy dei video',
     faceBlurTitle: 'Sfoca i volti prima del caricamento',
     faceBlurBody:
-      'Disattivato per impostazione predefinita. Se lo attivi, Luche elabora ogni registrazione approvata sul dispositivo, elimina definitivamente l’originale e carica solo la copia con i volti sfocati.',
+      'Disattivato per impostazione predefinita. Usa un riquadro vicino al volto per lasciare ben visibile il resto del movimento.',
     faceBlurA11y: 'Sfoca i volti prima del caricamento',
-    faceBlurSaveFailedTitle: 'Impossibile salvare questa impostazione',
-    faceBlurSaveFailedBody: 'Rimane attiva l’impostazione precedente. Riprova.',
+    backgroundBlurTitle: 'Sfoca lo sfondo prima del caricamento',
+    backgroundBlurBody:
+      'Disattivato per impostazione predefinita. Lascia nitida un’area ampia attorno alla persona e sfoca tutto il resto.',
+    backgroundBlurA11y: 'Sfoca lo sfondo prima del caricamento',
+    privacyBlurTechnicalBody:
+      'La posa viene stimata sul dispositivo ogni pochi fotogrammi e interpolata tra un fotogramma e l’altro. QuickPose riceve solo identificatori dell’app e del dispositivo per convalidare la licenza SDK; non riceve video né coordinate della posa.',
+    privacyBlurSaveFailedTitle: 'Impossibile salvare questa impostazione',
+    privacyBlurSaveFailedBody: 'Restano attive le impostazioni precedenti. Riprova.',
     supportTitle: 'Assistenza',
     supportBody: 'Per domande o problemi, contatta il team Luche all’indirizzo founders@luche.ai.',
     emailSupport: 'Contatta l’assistenza',
@@ -203,16 +209,16 @@ export const it: Dict = {
     retry: 'Riprova',
     failedRetry: 'Qualcosa non ha funzionato. Luche continuerà a riprovare; se vuoi, tocca Riprova.',
     permanentFailed: 'Impossibile caricare questa registrazione. Registrala di nuovo.',
-    faceBlurFailedTitle: 'La sfocatura dei volti non è riuscita',
-    faceBlurFailedBody:
-      'Il video non è stato caricato e l’originale è ancora solo su questo dispositivo. Puoi riprovare oppure scegliere esplicitamente di inviare l’originale senza sfocatura.',
-    retryFaceBlur: 'Riprova a sfocare i volti',
-    sendWithoutFaceBlur: 'Invia senza sfocare i volti',
-    sendWithoutFaceBlurConfirmTitle: 'Inviare il video originale?',
-    sendWithoutFaceBlurConfirmBody:
-      'I volti potrebbero essere visibili. Se continui, Luche caricherà la registrazione originale senza sfocatura.',
-    faceBlurring: 'Sfocatura dei volti sul dispositivo…',
-    uploadStartsAfterFaceBlur: 'Il caricamento inizia solo quando la copia con i volti sfocati è pronta.',
+    privacyBlurFailedTitle: 'La sfocatura per la privacy non è riuscita',
+    privacyBlurFailedBody:
+      'Il video non è stato caricato e l’originale è ancora solo su questo dispositivo. Puoi riprovare oppure scegliere esplicitamente di inviare l’originale senza le sfocature selezionate.',
+    retryPrivacyBlur: 'Riprova la sfocatura per la privacy',
+    sendWithoutPrivacyBlur: 'Invia il video originale',
+    sendWithoutPrivacyBlurConfirmTitle: 'Inviare il video originale?',
+    sendWithoutPrivacyBlurConfirmBody:
+      'I volti e lo sfondo potrebbero essere visibili. Se continui, Luche caricherà la registrazione originale senza sfocature per la privacy.',
+    privacyBlurring: 'Applicazione della privacy video sul dispositivo…',
+    uploadStartsAfterPrivacyBlur: 'Il caricamento inizia solo quando la copia protetta è pronta.',
     uploading: 'Invio della registrazione al server…',
     processing: 'Preparazione del risultato…',
     processingWait: 'Preparare il risultato può richiedere alcuni minuti. Puoi uscire da questa schermata e tornare più tardi.',
@@ -221,8 +227,8 @@ export const it: Dict = {
     backToMenu: 'Torna al menu',
   },
   status: {
-    preparing: 'Sfocatura dei volti…',
-    blur_failed: 'Controlla la sfocatura dei volti',
+    preparing: 'Protezione del video…',
+    blur_failed: 'Controlla la privacy del video',
     uploading: 'Caricamento in corso',
     processing: 'Preparazione del risultato',
     done: 'Pronto',
@@ -230,10 +236,10 @@ export const it: Dict = {
     failed: 'Da controllare',
   },
   uploadBanner: {
-    faceBlurring: (n: number) =>
-      `Sfocatura dei volti prima del caricamento${n > 1 ? ` · ${n} registrazioni` : ''}`,
-    faceBlurFailed: (n: number) =>
-      `${n} registrazion${n === 1 ? 'e richiede' : 'i richiedono'} una scelta sulla sfocatura`,
+    privacyBlurring: (n: number) =>
+      `Protezione del video prima del caricamento${n > 1 ? ` · ${n} registrazioni` : ''}`,
+    privacyBlurFailed: (n: number) =>
+      `${n} registrazion${n === 1 ? 'e richiede' : 'i richiedono'} una scelta sulla privacy`,
     keepOpen: (n: number) =>
       `Caricamento di ${n} registrazione${n === 1 ? '' : 'i'}`,
     retrying: 'Caricamento non riuscito: nuovo tentativo in corso',

@@ -10,11 +10,11 @@ jest.mock('../../../modules/face-blur', () => ({
 }));
 
 jest.mock('../recordingFiles', () => ({
-  faceBlurFileUris: jest.fn(() => ({
+  privacyBlurFileUris: jest.fn(() => ({
     pendingUri: 'file:///recordings/r1.pending.mp4',
-    finalUri: 'file:///recordings/r1.face-blurred.mp4',
+    finalUri: 'file:///recordings/r1.privacy-blurred.mp4',
   })),
-  promoteFaceBlurredFile: jest.fn().mockResolvedValue('file:///recordings/r1.face-blurred.mp4'),
+  promotePrivacyBlurredFile: jest.fn().mockResolvedValue('file:///recordings/r1.privacy-blurred.mp4'),
 }));
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -25,13 +25,19 @@ import {
   cancelAsync,
 } from '../../../modules/face-blur';
 import { FaceBlurCancelledError, prepareFaceBlurredVideo } from '../faceBlur';
-import { promoteFaceBlurredFile } from '../recordingFiles';
+import { promotePrivacyBlurredFile } from '../recordingFiles';
 
-describe('face blur preparation', () => {
+describe('privacy blur preparation', () => {
   const remove = jest.fn();
+  const options = {
+    blurFaces: true,
+    blurBackground: true,
+    poseSampleIntervalMs: 200,
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.EXPO_PUBLIC_QUICKPOSE_SDK_KEY = 'quickpose-test-key';
     (FileSystem.getInfoAsync as jest.Mock).mockReset();
     (blurVideoAsync as jest.Mock).mockReset();
     (addProgressListener as jest.Mock).mockReturnValue({ remove });
@@ -42,7 +48,8 @@ describe('face blur preparation', () => {
       outputUri: 'file:///recordings/r1.pending.mp4',
       framesProcessed: 20,
       framesWithFaces: 18,
-      detections: 18,
+      framesWithBackgroundBlur: 20,
+      poseSamples: 4,
     });
   });
 
@@ -51,6 +58,7 @@ describe('face blur preparation', () => {
     const result = await prepareFaceBlurredVideo(
       'r1',
       'file:///recordings/r1.original.mov',
+      options,
       (value) => progress.push(value),
     );
 
@@ -58,14 +66,18 @@ describe('face blur preparation', () => {
       'file:///recordings/r1.original.mov',
       'file:///recordings/r1.pending.mp4',
       'face-blur:r1',
+      {
+        ...options,
+        sdkKey: 'quickpose-test-key',
+      },
     );
-    expect(promoteFaceBlurredFile).toHaveBeenCalled();
+    expect(promotePrivacyBlurredFile).toHaveBeenCalled();
     expect(FileSystem.deleteAsync).not.toHaveBeenCalledWith(
       'file:///recordings/r1.original.mov',
       expect.anything(),
     );
     expect(result).toMatchObject({
-      videoUri: 'file:///recordings/r1.face-blurred.mp4',
+      videoUri: 'file:///recordings/r1.privacy-blurred.mp4',
       framesProcessed: 20,
       recovered: false,
     });
@@ -83,35 +95,75 @@ describe('face blur preparation', () => {
     const result = await prepareFaceBlurredVideo(
       'r1',
       'file:///recordings/r1.original.mov',
+      options,
       (value) => progress.push(value),
     );
 
     expect(blurVideoAsync).not.toHaveBeenCalled();
-    expect(promoteFaceBlurredFile).not.toHaveBeenCalled();
+    expect(promotePrivacyBlurredFile).not.toHaveBeenCalled();
     expect(result).toMatchObject({
-      videoUri: 'file:///recordings/r1.face-blurred.mp4',
+      videoUri: 'file:///recordings/r1.privacy-blurred.mp4',
       recovered: true,
     });
     expect(progress).toEqual([1]);
   });
 
-  it('fails closed when the native detector finds no faces', async () => {
+  it('fails closed when QuickPose finds no person', async () => {
     (blurVideoAsync as jest.Mock).mockResolvedValueOnce({
       outputUri: 'file:///recordings/r1.pending.mp4',
       framesProcessed: 48,
       framesWithFaces: 0,
-      detections: 0,
+      framesWithBackgroundBlur: 0,
+      poseSamples: 0,
     });
 
     await expect(
-      prepareFaceBlurredVideo('r1', 'file:///recordings/r1.original.mov', () => {}),
-    ).rejects.toThrow('no face could be detected');
+      prepareFaceBlurredVideo('r1', 'file:///recordings/r1.original.mov', options, () => {}),
+    ).rejects.toThrow('no person pose could be detected');
 
-    expect(promoteFaceBlurredFile).not.toHaveBeenCalled();
+    expect(promotePrivacyBlurredFile).not.toHaveBeenCalled();
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(
       'file:///recordings/r1.pending.mp4',
       { idempotent: true },
     );
+  });
+
+  it('does not require a face region when only background blur was selected', async () => {
+    (blurVideoAsync as jest.Mock).mockResolvedValueOnce({
+      outputUri: 'file:///recordings/r1.pending.mp4',
+      framesProcessed: 20,
+      framesWithFaces: 0,
+      framesWithBackgroundBlur: 20,
+      poseSamples: 4,
+    });
+
+    await expect(
+      prepareFaceBlurredVideo(
+        'r1',
+        'file:///recordings/r1.original.mov',
+        { ...options, blurFaces: false },
+        () => {},
+      ),
+    ).resolves.toMatchObject({ framesWithFaces: 0, recovered: false });
+  });
+
+  it('does not require background output when only face blur was selected', async () => {
+    (blurVideoAsync as jest.Mock).mockResolvedValueOnce({
+      outputUri: 'file:///recordings/r1.pending.mp4',
+      framesProcessed: 20,
+      framesWithFaces: 18,
+      framesWithBackgroundBlur: 0,
+      poseSamples: 4,
+    });
+
+    await expect(
+      prepareFaceBlurredVideo(
+        'r1',
+        'file:///recordings/r1.original.mov',
+        { ...options, blurBackground: false },
+        () => {},
+      ),
+    ).resolves.toMatchObject({ framesWithBackgroundBlur: 0, recovered: false });
   });
 
   it('cancels native processing when the recording operation aborts', async () => {
@@ -125,6 +177,7 @@ describe('face blur preparation', () => {
     const result = prepareFaceBlurredVideo(
       'r1',
       'file:///recordings/r1.original.mov',
+      options,
       () => {},
       controller.signal,
     );

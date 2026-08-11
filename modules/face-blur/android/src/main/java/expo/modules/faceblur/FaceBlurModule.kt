@@ -1,10 +1,23 @@
 package expo.modules.faceblur
 
+import ai.quickpose.core.Feature
+import ai.quickpose.core.Landmarks
+import ai.quickpose.core.QuickPose
+import ai.quickpose.core.Side
+import ai.quickpose.core.Status
+import ai.quickpose.core.Style
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.SurfaceTexture
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.opengl.GLES20
 import android.os.Handler
 import android.os.Looper
+import android.util.Size as AndroidSize
+import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.GlTextureInfo
 import androidx.media3.common.MediaItem
@@ -28,211 +41,389 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.Arrays
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import org.tensorflow.lite.Interpreter
 
 private const val PROGRESS_EVENT = "onFaceBlurProgress"
-private const val MODEL_NAME = "luche_blaze_face_full_range.tflite"
-private const val DETECTOR_SIZE = 192
-private const val ANCHOR_GRID_SIZE = 48
-private const val BOX_COUNT = ANCHOR_GRID_SIZE * ANCHOR_GRID_SIZE
-private const val BOX_VALUES = 16
-private const val MAXIMUM_FACES = 8
-private const val MINIMUM_SCORE = 0.45f
-private const val NMS_IOU_THRESHOLD = 0.3f
+private const val SCAN_PROGRESS_SHARE = 0.45
+private const val MAXIMUM_POSE_DIMENSION = 512
+private const val ADDITIONAL_FACE_PADDING_PER_EDGE = 0.20f
 
-private data class FaceRect(
-  val left: Float,
-  val bottom: Float,
-  val right: Float,
-  val top: Float,
-)
-
-private data class FrameResult(val faces: List<FaceRect>)
-
-private data class DetectionBox(
+/** Normalized top-left coordinates, matching QuickPose/MediaPipe landmarks. */
+private data class PrivacyRect(
   val left: Float,
   val top: Float,
   val right: Float,
   val bottom: Float,
-  val score: Float,
-)
+) {
+  val width: Float get() = max(0f, right - left)
+  val height: Float get() = max(0f, bottom - top)
 
-/** Direct BlazeFace TFLite runner. No MediaPipe Tasks telemetry is linked. */
-private class BlazeFaceDetector(context: Context) : AutoCloseable {
-  private val model: ByteBuffer
-  private val interpreter: Interpreter
-  private val input = ByteBuffer.allocateDirect(DETECTOR_SIZE * DETECTOR_SIZE * 3 * 4)
-    .order(ByteOrder.nativeOrder())
-  private val pixels = IntArray(DETECTOR_SIZE * DETECTOR_SIZE)
-  private val sourcePixels = IntArray(DETECTOR_SIZE * DETECTOR_SIZE)
-  private val boxes = Array(1) { Array(BOX_COUNT) { FloatArray(BOX_VALUES) } }
-  private val scores = Array(1) { Array(BOX_COUNT) { FloatArray(1) } }
-  private val boxesOutputIndex: Int
-  private val scoresOutputIndex: Int
-
-  init {
-    val modelBytes = context.assets.open(MODEL_NAME).use { it.readBytes() }
-    model = ByteBuffer.allocateDirect(modelBytes.size).order(ByteOrder.nativeOrder())
-    model.put(modelBytes)
-    model.rewind()
-    interpreter = Interpreter(
-      model,
-      Interpreter.Options().setNumThreads(2).setUseXNNPACK(true),
+  fun interpolate(other: PrivacyRect, fraction: Float): PrivacyRect {
+    val t = fraction.coerceIn(0f, 1f)
+    return PrivacyRect(
+      left = left + (other.left - left) * t,
+      top = top + (other.top - top) * t,
+      right = right + (other.right - right) * t,
+      bottom = bottom + (other.bottom - bottom) * t,
     )
-    boxesOutputIndex = (0 until interpreter.outputTensorCount).first { index ->
-      interpreter.getOutputTensor(index).shape().lastOrNull() == BOX_VALUES
-    }
-    scoresOutputIndex = (0 until interpreter.outputTensorCount).first { index ->
-      interpreter.getOutputTensor(index).shape().lastOrNull() == 1
-    }
   }
 
-  fun detect(bitmap: android.graphics.Bitmap): List<FaceRect> {
-    require(bitmap.width in 1..DETECTOR_SIZE && bitmap.height in 1..DETECTOR_SIZE) {
-      "BlazeFace input must fit within ${DETECTOR_SIZE}x$DETECTOR_SIZE."
-    }
-    // Match MediaPipe's official preprocessing: preserve aspect ratio and
-    // center the resized frame over a zero-valued (black) square.
-    Arrays.fill(pixels, 0xff000000.toInt())
-    bitmap.getPixels(sourcePixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-    val padX = (DETECTOR_SIZE - bitmap.width) / 2
-    val padY = (DETECTOR_SIZE - bitmap.height) / 2
-    for (row in 0 until bitmap.height) {
-      sourcePixels.copyInto(
-        pixels,
-        destinationOffset = (row + padY) * DETECTOR_SIZE + padX,
-        startIndex = row * bitmap.width,
-        endIndex = (row + 1) * bitmap.width,
-      )
-    }
-    input.rewind()
-    for (pixel in pixels) {
-      input.putFloat(((pixel shr 16 and 0xff) / 127.5f) - 1f)
-      input.putFloat(((pixel shr 8 and 0xff) / 127.5f) - 1f)
-      input.putFloat(((pixel and 0xff) / 127.5f) - 1f)
-    }
-    input.rewind()
-    interpreter.runForMultipleInputsOutputs(
-      arrayOf(input),
-      mutableMapOf<Int, Any>(
-        boxesOutputIndex to boxes,
-        scoresOutputIndex to scores,
-      ),
-    )
+  fun toGlRect(): GlPrivacyRect = GlPrivacyRect(
+    left = left,
+    bottom = 1f - bottom,
+    right = right,
+    top = 1f - top,
+  )
+}
 
-    val candidates = ArrayList<DetectionBox>()
-    for (index in 0 until BOX_COUNT) {
-      val logit = scores[0][index][0].coerceIn(-100f, 100f)
-      val score = 1f / (1f + exp(-logit))
-      if (score < MINIMUM_SCORE) continue
+private data class GlPrivacyRect(
+  val left: Float,
+  val bottom: Float,
+  val right: Float,
+  val top: Float,
+)
 
-      val raw = boxes[0][index]
-      val anchorX = ((index % ANCHOR_GRID_SIZE) + 0.5f) / ANCHOR_GRID_SIZE
-      val anchorY = ((index / ANCHOR_GRID_SIZE) + 0.5f) / ANCHOR_GRID_SIZE
-      // MediaPipe's BlazeFace export uses reverse_output_order: y, x, h, w.
-      val centerX = raw[1] / DETECTOR_SIZE + anchorX
-      val centerY = raw[0] / DETECTOR_SIZE + anchorY
-      val width = raw[3] / DETECTOR_SIZE
-      val height = raw[2] / DETECTOR_SIZE
-      candidates += DetectionBox(
-        left = centerX - width / 2,
-        top = centerY - height / 2,
-        right = centerX + width / 2,
-        bottom = centerY + height / 2,
-        score = score,
-      )
-    }
+private data class PoseKeyframe(
+  val presentationTimeUs: Long,
+  val person: PrivacyRect?,
+  val face: PrivacyRect?,
+)
 
-    val remaining = candidates.sortedByDescending { it.score }.toMutableList()
-    val selected = ArrayList<DetectionBox>()
-    while (remaining.isNotEmpty() && selected.size < MAXIMUM_FACES) {
-      val seed = remaining.removeAt(0)
-      val overlapping = arrayListOf(seed)
-      val iterator = remaining.iterator()
-      while (iterator.hasNext()) {
-        val candidate = iterator.next()
-        if (intersectionOverUnion(seed, candidate) > NMS_IOU_THRESHOLD) {
-          overlapping += candidate
-          iterator.remove()
-        }
+private data class PrivacyRects(
+  val person: PrivacyRect?,
+  val face: PrivacyRect?,
+)
+
+private class PoseTimeline(val keyframes: List<PoseKeyframe>) {
+  val poseSamples: Int get() = keyframes.count { it.person != null }
+  val faceSamples: Int get() = keyframes.count { it.face != null }
+  val isReliableForFace: Boolean get() = keyframes.isNotEmpty() &&
+    faceSamples >= kotlin.math.ceil(keyframes.size * 0.4).toInt()
+  val isReliableForBackground: Boolean get() {
+    if (keyframes.isEmpty()) return false
+    val minimumReliableSamples = kotlin.math.ceil(keyframes.size * 0.6).toInt()
+    if (poseSamples < minimumReliableSamples) return false
+    val reliableSamples = keyframes.count { keyframe ->
+      val person = keyframe.person
+      val face = keyframe.face
+      if (person == null || face == null || person.width <= 0f || person.height <= 0f) {
+        false
+      } else {
+        val bodyAspect = person.height / person.width
+        val relativeFaceWidth = face.width / person.width
+        bodyAspect >= 1.05f && relativeFaceWidth >= 0.10f
       }
-      val scoreSum = overlapping.sumOf { it.score.toDouble() }.toFloat()
-      selected += DetectionBox(
-        left = overlapping.sumOf { (it.left * it.score).toDouble() }.toFloat() / scoreSum,
-        top = overlapping.sumOf { (it.top * it.score).toDouble() }.toFloat() / scoreSum,
-        right = overlapping.sumOf { (it.right * it.score).toDouble() }.toFloat() / scoreSum,
-        bottom = overlapping.sumOf { (it.bottom * it.score).toDouble() }.toFloat() / scoreSum,
-        score = seed.score,
-      )
     }
-    return selected.map { box ->
-      val projected = DetectionBox(
-        left = (box.left * DETECTOR_SIZE - padX) / bitmap.width,
-        top = (box.top * DETECTOR_SIZE - padY) / bitmap.height,
-        right = (box.right * DETECTOR_SIZE - padX) / bitmap.width,
-        bottom = (box.bottom * DETECTOR_SIZE - padY) / bitmap.height,
-        score = box.score,
-      )
-      expandedRect(projected)
+    return reliableSamples >= minimumReliableSamples
+  }
+
+  fun at(presentationTimeUs: Long): PrivacyRects? {
+    val first = keyframes.firstOrNull() ?: return null
+    if (presentationTimeUs <= first.presentationTimeUs) {
+      return PrivacyRects(first.person, first.face)
     }
-  }
+    val last = keyframes.last()
+    if (presentationTimeUs >= last.presentationTimeUs) {
+      return PrivacyRects(last.person, last.face)
+    }
 
-  override fun close() {
-    interpreter.close()
-  }
-
-  private fun expandedRect(box: DetectionBox): FaceRect {
-    val width = box.right - box.left
-    val height = box.bottom - box.top
-    val horizontalPadding = width * 0.35f
-    val topPadding = height * 0.45f
-    val bottomPadding = height * 0.25f
-    val left = (box.left - horizontalPadding).coerceIn(0f, 1f)
-    val right = (box.right + horizontalPadding).coerceIn(0f, 1f)
-    val topFromTop = (box.top - topPadding).coerceIn(0f, 1f)
-    val bottomFromTop = (box.bottom + bottomPadding).coerceIn(0f, 1f)
-    return FaceRect(
-      left = left,
-      bottom = 1f - bottomFromTop,
-      right = right,
-      top = 1f - topFromTop,
-    )
-  }
-
-  private fun intersectionOverUnion(a: DetectionBox, b: DetectionBox): Float {
-    val intersectionWidth = max(0f, min(a.right, b.right) - max(a.left, b.left))
-    val intersectionHeight = max(0f, min(a.bottom, b.bottom) - max(a.top, b.top))
-    val intersection = intersectionWidth * intersectionHeight
-    val areaA = max(0f, a.right - a.left) * max(0f, a.bottom - a.top)
-    val areaB = max(0f, b.right - b.left) * max(0f, b.bottom - b.top)
-    val union = areaA + areaB - intersection
-    return if (union > 0f) intersection / union else 0f
+    var low = 0
+    var high = keyframes.lastIndex
+    while (low + 1 < high) {
+      val middle = (low + high) / 2
+      if (keyframes[middle].presentationTimeUs <= presentationTimeUs) low = middle else high = middle
+    }
+    val before = keyframes[low]
+    val after = keyframes[high]
+    val span = max(1L, after.presentationTimeUs - before.presentationTimeUs)
+    val fraction = (presentationTimeUs - before.presentationTimeUs).toFloat() / span.toFloat()
+    val person = when {
+      before.person != null && after.person != null -> before.person.interpolate(after.person, fraction)
+      fraction < 0.5f -> before.person
+      else -> after.person
+    }
+    val face = when {
+      before.face != null && after.face != null -> before.face.interpolate(after.face, fraction)
+      fraction < 0.5f -> before.face
+      else -> after.face
+    }
+    return PrivacyRects(person, face)
   }
 }
 
-@UnstableApi
-private class FaceMosaicProcessor(
+private sealed interface CapturedPose {
+  data class Found(val landmarks: Landmarks) : CapturedPose
+  data object NoPerson : CapturedPose
+  data object InvalidSdkKey : CapturedPose
+}
+
+/** Feeds sparse decoded bitmaps to QuickPose through its documented frame pipeline. */
+private class QuickPoseBitmapBridge(
   context: Context,
+  sdkKey: String,
+  private val width: Int,
+  private val height: Int,
+) : AutoCloseable {
+  private val quickPose = QuickPose(context, sdkKey)
+  private val surfaceTexture = SurfaceTexture(false)
+  private val surface = Surface(surfaceTexture)
+  private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+  private val stateLock = Any()
+  private var pendingLatch: CountDownLatch? = null
+  private var pendingResult: CapturedPose? = null
+
+  init {
+    surfaceTexture.setDefaultBufferSize(width, height)
+    surfaceTexture.setOnFrameAvailableListener(quickPose, Handler(Looper.getMainLooper()))
+    quickPose.onCameraStarted(false, AndroidSize(width, height), 1f)
+    val started = CountDownLatch(1)
+    quickPose.start(
+      arrayOf(Feature.ShowPoints(Style())),
+      onStart = { started.countDown() },
+      onFrame = { status, _, _, _, landmarks ->
+        val result = when (status) {
+          is Status.Success -> landmarks?.let(CapturedPose::Found) ?: CapturedPose.NoPerson
+          is Status.NoPersonFound -> CapturedPose.NoPerson
+          is Status.SdkValidationError -> CapturedPose.InvalidSdkKey
+        }
+        val latch = synchronized(stateLock) {
+          val waiting = pendingLatch
+          if (waiting != null) {
+            pendingResult = result
+            pendingLatch = null
+          }
+          waiting
+        }
+        latch?.countDown()
+      },
+    )
+    check(started.await(8, TimeUnit.SECONDS)) { "QuickPose did not become ready." }
+  }
+
+  fun analyze(bitmap: Bitmap): CapturedPose {
+    repeat(2) { attempt ->
+      val latch = CountDownLatch(1)
+      synchronized(stateLock) {
+        pendingResult = null
+        pendingLatch = latch
+      }
+      val canvas = surface.lockCanvas(null)
+      try {
+        canvas.drawBitmap(bitmap, null, Rect(0, 0, width, height), paint)
+      } finally {
+        surface.unlockCanvasAndPost(canvas)
+      }
+      if (latch.await(8, TimeUnit.SECONDS)) {
+        return synchronized(stateLock) {
+          pendingResult.also { pendingResult = null } ?: CapturedPose.NoPerson
+        }
+      }
+      synchronized(stateLock) { pendingLatch = null }
+      if (attempt == 0) Thread.sleep(200)
+    }
+    throw IllegalStateException("QuickPose timed out while reading the recording.")
+  }
+
+  override fun close() {
+    quickPose.stop()
+    surface.release()
+    surfaceTexture.release()
+  }
+}
+
+private class QuickPoseVideoScanner(
+  private val context: Context,
+  private val inputUri: String,
+  private val sdkKey: String,
+  sampleIntervalMilliseconds: Int,
+  private val onProgress: (Double) -> Unit,
+  private val isCancelled: () -> Boolean,
+) {
+  private val sampleIntervalUs = sampleIntervalMilliseconds.coerceIn(100, 1_000) * 1_000L
+
+  data class Result(val timeline: PoseTimeline, val durationUs: Long)
+
+  fun scan(): Result {
+    require(sdkKey.isNotBlank()) { "QuickPose SDK key is not configured for this build." }
+    val retriever = MediaMetadataRetriever()
+    try {
+      retriever.setDataSource(context, Uri.parse(inputUri))
+      val durationUs = (
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+          ?: 0L
+      ) * 1_000L
+      require(durationUs > 0) { "The recording duration could not be read." }
+
+      val firstFrame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+        ?: throw IllegalStateException("The first video frame could not be decoded.")
+      val target = scaledSize(firstFrame.width, firstFrame.height)
+      val firstScaled = scale(firstFrame, target.first, target.second)
+      if (firstScaled !== firstFrame) firstFrame.recycle()
+
+      val sampleTimes = mutableListOf<Long>()
+      var timeUs = 0L
+      while (timeUs < durationUs) {
+        sampleTimes += timeUs
+        timeUs += sampleIntervalUs
+      }
+      val finalSample = max(0L, durationUs - 1_667L)
+      if (sampleTimes.isEmpty() || finalSample - sampleTimes.last() > sampleIntervalUs / 3) {
+        sampleTimes += finalSample
+      }
+
+      val keyframes = mutableListOf<PoseKeyframe>()
+      QuickPoseBitmapBridge(context, sdkKey, target.first, target.second).use { bridge ->
+        sampleTimes.forEachIndexed { index, requestedTimeUs ->
+          if (isCancelled()) throw InterruptedException("Video privacy processing was cancelled.")
+          val bitmap = if (index == 0) {
+            firstScaled
+          } else {
+            val decoded = retriever.getFrameAtTime(
+              requestedTimeUs,
+              MediaMetadataRetriever.OPTION_CLOSEST,
+            ) ?: return@forEachIndexed
+            val scaled = scale(decoded, target.first, target.second)
+            if (scaled !== decoded) decoded.recycle()
+            scaled
+          }
+          try {
+            when (val captured = bridge.analyze(bitmap)) {
+              is CapturedPose.Found -> {
+                val person = personRect(captured.landmarks)
+                keyframes += PoseKeyframe(
+                  presentationTimeUs = requestedTimeUs,
+                  person = person,
+                  face = if (person == null) null else faceRect(captured.landmarks),
+                )
+              }
+              CapturedPose.InvalidSdkKey -> throw IllegalArgumentException(
+                "The QuickPose SDK key is not valid for this app.",
+              )
+              CapturedPose.NoPerson -> keyframes += PoseKeyframe(
+                presentationTimeUs = requestedTimeUs,
+                person = null,
+                face = null,
+              )
+            }
+          } finally {
+            bitmap.recycle()
+          }
+          onProgress(SCAN_PROGRESS_SHARE * (index + 1).toDouble() / sampleTimes.size.toDouble())
+        }
+      }
+
+      require(keyframes.any { it.person != null }) {
+        "QuickPose could not detect a person in this recording."
+      }
+      return Result(PoseTimeline(keyframes.sortedBy { it.presentationTimeUs }), durationUs)
+    } finally {
+      retriever.release()
+    }
+  }
+
+  private fun scaledSize(width: Int, height: Int): Pair<Int, Int> {
+    val scale = min(1f, MAXIMUM_POSE_DIMENSION.toFloat() / max(width, height).toFloat())
+    return Pair(
+      max(1, (width * scale).roundToInt()),
+      max(1, (height * scale).roundToInt()),
+    )
+  }
+
+  private fun scale(bitmap: Bitmap, width: Int, height: Int): Bitmap =
+    if (bitmap.width == width && bitmap.height == height) bitmap
+    else Bitmap.createScaledBitmap(bitmap, width, height, true)
+
+  private fun personRect(landmarks: Landmarks): PrivacyRect? {
+    val points = landmarks.allLandmarksForBody().mapNotNull { point ->
+      if (point.visibility < 0.25f || point.presence < 0.25f) return@mapNotNull null
+      val projected = point.cgPoint(AndroidSize(1, 1), false)
+      if (!projected.x.isFinite() || !projected.y.isFinite()) return@mapNotNull null
+      if (projected.x !in -0.1f..1.1f || projected.y !in -0.1f..1.1f) return@mapNotNull null
+      Pair(projected.x.coerceIn(0f, 1f), projected.y.coerceIn(0f, 1f))
+    }
+    if (points.size < 6) return null
+    val bounds = bounds(points)
+    val width = max(0.05f, bounds.right - bounds.left)
+    val height = max(0.1f, bounds.bottom - bounds.top)
+    return PrivacyRect(
+      left = (bounds.left - max(0.10f, width * 0.32f)).coerceIn(0f, 1f),
+      top = (bounds.top - max(0.08f, height * 0.22f)).coerceIn(0f, 1f),
+      right = (bounds.right + max(0.10f, width * 0.32f)).coerceIn(0f, 1f),
+      bottom = (bounds.bottom + max(0.10f, height * 0.18f)).coerceIn(0f, 1f),
+    )
+  }
+
+  private fun faceRect(landmarks: Landmarks): PrivacyRect? {
+    val joints: List<Landmarks.Body> = listOf(
+      Landmarks.Body.Nose(),
+      Landmarks.Body.EyeInner(Side.LEFT), Landmarks.Body.Eye(Side.LEFT),
+      Landmarks.Body.EyeOuter(Side.LEFT), Landmarks.Body.EyeInner(Side.RIGHT),
+      Landmarks.Body.Eye(Side.RIGHT), Landmarks.Body.EyeOuter(Side.RIGHT),
+      Landmarks.Body.Ear(Side.LEFT), Landmarks.Body.Ear(Side.RIGHT),
+      Landmarks.Body.Mouth(Side.LEFT), Landmarks.Body.Mouth(Side.RIGHT),
+    )
+    val points = joints.mapNotNull { joint ->
+      val point = landmarks.landmarkForBody(joint)
+      if (point.visibility < 0.25f || point.presence < 0.25f) return@mapNotNull null
+      val projected = point.cgPoint(AndroidSize(1, 1), false)
+      if (!projected.x.isFinite() || !projected.y.isFinite()) return@mapNotNull null
+      Pair(projected.x.coerceIn(0f, 1f), projected.y.coerceIn(0f, 1f))
+    }
+    if (points.size < 3) return null
+    val bounds = bounds(points)
+    val width = max(0.025f, bounds.right - bounds.left)
+    val height = max(0.035f, bounds.bottom - bounds.top)
+    // Production-video review found the prior face mask too tight. Expand
+    // every edge by another 20% of the measured head width/height while
+    // preserving the existing asymmetric forehead/chin padding.
+    return PrivacyRect(
+      left = (
+        bounds.left - width * (0.20f + ADDITIONAL_FACE_PADDING_PER_EDGE)
+      ).coerceIn(0f, 1f),
+      top = (
+        bounds.top - height * (0.50f + ADDITIONAL_FACE_PADDING_PER_EDGE)
+      ).coerceIn(0f, 1f),
+      right = (
+        bounds.right + width * (0.20f + ADDITIONAL_FACE_PADDING_PER_EDGE)
+      ).coerceIn(0f, 1f),
+      bottom = (
+        bounds.bottom + height * (0.25f + ADDITIONAL_FACE_PADDING_PER_EDGE)
+      ).coerceIn(0f, 1f),
+    )
+  }
+
+  private fun bounds(points: List<Pair<Float, Float>>): PrivacyRect = PrivacyRect(
+    left = points.minOf { it.first },
+    top = points.minOf { it.second },
+    right = points.maxOf { it.first },
+    bottom = points.maxOf { it.second },
+  )
+}
+
+private data class FrameResult(
+  val face: GlPrivacyRect?,
+  val person: GlPrivacyRect?,
+)
+
+@UnstableApi
+private class PrivacyBlurGlProcessor(
+  private val timeline: PoseTimeline,
   private val durationUs: Long,
+  private val blurFaces: Boolean,
+  private val blurBackground: Boolean,
   private val onProgress: (Double) -> Unit,
 ) : ByteBufferGlEffect.Processor<FrameResult> {
-  private val detector = BlazeFaceDetector(context)
   private val framesProcessed = AtomicInteger(0)
   private val framesWithFaces = AtomicInteger(0)
-  private val detections = AtomicInteger(0)
-
+  private val framesWithBackgroundBlur = AtomicInteger(0)
   private var inputWidth = 0
   private var inputHeight = 0
-  private var detectorWidth = DETECTOR_SIZE
-  private var detectorHeight = DETECTOR_SIZE
   private var scratchTexture = GlTextureInfo.UNSET
   private var glProgram: GlProgram? = null
   private var lastProgressTimestampUs = Long.MIN_VALUE
@@ -240,9 +431,7 @@ private class FaceMosaicProcessor(
   override fun configure(inputWidth: Int, inputHeight: Int): Size {
     this.inputWidth = inputWidth
     this.inputHeight = inputHeight
-    if (scratchTexture != GlTextureInfo.UNSET) {
-      scratchTexture.release()
-    }
+    if (scratchTexture != GlTextureInfo.UNSET) scratchTexture.release()
     val textureId = GlUtil.createTexture(inputWidth, inputHeight, false)
     scratchTexture = GlTextureInfo(
       textureId,
@@ -264,47 +453,32 @@ private class FaceMosaicProcessor(
       "uResolution",
       floatArrayOf(inputWidth.toFloat(), inputHeight.toFloat()),
     )
-    val scale = min(
-      DETECTOR_SIZE.toFloat() / inputWidth,
-      DETECTOR_SIZE.toFloat() / inputHeight,
-    )
-    detectorWidth = (inputWidth * scale).roundToInt().coerceIn(1, DETECTOR_SIZE)
-    detectorHeight = (inputHeight * scale).roundToInt().coerceIn(1, DETECTOR_SIZE)
-    return Size(detectorWidth, detectorHeight)
+    return Size(1, 1)
   }
 
-  override fun getScaledRegion(presentationTimeUs: Long): GlRect =
-    GlRect(inputWidth, inputHeight)
+  override fun getScaledRegion(presentationTimeUs: Long): GlRect = GlRect(inputWidth, inputHeight)
 
-  @Synchronized
   override fun processImage(
     image: ByteBufferGlEffect.Image,
     presentationTimeUs: Long,
   ): ListenableFuture<FrameResult> {
     return try {
-      val bitmap = image.copyToBitmap()
-      val faces = try {
-        detector.detect(bitmap)
-      } finally {
-        bitmap.recycle()
-      }
-
+      val rects = timeline.at(presentationTimeUs)
+        ?: throw IllegalStateException("No interpolated pose was available for a video frame.")
       framesProcessed.incrementAndGet()
-      if (faces.isNotEmpty()) framesWithFaces.incrementAndGet()
-      detections.addAndGet(faces.size)
+      if (blurFaces && rects.face != null) framesWithFaces.incrementAndGet()
+      if (blurBackground) framesWithBackgroundBlur.incrementAndGet()
       if (
         lastProgressTimestampUs == Long.MIN_VALUE ||
         presentationTimeUs - lastProgressTimestampUs >= 250_000
       ) {
         lastProgressTimestampUs = presentationTimeUs
-        val progress = if (durationUs > 0) {
+        val exportFraction = if (durationUs > 0) {
           min(0.99, max(0.0, presentationTimeUs.toDouble() / durationUs.toDouble()))
-        } else {
-          0.0
-        }
-        onProgress(progress)
+        } else 0.0
+        onProgress(SCAN_PROGRESS_SHARE + exportFraction * (0.99 - SCAN_PROGRESS_SHARE))
       }
-      Futures.immediateFuture(FrameResult(faces))
+      Futures.immediateFuture(FrameResult(rects.face?.toGlRect(), rects.person?.toGlRect()))
     } catch (error: Throwable) {
       Futures.immediateFailedFuture(error)
     }
@@ -315,34 +489,32 @@ private class FaceMosaicProcessor(
     presentationTimeUs: Long,
     result: FrameResult,
   ) {
-    if (result.faces.isEmpty()) return
     try {
       val fullFrame = GlRect(outputFrame.width, outputFrame.height)
-      GlUtil.blitFrameBuffer(
-        outputFrame.fboId,
-        fullFrame,
-        scratchTexture.fboId,
-        fullFrame,
-      )
+      GlUtil.blitFrameBuffer(outputFrame.fboId, fullFrame, scratchTexture.fboId, fullFrame)
       GlUtil.focusFramebufferUsingCurrentContext(
         outputFrame.fboId,
         outputFrame.width,
         outputFrame.height,
       )
-
-      val rects = FloatArray(MAXIMUM_FACES * 4)
-      result.faces.forEachIndexed { index, face ->
-        val offset = index * 4
-        rects[offset] = face.left
-        rects[offset + 1] = face.bottom
-        rects[offset + 2] = face.right
-        rects[offset + 3] = face.top
-      }
+      val face = result.face
       glProgram?.apply {
         use()
         setSamplerTexIdUniform("uTexSampler", scratchTexture.texId, 0)
-        setIntUniform("uFaceCount", result.faces.size)
-        setFloatsUniform("uFaceRects[0]", rects)
+        setIntUniform("uBlurFaces", if (blurFaces && face != null) 1 else 0)
+        setIntUniform("uBlurBackground", if (blurBackground) 1 else 0)
+        setIntUniform("uHasPerson", if (result.person != null) 1 else 0)
+        setFloatsUniform(
+          "uFaceRect",
+          if (face == null) floatArrayOf(0f, 0f, 0f, 0f)
+          else floatArrayOf(face.left, face.bottom, face.right, face.top),
+        )
+        val person = result.person
+        setFloatsUniform(
+          "uPersonRect",
+          if (person == null) floatArrayOf(0f, 0f, 0f, 0f)
+          else floatArrayOf(person.left, person.bottom, person.right, person.top),
+        )
         bindAttributesAndUniforms()
       }
       GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -353,7 +525,6 @@ private class FaceMosaicProcessor(
   }
 
   override fun release() {
-    detector.close()
     try {
       if (scratchTexture != GlTextureInfo.UNSET) scratchTexture.release()
       glProgram?.delete()
@@ -369,7 +540,8 @@ private class FaceMosaicProcessor(
     "outputUri" to outputUri,
     "framesProcessed" to framesProcessed.get(),
     "framesWithFaces" to framesWithFaces.get(),
-    "detections" to detections.get(),
+    "framesWithBackgroundBlur" to framesWithBackgroundBlur.get(),
+    "poseSamples" to timeline.poseSamples,
   )
 
   private companion object {
@@ -386,26 +558,53 @@ private class FaceMosaicProcessor(
       precision mediump float;
       uniform sampler2D uTexSampler;
       uniform vec2 uResolution;
-      uniform int uFaceCount;
-      uniform vec4 uFaceRects[8];
+      uniform int uBlurFaces;
+      uniform int uBlurBackground;
+      uniform int uHasPerson;
+      uniform vec4 uFaceRect;
+      uniform vec4 uPersonRect;
       varying vec2 vTexCoord;
 
+      vec4 backgroundBlur(vec2 uv) {
+        vec2 d = vec2(14.0) / uResolution;
+        vec4 value = texture2D(uTexSampler, uv) * 0.20;
+        value += texture2D(uTexSampler, uv + vec2(d.x, 0.0)) * 0.12;
+        value += texture2D(uTexSampler, uv - vec2(d.x, 0.0)) * 0.12;
+        value += texture2D(uTexSampler, uv + vec2(0.0, d.y)) * 0.12;
+        value += texture2D(uTexSampler, uv - vec2(0.0, d.y)) * 0.12;
+        value += texture2D(uTexSampler, uv + d) * 0.08;
+        value += texture2D(uTexSampler, uv - d) * 0.08;
+        value += texture2D(uTexSampler, uv + vec2(d.x, -d.y)) * 0.08;
+        value += texture2D(uTexSampler, uv + vec2(-d.x, d.y)) * 0.08;
+        return value;
+      }
+
+      float rectMask(vec2 uv, vec4 rect, float feather) {
+        float horizontal = smoothstep(rect.x - feather, rect.x + feather, uv.x) *
+          (1.0 - smoothstep(rect.z - feather, rect.z + feather, uv.x));
+        float vertical = smoothstep(rect.y - feather, rect.y + feather, uv.y) *
+          (1.0 - smoothstep(rect.w - feather, rect.w + feather, uv.y));
+        return horizontal * vertical;
+      }
+
       void main() {
-        vec2 sampleCoord = vTexCoord;
-        for (int i = 0; i < 8; i++) {
-          if (i < uFaceCount) {
-            vec4 face = uFaceRects[i];
-            if (
-              vTexCoord.x >= face.x && vTexCoord.x <= face.z &&
-              vTexCoord.y >= face.y && vTexCoord.y <= face.w
-            ) {
-              vec2 block = max((face.zw - face.xy) / 6.0, 1.0 / uResolution);
-              sampleCoord = face.xy +
-                (floor((vTexCoord - face.xy) / block) + 0.5) * block;
-            }
-          }
+        vec4 original = texture2D(uTexSampler, vTexCoord);
+        vec4 color = original;
+        if (uBlurBackground == 1) {
+          float personMask = uHasPerson == 1
+            ? rectMask(vTexCoord, uPersonRect, 0.015)
+            : 0.0;
+          color = mix(backgroundBlur(vTexCoord), original, personMask);
         }
-        gl_FragColor = texture2D(uTexSampler, sampleCoord);
+        if (uBlurFaces == 1) {
+          float faceMask = rectMask(vTexCoord, uFaceRect, 0.0005);
+          vec2 block = max((uFaceRect.zw - uFaceRect.xy) / 7.0, 1.0 / uResolution);
+          vec2 sampleCoord = uFaceRect.xy +
+            (floor((vTexCoord - uFaceRect.xy) / block) + 0.5) * block;
+          vec4 redacted = backgroundBlur(sampleCoord);
+          color = mix(color, redacted, faceMask);
+        }
+        gl_FragColor = color;
       }
     """
   }
@@ -413,11 +612,14 @@ private class FaceMosaicProcessor(
 
 @UnstableApi
 class FaceBlurModule : Module() {
-  private data class Operation(
-    val transformer: Transformer,
+  private class Operation(
     val outputFile: File,
     val promise: Promise,
-  )
+  ) {
+    val cancelled = AtomicBoolean(false)
+    val settled = AtomicBoolean(false)
+    @Volatile var transformer: Transformer? = null
+  }
 
   private val mainHandler = Handler(Looper.getMainLooper())
   private val operations = mutableMapOf<String, Operation>()
@@ -430,6 +632,10 @@ class FaceBlurModule : Module() {
         inputUri: String,
         outputUri: String,
         operationId: String,
+        sdkKey: String,
+        blurFaces: Boolean,
+        blurBackground: Boolean,
+        poseSampleIntervalMilliseconds: Int,
         promise: Promise,
       ->
       val context = appContext.reactContext?.applicationContext
@@ -437,123 +643,176 @@ class FaceBlurModule : Module() {
         promise.reject("ERR_FACE_BLUR", "Android application context is unavailable.", null)
         return@AsyncFunction
       }
-
       val input = localFile(inputUri)
       val output = localFile(outputUri)
       if (input == null || output == null) {
-        promise.reject("ERR_FACE_BLUR", "Face blurring requires local file URLs.", null)
+        promise.reject("ERR_FACE_BLUR", "Video privacy processing requires local file URLs.", null)
+        return@AsyncFunction
+      }
+      if (!blurFaces && !blurBackground) {
+        promise.reject("ERR_FACE_BLUR", "At least one video privacy option must be enabled.", null)
         return@AsyncFunction
       }
 
-      try {
-        val durationUs = videoDurationUs(context, inputUri)
-        val processor = FaceMosaicProcessor(context, durationUs) { progress ->
-          mainHandler.post {
-            sendEvent(PROGRESS_EVENT, mapOf(
-              "operationId" to operationId,
-              "progress" to progress,
-            ))
-          }
+      mainHandler.post {
+        if (operations.containsKey(operationId)) {
+          promise.reject("ERR_FACE_BLUR_BUSY", "This recording is already being processed.", null)
+          return@post
         }
-        mainHandler.post {
+        output.parentFile?.mkdirs()
+        output.delete()
+        val operation = Operation(output, promise)
+        operations[operationId] = operation
+        sendProgress(operationId, 0.0)
+
+        Thread({
           try {
-            if (operations.containsKey(operationId)) {
-              processor.release()
-              promise.reject("ERR_FACE_BLUR_BUSY", "This recording is already being processed.", null)
-              return@post
+            val scan = QuickPoseVideoScanner(
+              context = context,
+              inputUri = inputUri,
+              sdkKey = sdkKey,
+              sampleIntervalMilliseconds = poseSampleIntervalMilliseconds,
+              onProgress = { value -> sendProgress(operationId, value) },
+              isCancelled = { operation.cancelled.get() },
+            ).scan()
+            if (blurFaces && !scan.timeline.isReliableForFace) {
+              throw IllegalStateException(
+                "QuickPose could not reliably locate a face in this recording.",
+              )
             }
-            output.parentFile?.mkdirs()
-            output.delete()
-            val effect = ByteBufferGlEffect(processor)
-            val editedMediaItem = EditedMediaItem.Builder(MediaItem.fromUri(Uri.parse(inputUri)))
-              .setRemoveAudio(true)
-              .setEffects(Effects(emptyList(), listOf(effect)))
-              .build()
-
-            lateinit var transformer: Transformer
-            transformer = Transformer.Builder(context)
-              .setUsePlatformDiagnostics(false)
-              .setVideoMimeType(MimeTypes.VIDEO_H264)
-              .addListener(object : Transformer.Listener {
-                override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                  if (operations.remove(operationId) == null) {
-                    output.delete()
-                    return
-                  }
-                  sendEvent(PROGRESS_EVENT, mapOf(
-                    "operationId" to operationId,
-                    "progress" to 1.0,
-                  ))
-                  promise.resolve(processor.result(outputUri))
-                }
-
-                override fun onError(
-                  composition: Composition,
-                  exportResult: ExportResult,
-                  exportException: ExportException,
-                ) {
-                  if (operations.remove(operationId) == null) return
-                  output.delete()
-                  promise.reject(
-                    "ERR_FACE_BLUR",
-                    exportException.localizedMessage ?: "Face blurring failed.",
-                    exportException,
-                  )
-                }
-              })
-              .build()
-            operations[operationId] = Operation(transformer, output, promise)
-            sendEvent(PROGRESS_EVENT, mapOf(
-              "operationId" to operationId,
-              "progress" to 0.0,
-            ))
-            transformer.start(editedMediaItem, output.absolutePath)
+            if (blurBackground && !scan.timeline.isReliableForBackground) {
+              throw IllegalStateException(
+                "QuickPose could not reliably isolate one prominent full-body person for background blur.",
+              )
+            }
+            if (operation.cancelled.get()) throw InterruptedException("cancelled")
+            mainHandler.post {
+              if (operation.cancelled.get()) return@post
+              startTransformer(
+                context,
+                inputUri,
+                outputUri,
+                operationId,
+                operation,
+                scan,
+                blurFaces,
+                blurBackground,
+              )
+            }
           } catch (error: Throwable) {
-            operations.remove(operationId)
-            output.delete()
-            runCatching { processor.release() }
-            promise.reject(
-              "ERR_FACE_BLUR",
-              error.localizedMessage ?: "Face blurring could not start.",
-              error,
-            )
+            mainHandler.post {
+              if (operation.cancelled.get()) {
+                rejectCancelled(operationId, operation)
+              } else {
+                reject(operationId, operation, error)
+              }
+            }
           }
-        }
-      } catch (error: Throwable) {
-        promise.reject(
-          "ERR_FACE_BLUR",
-          error.localizedMessage ?: "Face blurring could not start.",
-          error,
-        )
+        }, "luche-quickpose-scan").start()
       }
     }
 
     AsyncFunction("cancelAsync") { operationId: String ->
       mainHandler.post {
-        val operation = operations.remove(operationId) ?: return@post
-        operation.transformer.cancel()
+        val operation = operations[operationId] ?: return@post
+        operation.cancelled.set(true)
+        operation.transformer?.cancel()
         operation.outputFile.delete()
-        operation.promise.reject("ERR_FACE_BLUR_CANCELLED", "Face blurring was cancelled.", null)
+        rejectCancelled(operationId, operation)
       }
     }
+  }
+
+  private fun startTransformer(
+    context: Context,
+    inputUri: String,
+    outputUri: String,
+    operationId: String,
+    operation: Operation,
+    scan: QuickPoseVideoScanner.Result,
+    blurFaces: Boolean,
+    blurBackground: Boolean,
+  ) {
+    val processor = PrivacyBlurGlProcessor(
+      timeline = scan.timeline,
+      durationUs = scan.durationUs,
+      blurFaces = blurFaces,
+      blurBackground = blurBackground,
+      onProgress = { value -> sendProgress(operationId, value) },
+    )
+    try {
+      val effect = ByteBufferGlEffect(processor)
+      val editedMediaItem = EditedMediaItem.Builder(MediaItem.fromUri(Uri.parse(inputUri)))
+        .setEffects(Effects(emptyList(), listOf(effect)))
+        .build()
+      val transformer = Transformer.Builder(context)
+        .setUsePlatformDiagnostics(false)
+        .setVideoMimeType(MimeTypes.VIDEO_H264)
+        .addListener(object : Transformer.Listener {
+          override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+            if (!settle(operationId, operation)) {
+              operation.outputFile.delete()
+              return
+            }
+            sendProgress(operationId, 1.0)
+            operation.promise.resolve(processor.result(outputUri))
+          }
+
+          override fun onError(
+            composition: Composition,
+            exportResult: ExportResult,
+            exportException: ExportException,
+          ) {
+            reject(operationId, operation, exportException)
+          }
+        })
+        .build()
+      operation.transformer = transformer
+      transformer.start(editedMediaItem, operation.outputFile.absolutePath)
+    } catch (error: Throwable) {
+      runCatching { processor.release() }
+      reject(operationId, operation, error)
+    }
+  }
+
+  private fun sendProgress(operationId: String, progress: Double) {
+    mainHandler.post {
+      sendEvent(PROGRESS_EVENT, mapOf(
+        "operationId" to operationId,
+        "progress" to progress.coerceIn(0.0, 1.0),
+      ))
+    }
+  }
+
+  private fun settle(operationId: String, operation: Operation): Boolean {
+    if (!operation.settled.compareAndSet(false, true)) return false
+    operations.remove(operationId)
+    return true
+  }
+
+  private fun reject(operationId: String, operation: Operation, error: Throwable) {
+    if (!settle(operationId, operation)) return
+    operation.outputFile.delete()
+    operation.promise.reject(
+      "ERR_FACE_BLUR",
+      error.localizedMessage ?: "Video privacy processing failed.",
+      error,
+    )
+  }
+
+  private fun rejectCancelled(operationId: String, operation: Operation) {
+    if (!settle(operationId, operation)) return
+    operation.outputFile.delete()
+    operation.promise.reject(
+      "ERR_FACE_BLUR_CANCELLED",
+      "Video privacy processing was cancelled.",
+      null,
+    )
   }
 
   private fun localFile(uriString: String): File? {
     val uri = Uri.parse(uriString)
     if (uri.scheme != "file" || uri.path.isNullOrBlank()) return null
     return File(requireNotNull(uri.path))
-  }
-
-  private fun videoDurationUs(context: Context, inputUri: String): Long {
-    val retriever = android.media.MediaMetadataRetriever()
-    return try {
-      retriever.setDataSource(context, Uri.parse(inputUri))
-      val millis = retriever
-        .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-        ?.toLongOrNull() ?: 0L
-      millis * 1_000L
-    } finally {
-      retriever.release()
-    }
   }
 }

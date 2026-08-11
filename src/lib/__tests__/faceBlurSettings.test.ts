@@ -6,23 +6,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   __testing,
-  getFaceBlurEnabled,
-  setFaceBlurEnabled,
+  getPrivacyBlurSettings,
+  setPrivacyBlurSetting,
 } from '../faceBlurSettings';
 
-describe('face blur setting', () => {
+describe('privacy blur settings', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     __testing.reset();
   });
 
   it('is off by default', async () => {
-    await expect(getFaceBlurEnabled()).resolves.toBe(false);
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: false,
+      background: false,
+    });
   });
 
-  it('persists an explicit opt-in', async () => {
-    await setFaceBlurEnabled(true);
-    expect(await AsyncStorage.getItem(__testing.storageKey)).toBe('true');
-    await expect(getFaceBlurEnabled()).resolves.toBe(true);
+  it('persists each explicit opt-in independently', async () => {
+    await setPrivacyBlurSetting('face', true);
+    await setPrivacyBlurSetting('background', true);
+    expect(await AsyncStorage.getItem(__testing.faceStorageKey)).toBe('true');
+    expect(await AsyncStorage.getItem(__testing.backgroundStorageKey)).toBe('true');
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: true,
+      background: true,
+    });
   });
 });

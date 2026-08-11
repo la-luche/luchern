@@ -33,8 +33,8 @@ export default function ResultDetailScreen() {
     loading,
     remove,
     retry,
-    retryFaceBlurring,
-    uploadWithoutFaceBlurring,
+    retryPrivacyBlurring,
+    uploadWithoutPrivacyBlurring,
   } = useRecordings();
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
@@ -83,9 +83,9 @@ export default function ResultDetailScreen() {
 
   const test = getTest(recording.testId);
   const privacyPending = Boolean(
-    recording.faceBlurRequested &&
-      recording.faceBlurState !== 'completed' &&
-      recording.faceBlurState !== 'bypassed',
+    (recording.faceBlurRequested || recording.backgroundBlurRequested) &&
+      recording.privacyBlurState !== 'completed' &&
+      recording.privacyBlurState !== 'bypassed',
   );
 
   const shareVideo = async () => {
@@ -146,14 +146,18 @@ export default function ResultDetailScreen() {
   };
 
   const confirmUnblurredUpload = () => {
-    Alert.alert(t.result.sendWithoutFaceBlurConfirmTitle, t.result.sendWithoutFaceBlurConfirmBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      {
-        text: t.result.sendWithoutFaceBlur,
-        style: 'destructive',
-        onPress: () => uploadWithoutFaceBlurring(recording.id),
-      },
-    ]);
+    Alert.alert(
+      t.result.sendWithoutPrivacyBlurConfirmTitle,
+      t.result.sendWithoutPrivacyBlurConfirmBody,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.result.sendWithoutPrivacyBlur,
+          style: 'destructive',
+          onPress: () => uploadWithoutPrivacyBlurring(recording.id),
+        },
+      ],
+    );
   };
 
   return (
@@ -267,17 +271,17 @@ export default function ResultDetailScreen() {
           ) : recording.status === 'blur_failed' ? (
             <View className="mt-3 gap-3">
               <Text className="text-[15px] font-semibold text-red-700">
-                {t.result.faceBlurFailedTitle}
+                {t.result.privacyBlurFailedTitle}
               </Text>
               <Text className="text-[14px] leading-5 text-ink-muted">
-                {t.result.faceBlurFailedBody}
+                {t.result.privacyBlurFailedBody}
               </Text>
               <Button
-                title={t.result.retryFaceBlur}
-                onPress={() => retryFaceBlurring(recording.id)}
+                title={t.result.retryPrivacyBlur}
+                onPress={() => retryPrivacyBlurring(recording.id)}
               />
               <Button
-                title={t.result.sendWithoutFaceBlur}
+                title={t.result.sendWithoutPrivacyBlur}
                 variant="secondary"
                 onPress={confirmUnblurredUpload}
               />
@@ -305,12 +309,12 @@ export default function ResultDetailScreen() {
                       ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
                       : t.result.uploading
                     : recording.status === 'preparing'
-                      ? `${t.result.faceBlurring} · ${Math.round((recording.faceBlurProgress ?? 0) * 100)}%`
+                      ? `${t.result.privacyBlurring} · ${Math.round((recording.privacyBlurProgress ?? 0) * 100)}%`
                       : t.result.processing}
                 </Text>
                 {recording.status === 'preparing' && (
                   <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
-                    {t.result.uploadStartsAfterFaceBlur}
+                    {t.result.uploadStartsAfterPrivacyBlur}
                   </Text>
                 )}
                 {recording.status === 'processing' && (

@@ -2,7 +2,7 @@ import type { EvaluatedSide, TestId } from './tests';
 
 /**
  * Lifecycle of a recording as it moves through the local privacy stage and
- * cloud pipeline. With face blur enabled this begins at `preparing`, then
+ * cloud pipeline. With a privacy blur enabled this begins at `preparing`, then
  * continues through `uploading` → `processing` → `done`.
  * Mirrors the status pill shown on each results card.
  */
@@ -15,7 +15,7 @@ export type RecordingStatus =
   | 'needs_retry'
   | 'failed';
 
-export type FaceBlurState =
+export type PrivacyBlurState =
   | 'pending'
   | 'processing'
   | 'completed'
@@ -56,20 +56,23 @@ export interface Recording {
    * Original URI retained only across the crash-safe sanitized-file commit.
    * Upload cannot start while this field exists.
    */
-  faceBlurOriginalUri?: string;
+  privacyBlurOriginalUri?: string;
   status: RecordingStatus;
-  /** Snapshot of the device setting when the user approved this capture. */
+  /** Snapshots of the device settings when the user approved this capture. */
   faceBlurRequested?: boolean;
+  backgroundBlurRequested?: boolean;
   /** Durable local preprocessing state; old recordings omit it. */
-  faceBlurState?: FaceBlurState;
-  /** In-memory face-redaction fraction; safe to lose across a relaunch. */
-  faceBlurProgress?: number;
-  /** Number of decoded frames scanned by the detector. */
-  faceBlurFramesProcessed?: number;
-  /** Number of frames where at least one face was redacted. */
-  faceBlurFramesWithFaces?: number;
-  /** Total face boxes redacted across all frames. */
-  faceBlurDetections?: number;
+  privacyBlurState?: PrivacyBlurState;
+  /** In-memory local preprocessing fraction; safe to lose across a relaunch. */
+  privacyBlurProgress?: number;
+  /** Number of exported video frames. */
+  privacyBlurFramesProcessed?: number;
+  /** Number of exported frames where a face was redacted. */
+  privacyBlurFramesWithFaces?: number;
+  /** Number of exported frames where the background was blurred. */
+  privacyBlurFramesWithBackground?: number;
+  /** Number of sparse QuickPose detections used to interpolate regions. */
+  privacyBlurPoseSamples?: number;
   /** Server upload intent, persisted after the video bytes reach R2. */
   uploadId?: string;
   /** In-memory upload fraction; safe to lose across a relaunch. */

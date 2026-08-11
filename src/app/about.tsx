@@ -16,7 +16,7 @@ import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
-import { useFaceBlurSetting } from '../lib/faceBlurSettings';
+import { type PrivacyBlurSettings, usePrivacyBlurSettings } from '../lib/faceBlurSettings';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
 
@@ -37,7 +37,7 @@ export default function AboutScreen() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { logoutAndPurge, restoreAfterFailedPurge, unuploadedCount } = useRecordings();
-  const faceBlur = useFaceBlurSetting();
+  const privacyBlur = usePrivacyBlurSettings();
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState<number | null>(null);
@@ -153,11 +153,11 @@ export default function AboutScreen() {
   const email = user?.primaryEmailAddress?.emailAddress;
   const displayName = user?.fullName || user?.firstName || email || t.profile.account;
 
-  const updateFaceBlur = async (enabled: boolean) => {
+  const updatePrivacyBlur = async (setting: keyof PrivacyBlurSettings, enabled: boolean) => {
     try {
-      await faceBlur.setEnabled(enabled);
+      await privacyBlur.setEnabled(setting, enabled);
     } catch {
-      Alert.alert(t.about.faceBlurSaveFailedTitle, t.about.faceBlurSaveFailedBody);
+      Alert.alert(t.about.privacyBlurSaveFailedTitle, t.about.privacyBlurSaveFailedBody);
     }
   };
 
@@ -237,19 +237,40 @@ export default function AboutScreen() {
         </Section>
 
         <Section title={t.about.privacyTitle}>
-          <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
-            <View className="mr-4 flex-1">
-              <Text className="text-[16px] font-semibold text-ink">{t.about.faceBlurTitle}</Text>
-              <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
-                {t.about.faceBlurBody}
-              </Text>
+          <View className="gap-3">
+            <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
+              <View className="mr-4 flex-1">
+                <Text className="text-[16px] font-semibold text-ink">{t.about.faceBlurTitle}</Text>
+                <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
+                  {t.about.faceBlurBody}
+                </Text>
+              </View>
+              <Switch
+                value={privacyBlur.face}
+                disabled={privacyBlur.isLoading}
+                onValueChange={(enabled) => void updatePrivacyBlur('face', enabled)}
+                accessibilityLabel={t.about.faceBlurA11y}
+              />
             </View>
-            <Switch
-              value={faceBlur.enabled}
-              disabled={faceBlur.isLoading}
-              onValueChange={(enabled) => void updateFaceBlur(enabled)}
-              accessibilityLabel={t.about.faceBlurA11y}
-            />
+            <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
+              <View className="mr-4 flex-1">
+                <Text className="text-[16px] font-semibold text-ink">
+                  {t.about.backgroundBlurTitle}
+                </Text>
+                <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
+                  {t.about.backgroundBlurBody}
+                </Text>
+              </View>
+              <Switch
+                value={privacyBlur.background}
+                disabled={privacyBlur.isLoading}
+                onValueChange={(enabled) => void updatePrivacyBlur('background', enabled)}
+                accessibilityLabel={t.about.backgroundBlurA11y}
+              />
+            </View>
+            <Text className="px-1 text-[13px] leading-5 text-ink-muted">
+              {t.about.privacyBlurTechnicalBody}
+            </Text>
           </View>
         </Section>
 

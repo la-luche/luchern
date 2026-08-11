@@ -1,28 +1,48 @@
-# Face detector model
+# QuickPose privacy-region model
 
-Both native implementations bundle the same MediaPipe BlazeFace full-range
-float16 model:
+Luche uses `@quickpose/react-native` 0.6.0 and the native QuickPose SDKs it
+wraps. The React Native view only supports a live camera, so Luche calls the
+same native SDKs from its local Expo video module to process an already-approved
+recording without replacing the existing `expo-camera` capture flow.
+The Expo config plugin pins the iOS SDK Git pods to QuickPose v1.4.0; Android
+uses `quickpose-mp` 0.6 and `quickpose-core` 0.22 from Maven.
 
-- Source: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/latest/blaze_face_full_range.tflite`
-- Downloaded: 2026-07-19
-- Size: 1,083,786 bytes
-- SHA-256: `3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b`
-- License: Apache 2.0 (MediaPipe model distribution)
+Runtime contract:
 
-The full-range model is intentional: Luche normally records a full body from
-the rear camera, where a face is much smaller than in a selfie. Its native
-192×192 detector input is used on both platforms. The app calls TensorFlow Lite
-directly and implements the same SSD decode/NMS locally; it does not link the
-prebuilt MediaPipe Tasks wrappers because those wrappers contain mandatory
-Google usage telemetry.
+- QuickPose samples the recorded video every 200 ms (about five poses/second).
+- Successful pose boxes are linearly interpolated by presentation timestamp
+  during the export pass. A missing sparse sample is never extrapolated as a
+  stale box across a longer gap.
+- The face box uses only visible head landmarks. Its asymmetric padding covers
+  forehead through chin, then expands every edge by a further 20% of the
+  measured head width/height based on production-video review. Nearby hands,
+  shoulders, and movement remain outside the redacted region.
+- Face mode requires a plausible face in at least 40% of sparse samples; a few
+  isolated pose hallucinations are rejected instead of producing a bogus blur.
+- The person box uses all visible body landmarks plus generous horizontal,
+  top, and bottom padding. Background blur is applied outside that box with a
+  feathered boundary.
+- Background processing requires reliable pose coverage and plausible
+  full-person geometry across at least 60% of sparse samples. This rejects the
+  known single-person BlazePose failure where a close hand is merged with a
+  different, smaller person in the background; the app asks the user to turn
+  background blur off instead of exporting a wrong-subject or fully blurred
+  clinical video.
+- If QuickPose finds no person in the clip, preprocessing fails closed and the
+  video is not uploaded until the user retries or explicitly sends the
+  original.
 
-Runtime contract (tensor metadata confirmed from the FlatBuffer; decode matches
-the full-range BlazeFace graph configuration):
+QuickPose inference runs on-device and no video frame or landmark coordinate is
+sent to QuickPose. The SDK does validate its license over the network. Its
+Android 0.22 client sends the package ID, SDK key, platform/version, and Android
+device ID to `https://api.quickpose.ai/sdk/v1/validate-key`; the user-facing
+privacy copy discloses app/device identifier validation. Release builds must set
+`EXPO_PUBLIC_QUICKPOSE_SDK_KEY` to a QuickPose key registered for
+`ai.getferal.luche` (iOS and Android registrations as required by QuickPose).
 
-- input: float32 RGB `[1, 192, 192, 3]`, normalized with `(channel / 127.5) - 1`
-- resize: preserve aspect ratio, centered zero-value letterbox, then project boxes back
-- boxes: float32 `[1, 2304, 16]`
-- scores: float32 `[1, 2304, 1]`
-- anchors: fixed 48×48 grid, 0.5 cell offset
-- box order: `y, x, h, w` (`reverse_output_order`)
-- postprocess: sigmoid at 0.45, weighted NMS at IoU 0.3, maximum eight faces
+The cloud QC runner accepts arbitrary compatible detector/landmark model paths
+and verifies their SHA-256 hashes before inference. QuickPose's mobile API only
+exposes the built-in `.light`, `.full`, and `.heavy` choices; substituting an
+arbitrary mobile checkpoint therefore requires replacing the small native pose
+adapter with direct MediaPipe/TFLite inference (the box/interpolation/export
+layers do not need to change).
