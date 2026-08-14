@@ -12,8 +12,6 @@ export type FaceBlurProgressEvent = {
 export type PrivacyBlurOptions = {
   blurFaces: boolean;
   blurBackground: boolean;
-  sdkKey: string;
-  poseSampleIntervalMs?: number;
 };
 
 export type FaceBlurResult = {
@@ -22,6 +20,9 @@ export type FaceBlurResult = {
   framesWithFaces: number;
   framesWithBackgroundBlur: number;
   poseSamples: number;
+  totalPoseSamples: number;
+  faceSamples: number;
+  detectorMode: 'rtmdet_nano_rtmpose_t_coco17_dense';
 };
 
 type FaceBlurEvents = {
@@ -33,10 +34,8 @@ declare class FaceBlurNativeModule extends NativeModule<FaceBlurEvents> {
     inputUri: string,
     outputUri: string,
     operationId: string,
-    sdkKey: string,
     blurFaces: boolean,
     blurBackground: boolean,
-    poseSampleIntervalMs: number,
   ): Promise<FaceBlurResult>;
   cancelAsync(operationId: string): Promise<void>;
 }
@@ -53,10 +52,8 @@ export function blurVideoAsync(
     inputUri,
     outputUri,
     operationId,
-    options.sdkKey,
     options.blurFaces,
     options.blurBackground,
-    options.poseSampleIntervalMs ?? 200,
   );
 }
 

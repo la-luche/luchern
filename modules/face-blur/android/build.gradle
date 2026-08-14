@@ -31,14 +31,12 @@ android {
 }
 
 dependencies {
-  implementation 'androidx.media3:media3-common:1.10.1'
-  implementation 'androidx.media3:media3-effect:1.10.1'
-  implementation 'androidx.media3:media3-transformer:1.10.1'
-  implementation 'ai.quickpose:quickpose-mp:0.6'
-  implementation 'ai.quickpose:quickpose-core:0.22'
-  implementation 'com.google.flogger:flogger:0.9'
-  implementation 'com.google.flogger:flogger-system-backend:0.9'
+  // Keep this aligned with Expo Video. Mixing Media3 versions changes
+  // interfaces such as LoadControl and crashes ExoPlayer at runtime.
+  def androidxMedia3Version = '1.8.0'
+  implementation "androidx.media3:media3-common:${androidxMedia3Version}"
+  implementation "androidx.media3:media3-effect:${androidxMedia3Version}"
+  implementation "androidx.media3:media3-transformer:${androidxMedia3Version}"
   implementation 'com.google.guava:guava:27.0.1-android'
-  implementation 'com.google.protobuf:protobuf-javalite:3.19.1'
   implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.28.0'
 }

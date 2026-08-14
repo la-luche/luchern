@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Luche pose lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MAC-LOCAL · PATIENT VIDEO STAYS HERE</p>
+        <h1>Luche pose lab</h1>
+        <p class="subtitle">Tune face and body boxes, then render reproducible overlays.</p>
+      </div>
+      <div class="root-chip" id="root-chip">Loading experiment root…</div>
+    </header>
+
+    <main>
+      <section class="workspace">
+        <aside class="panel source-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="step">01</span>
+              <h2>Source videos</h2>
+            </div>
+            <button class="text-button" id="select-all" type="button">Select all</button>
+          </div>
+          <div id="video-list" class="video-list"><p class="muted">Scanning…</p></div>
+          <div class="source-preview empty" id="source-preview">
+            <span>Select one video to preview it.</span>
+          </div>
+
+          <label class="field checkpoint-field">
+            <span>Checkpoint</span>
+            <select id="checkpoint"></select>
+            <small>Each folder contains detector + landmark TFLite files.</small>
+          </label>
+        </aside>
+
+        <section class="panel settings-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="step">02</span>
+              <h2>Box recipe</h2>
+            </div>
+            <span class="legend"><i class="body-swatch"></i>Body <i class="face-swatch"></i>Face</span>
+          </div>
+
+          <div class="presets" id="presets">
+            <button type="button" data-preset="production">Production parity</button>
+            <button type="button" data-preset="wide-face">Wider face</button>
+            <button type="button" data-preset="tight-face">Tighter face</button>
+            <button type="button" data-preset="tight-body">Tighter body</button>
+            <button type="button" data-preset="dense">Dense scan</button>
+          </div>
+
+          <div class="settings-grid">
+            <fieldset>
+              <legend>Face box</legend>
+              <div class="mini-grid four">
+                <label class="field"><span>Left</span><input data-setting="boxes.face.pad_left" type="number" min="0" max="4" step="0.05" /></label>
+                <label class="field"><span>Top</span><input data-setting="boxes.face.pad_top" type="number" min="0" max="4" step="0.05" /></label>
+                <label class="field"><span>Right</span><input data-setting="boxes.face.pad_right" type="number" min="0" max="4" step="0.05" /></label>
+                <label class="field"><span>Bottom</span><input data-setting="boxes.face.pad_bottom" type="number" min="0" max="4" step="0.05" /></label>
+              </div>
+              <label class="range-field">
+                <span>Final height scale <output data-output="boxes.face.height_scale"></output></span>
+                <input data-setting="boxes.face.height_scale" type="range" min="0.5" max="4" step="0.1" />
+              </label>
+              <div class="toggle-row">
+                <label><input data-setting="boxes.face.shoulder_fallback" type="checkbox" /> Shoulder fallback</label>
+                <label><input data-setting="boxes.face.top_body_fallback" type="checkbox" /> Body-top fallback</label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Body box</legend>
+              <div class="mini-grid three">
+                <label class="field"><span>Horizontal</span><input data-setting="boxes.body.pad_x" type="number" min="0" max="3" step="0.02" /></label>
+                <label class="field"><span>Top</span><input data-setting="boxes.body.pad_top" type="number" min="0" max="3" step="0.02" /></label>
+                <label class="field"><span>Bottom</span><input data-setting="boxes.body.pad_bottom" type="number" min="0" max="3" step="0.02" /></label>
+              </div>
+              <div class="mini-grid three secondary-grid">
+                <label class="field"><span>Min horiz.</span><input data-setting="boxes.body.min_pad_x" type="number" min="0" max="1" step="0.01" /></label>
+                <label class="field"><span>Min top</span><input data-setting="boxes.body.min_pad_top" type="number" min="0" max="1" step="0.01" /></label>
+                <label class="field"><span>Min bottom</span><input data-setting="boxes.body.min_pad_bottom" type="number" min="0" max="1" step="0.01" /></label>
+              </div>
+            </fieldset>
+          </div>
+
+          <details>
+            <summary>Inference, filtering, and overlay settings</summary>
+            <div class="advanced-grid">
+              <label class="field"><span>Sample every N frames</span><input data-setting="inference.sample_stride_frames" type="number" min="1" max="60" step="1" /></label>
+              <label class="field"><span>Model max dimension</span><input data-setting="inference.max_dimension" type="number" min="128" max="2048" step="32" /></label>
+              <label class="field"><span>Detection confidence</span><input data-setting="inference.min_detection_confidence" type="number" min="0" max="1" step="0.05" /></label>
+              <label class="field"><span>Tracking confidence</span><input data-setting="inference.min_tracking_confidence" type="number" min="0" max="1" step="0.05" /></label>
+              <label class="field"><span>Landmark confidence</span><input data-setting="boxes.landmark_confidence" type="number" min="0" max="1" step="0.05" /></label>
+              <label class="field"><span>Body minimum points</span><input data-setting="boxes.body.min_points" type="number" min="1" max="33" step="1" /></label>
+              <label class="field"><span>Body minimum width</span><input data-setting="boxes.body.min_width" type="number" min="0" max="1" step="0.01" /></label>
+              <label class="field"><span>Body minimum height</span><input data-setting="boxes.body.min_height" type="number" min="0" max="1" step="0.01" /></label>
+              <label class="field"><span>Body minimum area</span><input data-setting="boxes.body.min_area" type="number" min="0" max="1" step="0.005" /></label>
+              <label class="field"><span>Median outlier ratio</span><input data-setting="boxes.body.outlier_median_ratio" type="number" min="0" max="1" step="0.05" /></label>
+              <label class="field"><span>Face minimum points</span><input data-setting="boxes.face.min_points" type="number" min="1" max="11" step="1" /></label>
+              <label class="field"><span>Face minimum width</span><input data-setting="boxes.face.min_width" type="number" min="0" max="1" step="0.005" /></label>
+              <label class="field"><span>Face minimum height</span><input data-setting="boxes.face.min_height" type="number" min="0" max="1" step="0.005" /></label>
+              <label class="field"><span>Shoulder confidence</span><input data-setting="boxes.face.shoulder_confidence" type="number" min="0" max="1" step="0.05" /></label>
+              <label class="field"><span>Interpolation</span><select data-setting="interpolation.mode"><option value="strict">Strict (app parity)</option><option value="nearest">Nearest sample</option></select></label>
+              <label class="field"><span>Overlay max dimension</span><input data-setting="render.max_dimension" type="number" min="320" max="3840" step="64" /></label>
+              <label class="field"><span>Line width</span><input data-setting="render.line_width" type="number" min="1" max="12" step="1" /></label>
+            </div>
+            <div class="toggle-row advanced-toggles">
+              <label><input data-setting="inference.smooth_landmarks" type="checkbox" /> Smooth landmarks</label>
+              <label><input data-setting="render.show_landmarks" type="checkbox" /> Draw landmarks</label>
+              <label><input data-setting="render.show_skeleton" type="checkbox" /> Draw skeleton</label>
+              <label><input data-setting="render.show_landmark_indices" type="checkbox" /> Point indices</label>
+              <label><input data-setting="render.show_landmark_confidence" type="checkbox" /> Point confidence</label>
+              <label><input data-setting="render.show_labels" type="checkbox" /> Draw labels</label>
+              <label><input data-setting="render.show_missing" type="checkbox" /> Mark missing boxes</label>
+            </div>
+          </details>
+
+          <div class="run-bar">
+            <label class="field experiment-name">
+              <span>Experiment name</span>
+              <input id="experiment-name" maxlength="120" placeholder="e.g. wider face + tighter body" />
+              <small>Blank = an automatic name from the settings.</small>
+            </label>
+            <button class="run-button" id="run" type="button">Run experiment <span>→</span></button>
+          </div>
+          <div id="job-status" class="job-status hidden"></div>
+        </section>
+      </section>
+
+      <section class="results-section">
+        <div class="results-heading">
+          <div>
+            <span class="step">03</span>
+            <h2>Experiments</h2>
+          </div>
+          <p>Every card maps to one immutable output folder.</p>
+        </div>
+        <div id="experiments" class="experiments"></div>
+      </section>
+    </main>
+
+    <template id="video-row-template">
+      <label class="video-row">
+        <input type="checkbox" />
+        <span class="checkmark"></span>
+        <span class="video-meta"><strong></strong><small></small></span>
+        <button type="button" class="preview-button">Preview</button>
+      </label>
+    </template>
+    <script src="/app.js"></script>
+  </body>
+</html>

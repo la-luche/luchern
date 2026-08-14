@@ -37,7 +37,7 @@ async function hasUsableFile(uri: string): Promise<boolean> {
 export async function prepareFaceBlurredVideo(
   recordingId: string,
   inputUri: string,
-  options: Omit<PrivacyBlurOptions, 'sdkKey'>,
+  options: PrivacyBlurOptions,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
 ): Promise<PreparedFaceBlur> {
@@ -51,6 +51,9 @@ export async function prepareFaceBlurredVideo(
       framesWithFaces: 0,
       framesWithBackgroundBlur: 0,
       poseSamples: 0,
+      totalPoseSamples: 0,
+      faceSamples: 0,
+      detectorMode: 'rtmdet_nano_rtmpose_t_coco17_dense',
       recovered: true,
     };
   }
@@ -68,10 +71,7 @@ export async function prepareFaceBlurredVideo(
   signal?.addEventListener('abort', abort, { once: true });
 
   try {
-    const result = await blurVideoAsync(inputUri, pendingUri, operationId, {
-      ...options,
-      sdkKey: process.env.EXPO_PUBLIC_QUICKPOSE_SDK_KEY ?? '',
-    });
+    const result = await blurVideoAsync(inputUri, pendingUri, operationId, options);
     if (signal?.aborted) throw new FaceBlurCancelledError();
     if (result.framesProcessed <= 0) {
       throw new Error('no video frames could be scanned for faces');

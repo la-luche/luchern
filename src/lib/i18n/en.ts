@@ -100,22 +100,16 @@ export const en = {
       'Luche is a research and wellness tool. Every score is an experimental estimate, not a diagnosis. Luche is not a medical device. Always consult a qualified clinician about your health.',
     versionTitle: 'Version',
     versionValue: '1.0.0',
-    commitTitle: 'Latest GitHub commit',
-    commitUnavailable: 'Build details unavailable',
     languageTitle: 'Language',
     privacyTitle: 'Video privacy',
-    faceBlurTitle: 'Blur faces before upload',
-    faceBlurBody:
-      'Off by default. Uses a close box around the face so the rest of the movement stays clear.',
-    faceBlurA11y: 'Blur faces before upload',
-    backgroundBlurTitle: 'Blur the background before upload',
-    backgroundBlurBody:
-      'Off by default. Keeps a generous area around the person clear and blurs everything outside it.',
-    backgroundBlurA11y: 'Blur the background before upload',
+    depersonalisationTitle: 'Depersonalise videos before upload',
+    depersonalisationBody:
+      'Off by default. Blurs faces and the area outside the person on this device while keeping movement visible for analysis.',
+    depersonalisationA11y: 'Depersonalise videos before upload',
     privacyBlurTechnicalBody:
-      'Pose is estimated on this device every few frames and interpolated between them. QuickPose receives app and device identifiers only to validate its SDK license; it never receives video frames or pose coordinates.',
+      'Pose is estimated locally on every decoded frame. The background is pixelated and blurred; face regions receive stronger pixelation and blur. Video frames and pose coordinates stay on this device during privacy processing.',
     privacyBlurSaveFailedTitle: 'We couldn’t save this setting',
-    privacyBlurSaveFailedBody: 'Your previous video-privacy settings are still in use. Please try again.',
+    privacyBlurSaveFailedBody: 'Your previous video-privacy setting is still in use. Please try again.',
     supportTitle: 'Help and support',
     supportBody: 'Questions or problems? Contact the Luche team at founders@luche.ai.',
     emailSupport: 'Email support',
@@ -239,7 +233,7 @@ export const en = {
   },
   uploadBanner: {
     privacyBlurring: (n: number) =>
-      `Applying video privacy before upload${n > 1 ? ` · ${n} recordings` : ''}`,
+      n === 1 ? 'De-identifying video' : `De-identifying ${n} videos`,
     privacyBlurFailed: (n: number) =>
       `${n} recording${n === 1 ? ' needs' : 's need'} a video-privacy choice`,
     keepOpen: (n: number) =>

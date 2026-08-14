@@ -4,6 +4,7 @@ jest.mock('expo-file-system/legacy', () => ({
   moveAsync: jest.fn().mockResolvedValue(undefined),
   copyAsync: jest.fn().mockResolvedValue(undefined),
   deleteAsync: jest.fn().mockResolvedValue(undefined),
+  getInfoAsync: jest.fn().mockResolvedValue({ exists: false }),
 }));
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -14,6 +15,7 @@ import {
   privacyBlurFileUris,
   persistRecordingFile,
   promotePrivacyBlurredFile,
+  rebindRecordingFileUri,
 } from '../recordingFiles';
 
 describe('recording file lifecycle', () => {
@@ -36,6 +38,23 @@ describe('recording file lifecycle', () => {
       to: uri,
     });
     expect(FileSystem.copyAsync).not.toHaveBeenCalled();
+  });
+
+  it('rebinds a stale iOS container URI when the recording exists in current Documents', async () => {
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValueOnce({ exists: true, size: 123 });
+    const uri = await rebindRecordingFileUri(
+      'file:///var/mobile/Containers/Data/Application/OLD/Documents/recordings/rec-1.mov',
+    );
+    expect(uri).toBe('file:///documents/recordings/rec-1.mov');
+    expect(FileSystem.getInfoAsync).toHaveBeenCalledWith(
+      'file:///documents/recordings/rec-1.mov',
+    );
+  });
+
+  it('leaves an old URI untouched when no matching current recording exists', async () => {
+    const stale =
+      'file:///var/mobile/Containers/Data/Application/OLD/Documents/recordings/rec-missing.mov';
+    await expect(rebindRecordingFileUri(stale)).resolves.toBe(stale);
   });
 
   it('falls back to copy plus cache cleanup when a direct move fails', async () => {

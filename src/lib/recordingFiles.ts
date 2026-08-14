@@ -42,6 +42,27 @@ export async function persistRecordingFile(sourceUri: string, recordingId: strin
   return destination;
 }
 
+/**
+ * iOS may give the app a new absolute data-container prefix after an install.
+ * AsyncStorage survives, but a persisted file:// URI can still point at the
+ * old prefix. Rebind only app-owned recording paths whose file exists under
+ * the current Documents directory; never guess or move user data.
+ */
+export async function rebindRecordingFileUri(uri?: string): Promise<string | undefined> {
+  if (!uri?.startsWith('file://') || !RECORDINGS_DIR) return uri;
+  const clean = uri.split(/[?#]/, 1)[0];
+  const marker = '/recordings/';
+  const markerIndex = clean.lastIndexOf(marker);
+  if (markerIndex < 0) return uri;
+  const filename = clean.slice(markerIndex + marker.length);
+  if (!filename || filename.includes('/')) return uri;
+
+  const currentUri = `${RECORDINGS_DIR}${filename}`;
+  if (currentUri === uri) return uri;
+  const info = await FileSystem.getInfoAsync(currentUri);
+  return info.exists ? currentUri : uri;
+}
+
 /** Delete an app-owned recording URI. Idempotent so retries and old cache URIs are safe. */
 export async function deleteRecordingFile(uri: string): Promise<void> {
   if (!uri.startsWith('file://')) return;

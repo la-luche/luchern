@@ -1,4 +1,5 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,11 +13,20 @@ import { uploadingCount } from '../lib/uploadRetry';
  * uploads have failed (and are retryable) it offers a one-tap "Retry all".
  * Participates in the root layout so it never covers navigation or screen UI.
  */
-export function UploadBanner() {
+export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boolean }) {
   const { recordings, retry } = useRecordings();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useT();
   const n = uploadingCount(recordings);
+  const topInset = includeTopInset ? insets.top : 0;
+  const openRecordings = (items: { id: string }[]) => {
+    if (items.length === 1) {
+      router.push({ pathname: '/results/[id]', params: { id: items[0].id } });
+    } else {
+      router.push('/results');
+    }
+  };
 
   const preparing = recordings.filter((recording) => recording.status === 'preparing');
   useEffect(() => {
@@ -37,11 +47,16 @@ export function UploadBanner() {
         100,
     );
     return (
-      <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-violet-600">
+      <Pressable
+        onPress={() => openRecordings(preparing)}
+        accessibilityRole="button"
+        style={{ paddingTop: topInset }}
+        className="bg-violet-600 active:opacity-80"
+      >
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
           {t.uploadBanner.privacyBlurring(preparing.length)} · {progress}%
         </Text>
-      </View>
+      </Pressable>
     );
   }
 
@@ -56,13 +71,18 @@ export function UploadBanner() {
       : null;
     const stateColor = retrying ? 'bg-red-600' : attempt > 1 ? 'bg-amber-500' : 'bg-blue-600';
     return (
-      <View pointerEvents="none" style={{ paddingTop: insets.top }} className={stateColor}>
+      <Pressable
+        onPress={() => openRecordings(uploading)}
+        accessibilityRole="button"
+        style={{ paddingTop: topInset }}
+        className={`${stateColor} active:opacity-80`}
+      >
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
           {retrying ? t.uploadBanner.retrying : t.uploadBanner.keepOpen(n)}
           {attempt > 1 ? ` · ${t.uploadBanner.attempt(attempt)}` : ''}
           {progress != null ? ` · ${progress}%` : ''}
         </Text>
-      </View>
+      </Pressable>
     );
   }
 
@@ -72,33 +92,43 @@ export function UploadBanner() {
   );
   if (failed.length > 0) {
     return (
-      <View
-        style={{ paddingTop: insets.top }}
-        className="flex-row items-center justify-between bg-red-600 px-4 pb-2 pt-1"
+      <Pressable
+        onPress={() => openRecordings(failed)}
+        accessibilityRole="button"
+        style={{ paddingTop: topInset }}
+        className="flex-row items-center justify-between bg-red-600 px-4 pb-2 pt-1 active:opacity-80"
       >
         <Text className="flex-1 text-[13px] font-semibold text-white">
           {t.uploadBanner.failed(failed.length)}
         </Text>
         <Pressable
-          onPress={() => failed.forEach((r) => retry(r.id))}
+          onPress={(event) => {
+            event.stopPropagation();
+            failed.forEach((r) => retry(r.id));
+          }}
           accessibilityRole="button"
           accessibilityLabel={t.uploadBanner.retryAll}
           className="ml-3 rounded-full bg-white/25 px-3 py-1 active:opacity-70"
         >
           <Text className="text-[13px] font-bold text-white">{t.uploadBanner.retryAll}</Text>
         </Pressable>
-      </View>
+      </Pressable>
     );
   }
 
   const blurFailed = recordings.filter((recording) => recording.status === 'blur_failed');
   if (blurFailed.length > 0) {
     return (
-      <View pointerEvents="none" style={{ paddingTop: insets.top }} className="bg-red-600">
+      <Pressable
+        onPress={() => openRecordings(blurFailed)}
+        accessibilityRole="button"
+        style={{ paddingTop: topInset }}
+        className="bg-red-600 active:opacity-80"
+      >
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
           {t.uploadBanner.privacyBlurFailed(blurFailed.length)}
         </Text>
-      </View>
+      </Pressable>
     );
   }
 

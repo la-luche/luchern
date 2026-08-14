@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { Alert, Linking, Modal, ScrollView, Switch, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
-import { BUNDLED_GIT_COMMIT, BUNDLE_COMMIT_PREFIX } from '../generated/release';
 import { Header } from '../components/Header';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
@@ -16,7 +15,7 @@ import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
-import { type PrivacyBlurSettings, usePrivacyBlurSettings } from '../lib/faceBlurSettings';
+import { usePrivacyBlurSettings } from '../lib/faceBlurSettings';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
 
@@ -41,10 +40,6 @@ export default function AboutScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState<number | null>(null);
-  const gitCommit = BUNDLED_GIT_COMMIT;
-  const bundledSha = gitCommit?.bundleMarker.startsWith(BUNDLE_COMMIT_PREFIX)
-    ? gitCommit.bundleMarker.slice(BUNDLE_COMMIT_PREFIX.length)
-    : null;
 
   const shareDiagnostics = async () => {
     try {
@@ -153,9 +148,9 @@ export default function AboutScreen() {
   const email = user?.primaryEmailAddress?.emailAddress;
   const displayName = user?.fullName || user?.firstName || email || t.profile.account;
 
-  const updatePrivacyBlur = async (setting: keyof PrivacyBlurSettings, enabled: boolean) => {
+  const updateDepersonalisation = async (enabled: boolean) => {
     try {
-      await privacyBlur.setEnabled(setting, enabled);
+      await privacyBlur.setEnabled(enabled);
     } catch {
       Alert.alert(t.about.privacyBlurSaveFailedTitle, t.about.privacyBlurSaveFailedBody);
     }
@@ -240,32 +235,18 @@ export default function AboutScreen() {
           <View className="gap-3">
             <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
               <View className="mr-4 flex-1">
-                <Text className="text-[16px] font-semibold text-ink">{t.about.faceBlurTitle}</Text>
-                <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
-                  {t.about.faceBlurBody}
-                </Text>
-              </View>
-              <Switch
-                value={privacyBlur.face}
-                disabled={privacyBlur.isLoading}
-                onValueChange={(enabled) => void updatePrivacyBlur('face', enabled)}
-                accessibilityLabel={t.about.faceBlurA11y}
-              />
-            </View>
-            <View className="flex-row items-center rounded-2xl border border-ink-faint p-4">
-              <View className="mr-4 flex-1">
                 <Text className="text-[16px] font-semibold text-ink">
-                  {t.about.backgroundBlurTitle}
+                  {t.about.depersonalisationTitle}
                 </Text>
                 <Text className="mt-1 text-[14px] leading-5 text-ink-muted">
-                  {t.about.backgroundBlurBody}
+                  {t.about.depersonalisationBody}
                 </Text>
               </View>
               <Switch
-                value={privacyBlur.background}
+                value={privacyBlur.enabled}
                 disabled={privacyBlur.isLoading}
-                onValueChange={(enabled) => void updatePrivacyBlur('background', enabled)}
-                accessibilityLabel={t.about.backgroundBlurA11y}
+                onValueChange={(enabled) => void updateDepersonalisation(enabled)}
+                accessibilityLabel={t.about.depersonalisationA11y}
               />
             </View>
             <Text className="px-1 text-[13px] leading-5 text-ink-muted">
@@ -297,23 +278,6 @@ export default function AboutScreen() {
           <Text className="text-[15px] text-ink/70">{t.about.versionValue}</Text>
         </Section>
 
-        <Section title={t.about.commitTitle}>
-          {gitCommit && bundledSha ? (
-            <>
-              <Text className="text-[15px] leading-6 text-ink/70">{gitCommit.message}</Text>
-              <Text
-                accessibilityRole="link"
-                onPress={() => Linking.openURL(gitCommit.url)}
-                selectable
-                className="mt-2 font-mono text-[13px] leading-5 text-blue-600"
-              >
-                {bundledSha}
-              </Text>
-            </>
-          ) : (
-            <Text className="text-[15px] text-ink/70">{t.about.commitUnavailable}</Text>
-          )}
-        </Section>
       </ScrollView>
 
       <Modal

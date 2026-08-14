@@ -10,7 +10,6 @@ The public account-deletion instructions and request path are at
 - Movement-test videos recorded without audio.
 - Temporary on-device pose, face, and person bounding boxes when an optional
   video-privacy blur is enabled.
-- App and device identifiers used by QuickPose to validate its SDK license.
 - Pose keypoints derived from uploaded videos.
 - Automated experimental movement metrics and analysis status.
 - A bounded on-device diagnostics log containing timestamps, technical state
@@ -22,15 +21,21 @@ The public account-deletion instructions and request path are at
 ## Storage and processing
 
 The local recording is moved into the app's documents directory after capture.
-**Blur faces before upload** and **Blur the background before upload** are
-independent, optional, and off by default. When either is enabled, QuickPose
-estimates pose locally on iOS or Android every few frames. Luche interpolates
-the temporary regions, writes a sanitized copy, durably switches the recording
-to that copy, and permanently deletes the original before upload starts. Video
-frames, pose coordinates, and blur regions are not sent to QuickPose or saved.
-QuickPose receives app and device identifiers to validate its SDK license. If
-preprocessing fails, nothing uploads until the user retries or explicitly
-chooses to send the original without the selected blurring.
+**Depersonalise videos before upload** is optional and off by default. When it
+is enabled, Luche applies both face and background protection. Bundled
+RTMDet-nano and RTMPose-t models estimate pose on every decoded frame. Luche
+writes a sanitized copy, durably switches the recording to that copy, and
+permanently deletes the original before upload starts. Video frames, pose
+coordinates, and blur regions are not transmitted or saved during this step.
+Face regions receive coarse pixelation followed by strong blur. For background
+privacy, the single largest person region stays clear while everything outside
+it is coarsely pixelated and blurred; Luche does not identify or select a
+patient among several people. The models run locally through ONNX Runtime on
+iOS and Android without an SDK key, network license check, or model download.
+If a frame has no usable person region, Luche redacts the full frame rather than
+reusing an old box. If preprocessing fails, nothing uploads until the user
+retries or explicitly chooses to send the original without the selected
+blurring.
 
 The app uploads the selected video directly to Cloudflare R2 using a short-lived
 signed URL. Uploaded clips remain on the recording device for three days, then

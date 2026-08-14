@@ -32,12 +32,10 @@ describe('privacy blur preparation', () => {
   const options = {
     blurFaces: true,
     blurBackground: true,
-    poseSampleIntervalMs: 200,
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.EXPO_PUBLIC_QUICKPOSE_SDK_KEY = 'quickpose-test-key';
     (FileSystem.getInfoAsync as jest.Mock).mockReset();
     (blurVideoAsync as jest.Mock).mockReset();
     (addProgressListener as jest.Mock).mockReturnValue({ remove });
@@ -50,6 +48,9 @@ describe('privacy blur preparation', () => {
       framesWithFaces: 18,
       framesWithBackgroundBlur: 20,
       poseSamples: 4,
+      totalPoseSamples: 20,
+      faceSamples: 18,
+      detectorMode: 'rtmdet_nano_rtmpose_t_coco17_dense',
     });
   });
 
@@ -66,10 +67,7 @@ describe('privacy blur preparation', () => {
       'file:///recordings/r1.original.mov',
       'file:///recordings/r1.pending.mp4',
       'face-blur:r1',
-      {
-        ...options,
-        sdkKey: 'quickpose-test-key',
-      },
+      options,
     );
     expect(promotePrivacyBlurredFile).toHaveBeenCalled();
     expect(FileSystem.deleteAsync).not.toHaveBeenCalledWith(
@@ -108,7 +106,7 @@ describe('privacy blur preparation', () => {
     expect(progress).toEqual([1]);
   });
 
-  it('fails closed when QuickPose finds no person', async () => {
+  it('fails closed when on-device pose estimation finds no person', async () => {
     (blurVideoAsync as jest.Mock).mockResolvedValueOnce({
       outputUri: 'file:///recordings/r1.pending.mp4',
       framesProcessed: 48,

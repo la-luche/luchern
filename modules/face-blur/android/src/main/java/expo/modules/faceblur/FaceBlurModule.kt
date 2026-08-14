@@ -1,23 +1,13 @@
 package expo.modules.faceblur
 
-import ai.quickpose.core.Feature
-import ai.quickpose.core.Landmarks
-import ai.quickpose.core.QuickPose
-import ai.quickpose.core.Side
-import ai.quickpose.core.Status
-import ai.quickpose.core.Style
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Paint
-import android.graphics.Rect
-import android.graphics.SurfaceTexture
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.opengl.GLES20
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Size as AndroidSize
-import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.GlTextureInfo
 import androidx.media3.common.MediaItem
@@ -41,20 +31,16 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 private const val PROGRESS_EVENT = "onFaceBlurProgress"
 private const val SCAN_PROGRESS_SHARE = 0.45
-private const val MAXIMUM_POSE_DIMENSION = 512
-private const val ADDITIONAL_FACE_PADDING_PER_EDGE = 0.20f
 
-/** Normalized top-left coordinates, matching QuickPose/MediaPipe landmarks. */
+/** Normalized top-left coordinates. */
 private data class PrivacyRect(
   val left: Float,
   val top: Float,
@@ -74,12 +60,15 @@ private data class PrivacyRect(
     )
   }
 
-  fun toGlRect(): GlPrivacyRect = GlPrivacyRect(
-    left = left,
-    bottom = 1f - bottom,
-    right = right,
-    top = 1f - top,
-  )
+  fun scaledHeight(scale: Float): PrivacyRect {
+    val padding = height * max(0f, scale - 1f) / 2f
+    return copy(
+      top = (top - padding).coerceAtLeast(0f),
+      bottom = (bottom + padding).coerceAtMost(1f),
+    )
+  }
+
+  fun toGlRect() = GlPrivacyRect(left, 1f - bottom, right, 1f - top)
 }
 
 private data class GlPrivacyRect(
@@ -95,43 +84,32 @@ private data class PoseKeyframe(
   val face: PrivacyRect?,
 )
 
-private data class PrivacyRects(
-  val person: PrivacyRect?,
-  val face: PrivacyRect?,
-)
+private data class PrivacyRects(val person: PrivacyRect?, val face: PrivacyRect?)
 
 private class PoseTimeline(val keyframes: List<PoseKeyframe>) {
   val poseSamples: Int get() = keyframes.count { it.person != null }
   val faceSamples: Int get() = keyframes.count { it.face != null }
-  val isReliableForFace: Boolean get() = keyframes.isNotEmpty() &&
-    faceSamples >= kotlin.math.ceil(keyframes.size * 0.4).toInt()
-  val isReliableForBackground: Boolean get() {
-    if (keyframes.isEmpty()) return false
-    val minimumReliableSamples = kotlin.math.ceil(keyframes.size * 0.6).toInt()
-    if (poseSamples < minimumReliableSamples) return false
-    val reliableSamples = keyframes.count { keyframe ->
-      val person = keyframe.person
-      val face = keyframe.face
-      if (person == null || face == null || person.width <= 0f || person.height <= 0f) {
-        false
+
+  /** Match exp-0012's 0.25 x median-area body outlier rejection. */
+  fun filteredForBodyOutliers(): PoseTimeline {
+    val areas = keyframes.mapNotNull { it.person?.let { box -> box.width * box.height } }.sorted()
+    if (areas.isEmpty()) return this
+    val medianArea = areas[areas.size / 2]
+    return PoseTimeline(keyframes.map { frame ->
+      val person = frame.person
+      if (person == null || person.width * person.height < medianArea * 0.25f) {
+        frame.copy(person = null, face = null)
       } else {
-        val bodyAspect = person.height / person.width
-        val relativeFaceWidth = face.width / person.width
-        bodyAspect >= 1.05f && relativeFaceWidth >= 0.10f
+        frame
       }
-    }
-    return reliableSamples >= minimumReliableSamples
+    })
   }
 
   fun at(presentationTimeUs: Long): PrivacyRects? {
     val first = keyframes.firstOrNull() ?: return null
-    if (presentationTimeUs <= first.presentationTimeUs) {
-      return PrivacyRects(first.person, first.face)
-    }
+    if (presentationTimeUs <= first.presentationTimeUs) return PrivacyRects(first.person, first.face)
     val last = keyframes.last()
-    if (presentationTimeUs >= last.presentationTimeUs) {
-      return PrivacyRects(last.person, last.face)
-    }
+    if (presentationTimeUs >= last.presentationTimeUs) return PrivacyRects(last.person, last.face)
 
     var low = 0
     var high = keyframes.lastIndex
@@ -142,115 +120,31 @@ private class PoseTimeline(val keyframes: List<PoseKeyframe>) {
     val before = keyframes[low]
     val after = keyframes[high]
     val span = max(1L, after.presentationTimeUs - before.presentationTimeUs)
-    val fraction = (presentationTimeUs - before.presentationTimeUs).toFloat() / span.toFloat()
-    val person = when {
-      before.person != null && after.person != null -> before.person.interpolate(after.person, fraction)
-      fraction < 0.5f -> before.person
-      else -> after.person
+    val fraction = (presentationTimeUs - before.presentationTimeUs).toFloat() / span
+    val person = if (before.person != null && after.person != null) {
+      before.person.interpolate(after.person, fraction)
+    } else {
+      // Strict interpolation: never carry a stale box across a missed frame.
+      null
     }
-    val face = when {
-      before.face != null && after.face != null -> before.face.interpolate(after.face, fraction)
-      fraction < 0.5f -> before.face
-      else -> after.face
+    val face = if (person != null && before.face != null && after.face != null) {
+      before.face.interpolate(after.face, fraction)
+    } else {
+      null
     }
     return PrivacyRects(person, face)
   }
 }
 
-private sealed interface CapturedPose {
-  data class Found(val landmarks: Landmarks) : CapturedPose
-  data object NoPerson : CapturedPose
-  data object InvalidSdkKey : CapturedPose
-}
-
-/** Feeds sparse decoded bitmaps to QuickPose through its documented frame pipeline. */
-private class QuickPoseBitmapBridge(
-  context: Context,
-  sdkKey: String,
-  private val width: Int,
-  private val height: Int,
-) : AutoCloseable {
-  private val quickPose = QuickPose(context, sdkKey)
-  private val surfaceTexture = SurfaceTexture(false)
-  private val surface = Surface(surfaceTexture)
-  private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-  private val stateLock = Any()
-  private var pendingLatch: CountDownLatch? = null
-  private var pendingResult: CapturedPose? = null
-
-  init {
-    surfaceTexture.setDefaultBufferSize(width, height)
-    surfaceTexture.setOnFrameAvailableListener(quickPose, Handler(Looper.getMainLooper()))
-    quickPose.onCameraStarted(false, AndroidSize(width, height), 1f)
-    val started = CountDownLatch(1)
-    quickPose.start(
-      arrayOf(Feature.ShowPoints(Style())),
-      onStart = { started.countDown() },
-      onFrame = { status, _, _, _, landmarks ->
-        val result = when (status) {
-          is Status.Success -> landmarks?.let(CapturedPose::Found) ?: CapturedPose.NoPerson
-          is Status.NoPersonFound -> CapturedPose.NoPerson
-          is Status.SdkValidationError -> CapturedPose.InvalidSdkKey
-        }
-        val latch = synchronized(stateLock) {
-          val waiting = pendingLatch
-          if (waiting != null) {
-            pendingResult = result
-            pendingLatch = null
-          }
-          waiting
-        }
-        latch?.countDown()
-      },
-    )
-    check(started.await(8, TimeUnit.SECONDS)) { "QuickPose did not become ready." }
-  }
-
-  fun analyze(bitmap: Bitmap): CapturedPose {
-    repeat(2) { attempt ->
-      val latch = CountDownLatch(1)
-      synchronized(stateLock) {
-        pendingResult = null
-        pendingLatch = latch
-      }
-      val canvas = surface.lockCanvas(null)
-      try {
-        canvas.drawBitmap(bitmap, null, Rect(0, 0, width, height), paint)
-      } finally {
-        surface.unlockCanvasAndPost(canvas)
-      }
-      if (latch.await(8, TimeUnit.SECONDS)) {
-        return synchronized(stateLock) {
-          pendingResult.also { pendingResult = null } ?: CapturedPose.NoPerson
-        }
-      }
-      synchronized(stateLock) { pendingLatch = null }
-      if (attempt == 0) Thread.sleep(200)
-    }
-    throw IllegalStateException("QuickPose timed out while reading the recording.")
-  }
-
-  override fun close() {
-    quickPose.stop()
-    surface.release()
-    surfaceTexture.release()
-  }
-}
-
-private class QuickPoseVideoScanner(
+private class RTMPoseVideoScanner(
   private val context: Context,
   private val inputUri: String,
-  private val sdkKey: String,
-  sampleIntervalMilliseconds: Int,
   private val onProgress: (Double) -> Unit,
   private val isCancelled: () -> Boolean,
 ) {
-  private val sampleIntervalUs = sampleIntervalMilliseconds.coerceIn(100, 1_000) * 1_000L
-
   data class Result(val timeline: PoseTimeline, val durationUs: Long)
 
   fun scan(): Result {
-    require(sdkKey.isNotBlank()) { "QuickPose SDK key is not configured for this build." }
     val retriever = MediaMetadataRetriever()
     try {
       retriever.setDataSource(context, Uri.parse(inputUri))
@@ -259,146 +153,140 @@ private class QuickPoseVideoScanner(
           ?: 0L
       ) * 1_000L
       require(durationUs > 0) { "The recording duration could not be read." }
+      val frameRate = retriever
+        .extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+        ?.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it >= 1.0 }
+        ?: 30.0
+      val metadataFrameCount = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
+          ?.toIntOrNull()?.takeIf { it > 0 }
+      } else null
+      val expectedFrames = metadataFrameCount ?: max(1, (durationUs * frameRate / 1_000_000).toInt())
+      val keyframes = ArrayList<PoseKeyframe>(expectedFrames)
 
-      val firstFrame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
-        ?: throw IllegalStateException("The first video frame could not be decoded.")
-      val target = scaledSize(firstFrame.width, firstFrame.height)
-      val firstScaled = scale(firstFrame, target.first, target.second)
-      if (firstScaled !== firstFrame) firstFrame.recycle()
-
-      val sampleTimes = mutableListOf<Long>()
-      var timeUs = 0L
-      while (timeUs < durationUs) {
-        sampleTimes += timeUs
-        timeUs += sampleIntervalUs
-      }
-      val finalSample = max(0L, durationUs - 1_667L)
-      if (sampleTimes.isEmpty() || finalSample - sampleTimes.last() > sampleIntervalUs / 3) {
-        sampleTimes += finalSample
-      }
-
-      val keyframes = mutableListOf<PoseKeyframe>()
-      QuickPoseBitmapBridge(context, sdkKey, target.first, target.second).use { bridge ->
-        sampleTimes.forEachIndexed { index, requestedTimeUs ->
+      RTMPoseEngine(context).use { engine ->
+        for (frameIndex in 0 until expectedFrames) {
           if (isCancelled()) throw InterruptedException("Video privacy processing was cancelled.")
-          val bitmap = if (index == 0) {
-            firstScaled
-          } else {
-            val decoded = retriever.getFrameAtTime(
-              requestedTimeUs,
-              MediaMetadataRetriever.OPTION_CLOSEST,
-            ) ?: return@forEachIndexed
-            val scaled = scale(decoded, target.first, target.second)
-            if (scaled !== decoded) decoded.recycle()
-            scaled
-          }
-          try {
-            when (val captured = bridge.analyze(bitmap)) {
-              is CapturedPose.Found -> {
-                val person = personRect(captured.landmarks)
-                keyframes += PoseKeyframe(
-                  presentationTimeUs = requestedTimeUs,
-                  person = person,
-                  face = if (person == null) null else faceRect(captured.landmarks),
-                )
-              }
-              CapturedPose.InvalidSdkKey -> throw IllegalArgumentException(
-                "The QuickPose SDK key is not valid for this app.",
+          val presentationTimeUs = (frameIndex * 1_000_000.0 / frameRate).toLong()
+          val bitmap = decodeFrame(retriever, frameIndex, presentationTimeUs)
+          if (bitmap != null) {
+            try {
+              val landmarks = engine.analyze(bitmap)
+              val person = landmarks?.let(::personRect)
+              keyframes += PoseKeyframe(
+                presentationTimeUs = presentationTimeUs,
+                person = person,
+                face = if (landmarks == null || person == null) null else faceRect(
+                  landmarks,
+                  person,
+                  bitmap.width.toFloat() / max(1, bitmap.height).toFloat(),
+                ),
               )
-              CapturedPose.NoPerson -> keyframes += PoseKeyframe(
-                presentationTimeUs = requestedTimeUs,
-                person = null,
-                face = null,
-              )
+            } finally {
+              bitmap.recycle()
             }
-          } finally {
-            bitmap.recycle()
           }
-          onProgress(SCAN_PROGRESS_SHARE * (index + 1).toDouble() / sampleTimes.size.toDouble())
+          onProgress(SCAN_PROGRESS_SHARE * (frameIndex + 1).toDouble() / expectedFrames)
         }
       }
-
-      require(keyframes.any { it.person != null }) {
-        "QuickPose could not detect a person in this recording."
-      }
-      return Result(PoseTimeline(keyframes.sortedBy { it.presentationTimeUs }), durationUs)
+      require(keyframes.isNotEmpty()) { "No video frames could be decoded for pose estimation." }
+      return Result(
+        timeline = PoseTimeline(keyframes.sortedBy { it.presentationTimeUs })
+          .filteredForBodyOutliers(),
+        durationUs = durationUs,
+      )
     } finally {
       retriever.release()
     }
   }
 
-  private fun scaledSize(width: Int, height: Int): Pair<Int, Int> {
-    val scale = min(1f, MAXIMUM_POSE_DIMENSION.toFloat() / max(width, height).toFloat())
-    return Pair(
-      max(1, (width * scale).roundToInt()),
-      max(1, (height * scale).roundToInt()),
-    )
-  }
-
-  private fun scale(bitmap: Bitmap, width: Int, height: Int): Bitmap =
-    if (bitmap.width == width && bitmap.height == height) bitmap
-    else Bitmap.createScaledBitmap(bitmap, width, height, true)
-
-  private fun personRect(landmarks: Landmarks): PrivacyRect? {
-    val points = landmarks.allLandmarksForBody().mapNotNull { point ->
-      if (point.visibility < 0.25f || point.presence < 0.25f) return@mapNotNull null
-      val projected = point.cgPoint(AndroidSize(1, 1), false)
-      if (!projected.x.isFinite() || !projected.y.isFinite()) return@mapNotNull null
-      if (projected.x !in -0.1f..1.1f || projected.y !in -0.1f..1.1f) return@mapNotNull null
-      Pair(projected.x.coerceIn(0f, 1f), projected.y.coerceIn(0f, 1f))
+  private fun decodeFrame(
+    retriever: MediaMetadataRetriever,
+    frameIndex: Int,
+    presentationTimeUs: Long,
+  ): Bitmap? = runCatching {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      retriever.getFrameAtIndex(frameIndex)
+    } else {
+      retriever.getFrameAtTime(presentationTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)
     }
+  }.getOrNull()
+
+  private fun personRect(landmarks: List<RTMPosePoint>): PrivacyRect? {
+    val points = landmarks.mapNotNull { normalizedPoint(it) }
     if (points.size < 6) return null
     val bounds = bounds(points)
-    val width = max(0.05f, bounds.right - bounds.left)
-    val height = max(0.1f, bounds.bottom - bounds.top)
-    return PrivacyRect(
-      left = (bounds.left - max(0.10f, width * 0.32f)).coerceIn(0f, 1f),
-      top = (bounds.top - max(0.08f, height * 0.22f)).coerceIn(0f, 1f),
-      right = (bounds.right + max(0.10f, width * 0.32f)).coerceIn(0f, 1f),
-      bottom = (bounds.bottom + max(0.10f, height * 0.18f)).coerceIn(0f, 1f),
-    )
-  }
-
-  private fun faceRect(landmarks: Landmarks): PrivacyRect? {
-    val joints: List<Landmarks.Body> = listOf(
-      Landmarks.Body.Nose(),
-      Landmarks.Body.EyeInner(Side.LEFT), Landmarks.Body.Eye(Side.LEFT),
-      Landmarks.Body.EyeOuter(Side.LEFT), Landmarks.Body.EyeInner(Side.RIGHT),
-      Landmarks.Body.Eye(Side.RIGHT), Landmarks.Body.EyeOuter(Side.RIGHT),
-      Landmarks.Body.Ear(Side.LEFT), Landmarks.Body.Ear(Side.RIGHT),
-      Landmarks.Body.Mouth(Side.LEFT), Landmarks.Body.Mouth(Side.RIGHT),
-    )
-    val points = joints.mapNotNull { joint ->
-      val point = landmarks.landmarkForBody(joint)
-      if (point.visibility < 0.25f || point.presence < 0.25f) return@mapNotNull null
-      val projected = point.cgPoint(AndroidSize(1, 1), false)
-      if (!projected.x.isFinite() || !projected.y.isFinite()) return@mapNotNull null
-      Pair(projected.x.coerceIn(0f, 1f), projected.y.coerceIn(0f, 1f))
+    if (bounds.width < 0.10f || bounds.height < 0.15f || bounds.width * bounds.height < 0.02f) {
+      return null
     }
-    if (points.size < 3) return null
-    val bounds = bounds(points)
-    val width = max(0.025f, bounds.right - bounds.left)
-    val height = max(0.035f, bounds.bottom - bounds.top)
-    // Production-video review found the prior face mask too tight. Expand
-    // every edge by another 20% of the measured head width/height while
-    // preserving the existing asymmetric forehead/chin padding.
     return PrivacyRect(
-      left = (
-        bounds.left - width * (0.20f + ADDITIONAL_FACE_PADDING_PER_EDGE)
-      ).coerceIn(0f, 1f),
-      top = (
-        bounds.top - height * (0.50f + ADDITIONAL_FACE_PADDING_PER_EDGE)
-      ).coerceIn(0f, 1f),
-      right = (
-        bounds.right + width * (0.20f + ADDITIONAL_FACE_PADDING_PER_EDGE)
-      ).coerceIn(0f, 1f),
-      bottom = (
-        bounds.bottom + height * (0.25f + ADDITIONAL_FACE_PADDING_PER_EDGE)
-      ).coerceIn(0f, 1f),
+      left = (bounds.left - max(0.10f, bounds.width * 0.32f)).coerceIn(0f, 1f),
+      top = (bounds.top - max(0.08f, bounds.height * 0.22f)).coerceIn(0f, 1f),
+      right = (bounds.right + max(0.10f, bounds.width * 0.32f)).coerceIn(0f, 1f),
+      bottom = (bounds.bottom + max(0.10f, bounds.height * 0.18f)).coerceIn(0f, 1f),
     )
   }
 
-  private fun bounds(points: List<Pair<Float, Float>>): PrivacyRect = PrivacyRect(
+  private fun faceRect(
+    landmarks: List<RTMPosePoint>,
+    person: PrivacyRect,
+    frameAspect: Float,
+  ): PrivacyRect {
+    val facePoints = landmarks.take(5).mapNotNull { normalizedPoint(it) }
+    if (facePoints.size >= 3) {
+      val bounds = bounds(facePoints)
+      val width = max(0.025f, bounds.width)
+      val height = max(0.035f, bounds.height)
+      return PrivacyRect(
+        left = (bounds.left - width * 0.40f).coerceIn(0f, 1f),
+        top = (bounds.top - height * 0.85f).coerceIn(0f, 1f),
+        right = (bounds.right + width * 0.40f).coerceIn(0f, 1f),
+        bottom = (bounds.bottom + height * 0.60f).coerceIn(0f, 1f),
+      ).scaledHeight(2f)
+    }
+
+    if (landmarks.size > 6) {
+      val leftShoulder = normalizedPoint(landmarks[5], 0.10f)
+      val rightShoulder = normalizedPoint(landmarks[6], 0.10f)
+      if (leftShoulder != null && rightShoulder != null) {
+        val shoulderWidth = max(0.04f, abs(rightShoulder.first - leftShoulder.first))
+        val headWidth = min(0.45f, max(0.08f, shoulderWidth * 0.68f))
+        val headHeight = min(0.42f, max(0.08f, headWidth * max(0.25f, frameAspect) * 1.35f))
+        val centerX = (leftShoulder.first + rightShoulder.first) / 2f
+        val shoulderY = (leftShoulder.second + rightShoulder.second) / 2f
+        val bottom = min(1f, shoulderY + headHeight * 0.12f)
+        return PrivacyRect(
+          left = (centerX - headWidth * 0.60f).coerceIn(0f, 1f),
+          top = (bottom - headHeight * 1.25f).coerceIn(0f, 1f),
+          right = (centerX + headWidth * 0.60f).coerceIn(0f, 1f),
+          bottom = bottom,
+        ).scaledHeight(2f)
+      }
+    }
+
+    val aspect = max(0.25f, frameAspect)
+    val headHeight = min(person.height * 0.34f, max(0.08f, person.width * aspect * 0.55f))
+    val headWidth = min(person.width * 0.65f, max(0.08f, headHeight / aspect))
+    val centerX = (person.left + person.right) / 2f
+    return PrivacyRect(
+      left = (centerX - headWidth / 2f).coerceIn(0f, 1f),
+      top = person.top,
+      right = (centerX + headWidth / 2f).coerceIn(0f, 1f),
+      bottom = min(person.bottom, person.top + headHeight),
+    ).scaledHeight(2f)
+  }
+
+  private fun normalizedPoint(
+    point: RTMPosePoint,
+    confidence: Float = RTMPoseEngine.LANDMARK_THRESHOLD,
+  ): Pair<Float, Float>? {
+    if (point.confidence < confidence || !point.x.isFinite() || !point.y.isFinite()) return null
+    if (point.x !in -0.1f..1.1f || point.y !in -0.1f..1.1f) return null
+    return Pair(point.x.coerceIn(0f, 1f), point.y.coerceIn(0f, 1f))
+  }
+
+  private fun bounds(points: List<Pair<Float, Float>>) = PrivacyRect(
     left = points.minOf { it.first },
     top = points.minOf { it.second },
     right = points.maxOf { it.first },
@@ -406,10 +294,7 @@ private class QuickPoseVideoScanner(
   )
 }
 
-private data class FrameResult(
-  val face: GlPrivacyRect?,
-  val person: GlPrivacyRect?,
-)
+private data class FrameResult(val face: GlPrivacyRect?, val person: GlPrivacyRect?)
 
 @UnstableApi
 private class PrivacyBlurGlProcessor(
@@ -461,27 +346,22 @@ private class PrivacyBlurGlProcessor(
   override fun processImage(
     image: ByteBufferGlEffect.Image,
     presentationTimeUs: Long,
-  ): ListenableFuture<FrameResult> {
-    return try {
-      val rects = timeline.at(presentationTimeUs)
-        ?: throw IllegalStateException("No interpolated pose was available for a video frame.")
-      framesProcessed.incrementAndGet()
-      if (blurFaces && rects.face != null) framesWithFaces.incrementAndGet()
-      if (blurBackground) framesWithBackgroundBlur.incrementAndGet()
-      if (
-        lastProgressTimestampUs == Long.MIN_VALUE ||
-        presentationTimeUs - lastProgressTimestampUs >= 250_000
-      ) {
-        lastProgressTimestampUs = presentationTimeUs
-        val exportFraction = if (durationUs > 0) {
-          min(0.99, max(0.0, presentationTimeUs.toDouble() / durationUs.toDouble()))
-        } else 0.0
-        onProgress(SCAN_PROGRESS_SHARE + exportFraction * (0.99 - SCAN_PROGRESS_SHARE))
-      }
-      Futures.immediateFuture(FrameResult(rects.face?.toGlRect(), rects.person?.toGlRect()))
-    } catch (error: Throwable) {
-      Futures.immediateFailedFuture(error)
+  ): ListenableFuture<FrameResult> = try {
+    val rects = timeline.at(presentationTimeUs)
+      ?: throw IllegalStateException("No dense pose result was available for a video frame.")
+    framesProcessed.incrementAndGet()
+    if (blurFaces && rects.face != null) framesWithFaces.incrementAndGet()
+    if (blurBackground) framesWithBackgroundBlur.incrementAndGet()
+    if (lastProgressTimestampUs == Long.MIN_VALUE || presentationTimeUs - lastProgressTimestampUs >= 250_000) {
+      lastProgressTimestampUs = presentationTimeUs
+      val fraction = if (durationUs > 0) {
+        min(0.99, max(0.0, presentationTimeUs.toDouble() / durationUs))
+      } else 0.0
+      onProgress(SCAN_PROGRESS_SHARE + fraction * (0.99 - SCAN_PROGRESS_SHARE))
     }
+    Futures.immediateFuture(FrameResult(rects.face?.toGlRect(), rects.person?.toGlRect()))
+  } catch (error: Throwable) {
+    Futures.immediateFailedFuture(error)
   }
 
   override fun finishProcessingAndBlend(
@@ -497,13 +377,14 @@ private class PrivacyBlurGlProcessor(
         outputFrame.width,
         outputFrame.height,
       )
-      val face = result.face
       glProgram?.apply {
         use()
         setSamplerTexIdUniform("uTexSampler", scratchTexture.texId, 0)
-        setIntUniform("uBlurFaces", if (blurFaces && face != null) 1 else 0)
+        setIntUniform("uBlurFaces", if (blurFaces) 1 else 0)
+        setIntUniform("uHasFace", if (result.face != null) 1 else 0)
         setIntUniform("uBlurBackground", if (blurBackground) 1 else 0)
         setIntUniform("uHasPerson", if (result.person != null) 1 else 0)
+        val face = result.face
         setFloatsUniform(
           "uFaceRect",
           if (face == null) floatArrayOf(0f, 0f, 0f, 0f)
@@ -542,6 +423,9 @@ private class PrivacyBlurGlProcessor(
     "framesWithFaces" to framesWithFaces.get(),
     "framesWithBackgroundBlur" to framesWithBackgroundBlur.get(),
     "poseSamples" to timeline.poseSamples,
+    "totalPoseSamples" to timeline.keyframes.size,
+    "faceSamples" to timeline.faceSamples,
+    "detectorMode" to "rtmdet_nano_rtmpose_t_coco17_dense",
   )
 
   private companion object {
@@ -559,14 +443,31 @@ private class PrivacyBlurGlProcessor(
       uniform sampler2D uTexSampler;
       uniform vec2 uResolution;
       uniform int uBlurFaces;
+      uniform int uHasFace;
       uniform int uBlurBackground;
       uniform int uHasPerson;
       uniform vec4 uFaceRect;
       uniform vec4 uPersonRect;
       varying vec2 vTexCoord;
 
-      vec4 backgroundBlur(vec2 uv) {
+      vec4 backgroundRedaction(vec2 uv) {
+        vec2 block = max(vec2(30.0) / uResolution, 1.0 / uResolution);
+        vec2 center = (floor(uv / block) + 0.5) * block;
         vec2 d = vec2(14.0) / uResolution;
+        vec4 value = texture2D(uTexSampler, center) * 0.20;
+        value += texture2D(uTexSampler, center + vec2(d.x, 0.0)) * 0.12;
+        value += texture2D(uTexSampler, center - vec2(d.x, 0.0)) * 0.12;
+        value += texture2D(uTexSampler, center + vec2(0.0, d.y)) * 0.12;
+        value += texture2D(uTexSampler, center - vec2(0.0, d.y)) * 0.12;
+        value += texture2D(uTexSampler, center + d) * 0.08;
+        value += texture2D(uTexSampler, center - d) * 0.08;
+        value += texture2D(uTexSampler, center + vec2(d.x, -d.y)) * 0.08;
+        value += texture2D(uTexSampler, center + vec2(-d.x, d.y)) * 0.08;
+        return value;
+      }
+
+      vec4 faceRedaction(vec2 uv) {
+        vec2 d = vec2(20.0) / uResolution;
         vec4 value = texture2D(uTexSampler, uv) * 0.20;
         value += texture2D(uTexSampler, uv + vec2(d.x, 0.0)) * 0.12;
         value += texture2D(uTexSampler, uv - vec2(d.x, 0.0)) * 0.12;
@@ -594,15 +495,16 @@ private class PrivacyBlurGlProcessor(
           float personMask = uHasPerson == 1
             ? rectMask(vTexCoord, uPersonRect, 0.015)
             : 0.0;
-          color = mix(backgroundBlur(vTexCoord), original, personMask);
+          color = mix(backgroundRedaction(vTexCoord), original, personMask);
         }
-        if (uBlurFaces == 1) {
+        if (uBlurFaces == 1 && uHasFace == 1) {
           float faceMask = rectMask(vTexCoord, uFaceRect, 0.0005);
-          vec2 block = max((uFaceRect.zw - uFaceRect.xy) / 7.0, 1.0 / uResolution);
+          vec2 block = max((uFaceRect.zw - uFaceRect.xy) / 4.0, 1.0 / uResolution);
           vec2 sampleCoord = uFaceRect.xy +
             (floor((vTexCoord - uFaceRect.xy) / block) + 0.5) * block;
-          vec4 redacted = backgroundBlur(sampleCoord);
-          color = mix(color, redacted, faceMask);
+          color = mix(color, faceRedaction(sampleCoord), faceMask);
+        } else if (uBlurFaces == 1 && uBlurBackground == 0) {
+          color = backgroundRedaction(vTexCoord);
         }
         gl_FragColor = color;
       }
@@ -612,10 +514,7 @@ private class PrivacyBlurGlProcessor(
 
 @UnstableApi
 class FaceBlurModule : Module() {
-  private class Operation(
-    val outputFile: File,
-    val promise: Promise,
-  ) {
+  private class Operation(val outputFile: File, val promise: Promise) {
     val cancelled = AtomicBoolean(false)
     val settled = AtomicBoolean(false)
     @Volatile var transformer: Transformer? = null
@@ -632,10 +531,8 @@ class FaceBlurModule : Module() {
         inputUri: String,
         outputUri: String,
         operationId: String,
-        sdkKey: String,
         blurFaces: Boolean,
         blurBackground: Boolean,
-        poseSampleIntervalMilliseconds: Int,
         promise: Promise,
       ->
       val context = appContext.reactContext?.applicationContext
@@ -667,48 +564,34 @@ class FaceBlurModule : Module() {
 
         Thread({
           try {
-            val scan = QuickPoseVideoScanner(
+            val scan = RTMPoseVideoScanner(
               context = context,
               inputUri = inputUri,
-              sdkKey = sdkKey,
-              sampleIntervalMilliseconds = poseSampleIntervalMilliseconds,
               onProgress = { value -> sendProgress(operationId, value) },
               isCancelled = { operation.cancelled.get() },
             ).scan()
-            if (blurFaces && !scan.timeline.isReliableForFace) {
-              throw IllegalStateException(
-                "QuickPose could not reliably locate a face in this recording.",
-              )
-            }
-            if (blurBackground && !scan.timeline.isReliableForBackground) {
-              throw IllegalStateException(
-                "QuickPose could not reliably isolate one prominent full-body person for background blur.",
-              )
-            }
             if (operation.cancelled.get()) throw InterruptedException("cancelled")
             mainHandler.post {
-              if (operation.cancelled.get()) return@post
-              startTransformer(
-                context,
-                inputUri,
-                outputUri,
-                operationId,
-                operation,
-                scan,
-                blurFaces,
-                blurBackground,
-              )
+              if (!operation.cancelled.get()) {
+                startTransformer(
+                  context,
+                  inputUri,
+                  outputUri,
+                  operationId,
+                  operation,
+                  scan,
+                  blurFaces,
+                  blurBackground,
+                )
+              }
             }
           } catch (error: Throwable) {
             mainHandler.post {
-              if (operation.cancelled.get()) {
-                rejectCancelled(operationId, operation)
-              } else {
-                reject(operationId, operation, error)
-              }
+              if (operation.cancelled.get()) rejectCancelled(operationId, operation)
+              else reject(operationId, operation, error)
             }
           }
-        }, "luche-quickpose-scan").start()
+        }, "luche-rtmpose-dense-scan").start()
       }
     }
 
@@ -729,7 +612,7 @@ class FaceBlurModule : Module() {
     outputUri: String,
     operationId: String,
     operation: Operation,
-    scan: QuickPoseVideoScanner.Result,
+    scan: RTMPoseVideoScanner.Result,
     blurFaces: Boolean,
     blurBackground: Boolean,
   ) {

@@ -1,48 +1,37 @@
-# QuickPose privacy-region model
+# On-device privacy-region model
 
-Luche uses `@quickpose/react-native` 0.6.0 and the native QuickPose SDKs it
-wraps. The React Native view only supports a live camera, so Luche calls the
-same native SDKs from its local Expo video module to process an already-approved
-recording without replacing the existing `expo-camera` capture flow.
-The Expo config plugin pins the iOS SDK Git pods to QuickPose v1.4.0; Android
-uses `quickpose-mp` 0.6 and `quickpose-core` 0.22 from Maven.
+Luche ships the exact pose stack evaluated as local experiment `exp-0012`:
+
+- RTMDet-nano person detector (0.99M parameters), 320 x 320 ONNX input,
+  confidence threshold 0.30.
+- RTMPose-t Body7 COCO-17 (3.34M parameters), 192 x 256 ONNX input,
+  keypoint threshold 0.15.
+- 4.33M model parameters total. Both checkpoints are bundled in the app and
+  executed with ONNX Runtime. There is no SDK key, model download, license
+  request, analytics event, or network inference.
 
 Runtime contract:
 
-- QuickPose samples the recorded video every 200 ms (about five poses/second).
-- Successful pose boxes are linearly interpolated by presentation timestamp
-  during the export pass. A missing sparse sample is never extrapolated as a
-  stale box across a longer gap.
-- The face box uses only visible head landmarks. Its asymmetric padding covers
-  forehead through chin, then expands every edge by a further 20% of the
-  measured head width/height based on production-video review. Nearby hands,
-  shoulders, and movement remain outside the redacted region.
-- Face mode requires a plausible face in at least 40% of sparse samples; a few
-  isolated pose hallucinations are rejected instead of producing a bogus blur.
-- The person box uses all visible body landmarks plus generous horizontal,
-  top, and bottom padding. Background blur is applied outside that box with a
-  feathered boundary.
-- Background processing requires reliable pose coverage and plausible
-  full-person geometry across at least 60% of sparse samples. This rejects the
-  known single-person BlazePose failure where a close hand is merged with a
-  different, smaller person in the background; the app asks the user to turn
-  background blur off instead of exporting a wrong-subject or fully blurred
-  clinical video.
-- If QuickPose finds no person in the clip, preprocessing fails closed and the
-  video is not uploaded until the user retries or explicitly sends the
-  original.
+- Pose is estimated independently for every decoded video frame (dense stride
+  1). The largest detected person is used. A missed detection is never filled
+  with a stale box.
+- The body region requires six visible COCO-17 keypoints and the exact
+  exp-0012 size checks and padding. Boxes below 25% of the clip's median body
+  area are rejected as transient outliers.
+- The face region uses COCO keypoints 0-4 with the exp-0012 asymmetric padding
+  and 2x height expansion. It falls back to shoulders 5-6, then to the top of
+  the body region for clipped or turned-away heads.
+- Face redaction reduces the region to about four blocks across and then
+  applies a strong Gaussian blur.
+- Background redaction first removes fine detail with a coarse pixel grid,
+  then adds Gaussian blur. The expanded person box is restored over this
+  background with a feathered boundary.
+- Missing/rejected body detections redact the complete frame. Face-only mode
+  also redacts the complete frame when no face fallback can be formed.
+- If no person is detected anywhere in the clip, preprocessing fails closed;
+  the app does not upload the sanitized path until the user retries or
+  explicitly elects to send the original.
 
-QuickPose inference runs on-device and no video frame or landmark coordinate is
-sent to QuickPose. The SDK does validate its license over the network. Its
-Android 0.22 client sends the package ID, SDK key, platform/version, and Android
-device ID to `https://api.quickpose.ai/sdk/v1/validate-key`; the user-facing
-privacy copy discloses app/device identifier validation. Release builds must set
-`EXPO_PUBLIC_QUICKPOSE_SDK_KEY` to a QuickPose key registered for
-`ai.getferal.luche` (iOS and Android registrations as required by QuickPose).
-
-The cloud QC runner accepts arbitrary compatible detector/landmark model paths
-and verifies their SHA-256 hashes before inference. QuickPose's mobile API only
-exposes the built-in `.light`, `.full`, and `.heavy` choices; substituting an
-arbitrary mobile checkpoint therefore requires replacing the small native pose
-adapter with direct MediaPipe/TFLite inference (the box/interpolation/export
-layers do not need to change).
+The native result reports decoded-frame, body, face, and total dense-sample
+counts. No landmarks or video frames are persisted by the privacy module.
+Checkpoint source, hashes, and license are recorded in `ios/Resources/MODELS.md`.

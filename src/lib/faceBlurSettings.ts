@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 const FACE_STORAGE_KEY = 'luche.face-blur.enabled.v1';
 const BACKGROUND_STORAGE_KEY = 'luche.background-blur.enabled.v1';
+const DEPERSONALISATION_STORAGE_KEY = 'luche.depersonalisation.enabled.v1';
 
 export type PrivacyBlurSettings = {
   face: boolean;
@@ -20,13 +21,31 @@ function emit(settings: PrivacyBlurSettings) {
 export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
   if (cached != null) return cached;
   if (!loading) {
-    loading = AsyncStorage.multiGet([FACE_STORAGE_KEY, BACKGROUND_STORAGE_KEY])
-      .then((entries) => {
+    loading = AsyncStorage.multiGet([
+      DEPERSONALISATION_STORAGE_KEY,
+      FACE_STORAGE_KEY,
+      BACKGROUND_STORAGE_KEY,
+    ])
+      .then(async (entries) => {
         const values = Object.fromEntries(entries);
-        cached = {
-          face: values[FACE_STORAGE_KEY] === 'true',
-          background: values[BACKGROUND_STORAGE_KEY] === 'true',
-        };
+        const stored = values[DEPERSONALISATION_STORAGE_KEY];
+        const enabled = stored == null
+          ? values[FACE_STORAGE_KEY] === 'true' || values[BACKGROUND_STORAGE_KEY] === 'true'
+          : stored === 'true';
+
+        cached = { face: enabled, background: enabled };
+
+        const hasLegacyPreference =
+          values[FACE_STORAGE_KEY] != null || values[BACKGROUND_STORAGE_KEY] != null;
+        if (stored == null && hasLegacyPreference) {
+          const serialized = enabled ? 'true' : 'false';
+          await AsyncStorage.multiSet([
+            [DEPERSONALISATION_STORAGE_KEY, serialized],
+            [FACE_STORAGE_KEY, serialized],
+            [BACKGROUND_STORAGE_KEY, serialized],
+          ]).catch(() => {});
+        }
+
         return cached;
       })
       .catch(() => {
@@ -40,13 +59,14 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
   return loading;
 }
 
-export async function setPrivacyBlurSetting(
-  setting: keyof PrivacyBlurSettings,
-  enabled: boolean,
-): Promise<void> {
-  const key = setting === 'face' ? FACE_STORAGE_KEY : BACKGROUND_STORAGE_KEY;
-  await AsyncStorage.setItem(key, enabled ? 'true' : 'false');
-  cached = { ...(cached ?? await getPrivacyBlurSettings()), [setting]: enabled };
+export async function setPrivacyBlurEnabled(enabled: boolean): Promise<void> {
+  const serialized = enabled ? 'true' : 'false';
+  await AsyncStorage.multiSet([
+    [DEPERSONALISATION_STORAGE_KEY, serialized],
+    [FACE_STORAGE_KEY, serialized],
+    [BACKGROUND_STORAGE_KEY, serialized],
+  ]);
+  cached = { face: enabled, background: enabled };
   emit(cached);
 }
 
@@ -73,18 +93,18 @@ export function usePrivacyBlurSettings() {
     };
   }, []);
 
-  const update = useCallback(async (setting: keyof PrivacyBlurSettings, next: boolean) => {
+  const update = useCallback(async (next: boolean) => {
     const previous = settings;
-    setSettings({ ...settings, [setting]: next });
+    setSettings({ face: next, background: next });
     try {
-      await setPrivacyBlurSetting(setting, next);
+      await setPrivacyBlurEnabled(next);
     } catch (error) {
       setSettings(previous);
       throw error;
     }
   }, [settings]);
 
-  return { ...settings, isLoading, setEnabled: update };
+  return { enabled: settings.face && settings.background, isLoading, setEnabled: update };
 }
 
 export const __testing = {
@@ -93,6 +113,7 @@ export const __testing = {
     loading = null;
     listeners.clear();
   },
+  depersonalisationStorageKey: DEPERSONALISATION_STORAGE_KEY,
   faceStorageKey: FACE_STORAGE_KEY,
   backgroundStorageKey: BACKGROUND_STORAGE_KEY,
 };

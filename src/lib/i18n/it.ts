@@ -99,20 +99,14 @@ export const it: Dict = {
       'Luche è uno strumento per la ricerca e il benessere. Ogni punteggio è una stima sperimentale, non una diagnosi. Luche non è un dispositivo medico. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato.',
     versionTitle: 'Versione',
     versionValue: '1.0.0',
-    commitTitle: 'Ultimo commit su GitHub',
-    commitUnavailable: 'Dati sul commit non disponibili',
     languageTitle: 'Lingua',
     privacyTitle: 'Privacy dei video',
-    faceBlurTitle: 'Sfoca i volti prima del caricamento',
-    faceBlurBody:
-      'Disattivato per impostazione predefinita. Usa un riquadro vicino al volto per lasciare ben visibile il resto del movimento.',
-    faceBlurA11y: 'Sfoca i volti prima del caricamento',
-    backgroundBlurTitle: 'Sfoca lo sfondo prima del caricamento',
-    backgroundBlurBody:
-      'Disattivato per impostazione predefinita. Lascia nitida un’area ampia attorno alla persona e sfoca tutto il resto.',
-    backgroundBlurA11y: 'Sfoca lo sfondo prima del caricamento',
+    depersonalisationTitle: 'Depersonalizza i video prima del caricamento',
+    depersonalisationBody:
+      'Disattivato per impostazione predefinita. Sfoca i volti e l’area esterna alla persona sul dispositivo, mantenendo visibili i movimenti da analizzare.',
+    depersonalisationA11y: 'Depersonalizza i video prima del caricamento',
     privacyBlurTechnicalBody:
-      'La posa viene stimata sul dispositivo ogni pochi fotogrammi e interpolata tra un fotogramma e l’altro. QuickPose riceve solo identificatori dell’app e del dispositivo per convalidare la licenza SDK; non riceve video né coordinate della posa.',
+      'La posa viene stimata localmente su ogni fotogramma decodificato. Lo sfondo viene pixelato e sfocato; il volto riceve una pixelatura e sfocatura più forte. Durante l’elaborazione per la privacy, video e coordinate restano sul dispositivo.',
     privacyBlurSaveFailedTitle: 'Impossibile salvare questa impostazione',
     privacyBlurSaveFailedBody: 'Restano attive le impostazioni precedenti. Riprova.',
     supportTitle: 'Assistenza',
@@ -237,7 +231,7 @@ export const it: Dict = {
   },
   uploadBanner: {
     privacyBlurring: (n: number) =>
-      `Protezione del video prima del caricamento${n > 1 ? ` · ${n} registrazioni` : ''}`,
+      n === 1 ? 'De-identificazione del video' : `De-identificazione di ${n} video`,
     privacyBlurFailed: (n: number) =>
       `${n} registrazion${n === 1 ? 'e richiede' : 'i richiedono'} una scelta sulla privacy`,
     keepOpen: (n: number) =>

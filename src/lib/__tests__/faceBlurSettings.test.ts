@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   __testing,
   getPrivacyBlurSettings,
-  setPrivacyBlurSetting,
+  setPrivacyBlurEnabled,
 } from '../faceBlurSettings';
 
 describe('privacy blur settings', () => {
@@ -23,14 +23,38 @@ describe('privacy blur settings', () => {
     });
   });
 
-  it('persists each explicit opt-in independently', async () => {
-    await setPrivacyBlurSetting('face', true);
-    await setPrivacyBlurSetting('background', true);
+  it('persists one depersonalisation preference for both protections', async () => {
+    await setPrivacyBlurEnabled(true);
+    expect(await AsyncStorage.getItem(__testing.depersonalisationStorageKey)).toBe('true');
     expect(await AsyncStorage.getItem(__testing.faceStorageKey)).toBe('true');
     expect(await AsyncStorage.getItem(__testing.backgroundStorageKey)).toBe('true');
     await expect(getPrivacyBlurSettings()).resolves.toEqual({
       face: true,
       background: true,
+    });
+  });
+
+  it('migrates either previous opt-in to full depersonalisation', async () => {
+    await AsyncStorage.setItem(__testing.faceStorageKey, 'true');
+
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: true,
+      background: true,
+    });
+    expect(await AsyncStorage.getItem(__testing.depersonalisationStorageKey)).toBe('true');
+    expect(await AsyncStorage.getItem(__testing.backgroundStorageKey)).toBe('true');
+  });
+
+  it('uses the unified preference after migration', async () => {
+    await AsyncStorage.multiSet([
+      [__testing.depersonalisationStorageKey, 'false'],
+      [__testing.faceStorageKey, 'true'],
+      [__testing.backgroundStorageKey, 'true'],
+    ]);
+
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: false,
+      background: false,
     });
   });
 });

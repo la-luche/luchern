@@ -17,6 +17,8 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+/credentials.json
+/credentials/
 
 # Metro
 .metro-health-check*
@@ -25,10 +27,14 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+/artifacts/
+/test_local_pose_estimatino/
+/modules/face-blur/android/build/
 
 # macOS
 .DS_Store
 *.pem
+/selfIdentity.plist
 
 # local env files
 .env*.local

@@ -8,8 +8,7 @@ import '../global.css';
 import { AuthGate } from '../components/AuthGate';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
-import { OfflineBanner } from '../components/OfflineBanner';
-import { UploadBanner } from '../components/UploadBanner';
+import { TopBanners } from '../components/OfflineBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 import { LanguageProvider } from '../lib/i18n';
 import { ToastHost } from '../lib/toast';
@@ -31,22 +30,23 @@ export default function RootLayout() {
             <DisclaimerGate>
               <AuthGate>
                 <View className="flex-1 bg-white">
-                  <OfflineBanner />
-                  <UploadBanner />
-                  <Stack
-                    screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}
-                  >
-                    <Stack.Screen name="index" />
-                    <Stack.Screen name="test/[id]" />
-                    <Stack.Screen name="record/[id]" options={{ gestureEnabled: false }} />
-                    <Stack.Screen name="results/index" />
-                    <Stack.Screen name="results/[id]" />
-                    <Stack.Screen name="shared/[id]" />
-                    <Stack.Screen name="invite" />
-                    <Stack.Screen name="share-code" />
-                    <Stack.Screen name="about" options={{ presentation: 'modal' }} />
-                  </Stack>
-                  <ToastHost />
+                  <TopBanners />
+                  <SafeAreaProvider style={{ flex: 1 }}>
+                    <Stack
+                      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}
+                    >
+                      <Stack.Screen name="index" />
+                      <Stack.Screen name="test/[id]" />
+                      <Stack.Screen name="record/[id]" options={{ gestureEnabled: false }} />
+                      <Stack.Screen name="results/index" />
+                      <Stack.Screen name="results/[id]" />
+                      <Stack.Screen name="shared/[id]" />
+                      <Stack.Screen name="invite" />
+                      <Stack.Screen name="share-code" />
+                      <Stack.Screen name="about" options={{ presentation: 'modal' }} />
+                    </Stack>
+                    <ToastHost />
+                  </SafeAreaProvider>
                 </View>
               </AuthGate>
             </DisclaimerGate>

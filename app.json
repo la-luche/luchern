@@ -61,8 +61,7 @@
         }
       ],
       "expo-secure-store",
-      "expo-localization",
-      "./modules/face-blur/app.plugin.js"
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

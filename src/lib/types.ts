@@ -71,7 +71,7 @@ export interface Recording {
   privacyBlurFramesWithFaces?: number;
   /** Number of exported frames where the background was blurred. */
   privacyBlurFramesWithBackground?: number;
-  /** Number of sparse QuickPose detections used to interpolate regions. */
+  /** Number of sparse on-device pose detections used to interpolate regions. */
   privacyBlurPoseSamples?: number;
   /** Server upload intent, persisted after the video bytes reach R2. */
   uploadId?: string;

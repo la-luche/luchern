@@ -70,13 +70,21 @@ function SignInScreen() {
     setError(null);
     try {
       if (mode === 'signIn') {
+        console.info('AUTH_VERIFY_STAGE sign_in_attempt_start');
         const res = await signIn!.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
+        console.info(`AUTH_VERIFY_STAGE sign_in_attempt_complete status=${res.status}`);
         if (res.status !== 'complete') throw new Error(t.auth.signInIncomplete);
+        console.info('AUTH_VERIFY_STAGE sign_in_set_active_start');
         await setActiveSignIn!({ session: res.createdSessionId });
+        console.info('AUTH_VERIFY_STAGE sign_in_set_active_complete');
       } else {
+        console.info('AUTH_VERIFY_STAGE sign_up_attempt_start');
         const res = await signUp!.attemptEmailAddressVerification({ code: code.trim() });
+        console.info(`AUTH_VERIFY_STAGE sign_up_attempt_complete status=${res.status}`);
         if (res.status !== 'complete') throw new Error(t.auth.signUpIncomplete);
+        console.info('AUTH_VERIFY_STAGE sign_up_set_active_start');
         await setActiveSignUp!({ session: res.createdSessionId });
+        console.info('AUTH_VERIFY_STAGE sign_up_set_active_complete');
       }
     } catch (e: any) {
       setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.invalidCode);

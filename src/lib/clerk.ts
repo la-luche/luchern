@@ -11,27 +11,47 @@ import * as SecureStore from 'expo-secure-store';
 export const CLERK_PUBLISHABLE_KEY =
   'pk_live_Y2xlcmsubHVjaGUuYWkk';
 
-/** Token cache backed by the device keychain (expo-secure-store). */
+const secureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+const memoryTokens = new Map<string, string>();
+let secureStoreWrites = Promise.resolve();
+
+function enqueueSecureStoreWrite(write: () => Promise<void>) {
+  secureStoreWrites = secureStoreWrites
+    .catch(() => {})
+    .then(write)
+    .catch(() => {});
+}
+
+/**
+ * Clerk token cache backed by SecureStore with an immediate in-memory layer.
+ *
+ * Clerk awaits saveToken from its response hook. A slow Android keystore must
+ * not leave a completed email-code sign-in stuck on "Verifying…", so writes
+ * are serialized in the background while subsequent requests read the fresh
+ * token from memory.
+ */
 export const clerkTokenCache = {
   async getToken(key: string) {
+    const memoryToken = memoryTokens.get(key);
+    if (memoryToken) return memoryToken;
     try {
-      return await SecureStore.getItemAsync(key);
+      const token = await SecureStore.getItemAsync(key, secureStoreOptions);
+      if (token && !memoryTokens.has(key)) memoryTokens.set(key, token);
+      return token;
     } catch {
       return null;
     }
   },
-  async saveToken(key: string, value: string) {
-    try {
-      await SecureStore.setItemAsync(key, value);
-    } catch {
-      // non-fatal — Clerk falls back to in-memory
-    }
+  saveToken(key: string, value: string) {
+    memoryTokens.set(key, value);
+    enqueueSecureStoreWrite(() => SecureStore.setItemAsync(key, value, secureStoreOptions));
+    return Promise.resolve();
   },
-  async clearToken(key: string) {
-    try {
-      await SecureStore.deleteItemAsync(key);
-    } catch {
-      // ignore
-    }
+  clearToken(key: string) {
+    memoryTokens.delete(key);
+    enqueueSecureStoreWrite(() => SecureStore.deleteItemAsync(key, secureStoreOptions));
+    return Promise.resolve();
   },
 };

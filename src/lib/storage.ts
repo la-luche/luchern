@@ -20,6 +20,7 @@ import {
   deleteAllRecordingFiles,
   deleteRecordingFile,
   persistRecordingFile,
+  rebindRecordingFileUri,
 } from './recordingFiles';
 import { fetchOwnedTrials, mergeOwnedTrials } from './recordingSync';
 import type { EvaluatedSide, TestId } from './tests';
@@ -97,7 +98,25 @@ async function ensureLoaded(): Promise<Recording[]> {
           await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
         }
       }
-      const loaded = raw ? (JSON.parse(raw) as Recording[]) : [];
+      const parsed = raw ? (JSON.parse(raw) as Recording[]) : [];
+      let rebound = false;
+      const loaded = await Promise.all(
+        parsed.map(async (recording) => {
+          const videoUri = await rebindRecordingFileUri(recording.videoUri);
+          const privacyBlurOriginalUri = await rebindRecordingFileUri(
+            recording.privacyBlurOriginalUri,
+          );
+          if (
+            videoUri === recording.videoUri &&
+            privacyBlurOriginalUri === recording.privacyBlurOriginalUri
+          ) {
+            return recording;
+          }
+          rebound = true;
+          return { ...recording, videoUri, privacyBlurOriginalUri };
+        }),
+      );
+      if (rebound) await AsyncStorage.setItem(key, JSON.stringify(loaded));
       if (epoch === accountEpoch && accountId === activeAccountId) cache = loaded;
       return loaded;
     })();
@@ -384,7 +403,6 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
             {
               blurFaces: Boolean(rec.faceBlurRequested),
               blurBackground: Boolean(rec.backgroundBlurRequested),
-              poseSampleIntervalMs: 200,
             },
             (privacyBlurProgress) => patchVolatile(rec.id, { privacyBlurProgress }, epoch),
             signal,
@@ -438,6 +456,9 @@ async function runDrive(rec: Recording, epoch: number, signal: AbortSignal) {
           framesWithFaces: prepared.framesWithFaces,
           framesWithBackgroundBlur: prepared.framesWithBackgroundBlur,
           poseSamples: prepared.poseSamples,
+          totalPoseSamples: prepared.totalPoseSamples,
+          faceSamples: prepared.faceSamples,
+          detectorMode: prepared.detectorMode,
           recovered: prepared.recovered,
         });
       } catch (error) {

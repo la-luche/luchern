@@ -1,9 +1,9 @@
 # Luche RN
 
 React Native + Expo rebuild of the Luche motor-test app (the Swift original lives
-in `../v2/Luche/`). This version does **all inference in the cloud** — per-test
-recordings are just video captures that get sent to a server for analysis. No
-Core ML, no on-device model, no frame buffering.
+in `../v2/Luche/`). Movement scoring runs in the cloud. Optional pre-upload
+privacy processing is the only on-device inference: a small bundled pose stack
+locates face and body regions before a sanitized video is written.
 
 > Status: **Experimental cloud pipeline (2026-07-13).** `src/lib/cloud.ts` talks to
 > `feral-api`: presigned R2 upload → Sapiens2 keypoints (serve_luche/RunPod) →
@@ -81,7 +81,7 @@ src/
     record/[id].tsx        # Camera + Start/End
     results/index.tsx      # Recording cards list
     results/[id].tsx       # Playback + cloud-analysis panel
-    about.tsx              # Sharing, support, and release details
+    about.tsx              # Account, sharing, privacy, and support
   components/              # hand-built, ~8 small pieces (no UI kit)
   lib/
     tests.ts               # the 3 movement tests currently exposed
@@ -108,19 +108,22 @@ This makes relaunch/retry avoid retransmitting a completed upload. It also
 hydrates metadata from `GET /me/trials`, keeps uploaded videos locally for
 three days, and requests a signed cloud URL when an older video is opened.
 
-About contains two independent, off-by-default options: **Blur faces before
-upload** and **Blur the background before upload**. A local Expo module uses
-QuickPose on iOS and Android to estimate pose every 200 ms, then interpolates a
-tight face box and a generous whole-person box while exporting one sanitized
-MP4. Face blur stays close to the head; background blur keeps the expanded
-person region clear and blurs everything outside it. Set
-`EXPO_PUBLIC_QUICKPOSE_SDK_KEY` for native development/release builds.
-QuickPose raises the Android minimum to API 26 (Android 8.0); the local config
-plugin applies that requirement during Expo prebuild.
+About contains one off-by-default **Depersonalise videos before upload** option
+that applies both face and background protection. Existing installs migrate to
+the unified option as enabled when either previous privacy option was enabled.
+The local Expo module runs the bundled 4.33M-parameter RTMDet-nano + RTMPose-t
+exp-0012 stack on every decoded frame. Face boxes use COCO-17 head keypoints,
+shoulder fallback, and a top-of-body fallback; the renderer applies a coarse
+four-block mosaic followed by strong blur. The expanded largest-person region
+stays clear while the background is coarsely pixelated and blurred. A missed
+person frame is fully redacted rather than filled with a stale box. Inference
+uses ONNX Runtime on iOS and Android with no SDK key, model download, or network
+license check. Luche does not identify which person is the patient.
 
 The sanitized URI is persisted before the original is permanently deleted. If
-QuickPose cannot find a person or preprocessing otherwise fails, upload remains
-blocked until the user retries or explicitly confirms sending the original.
+the pose engine cannot find a person or preprocessing otherwise fails, upload
+remains blocked until the user retries or explicitly confirms sending the
+original.
 
 ### Data model
 
