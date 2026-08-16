@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '../global.css';
 import { AuthGate } from '../components/AuthGate';
+import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
@@ -21,6 +22,15 @@ import { ToastHost } from '../lib/toast';
 // launch) → AuthGate (email-code sign-in). All app screens run signed-in, so
 // every backend call carries a Clerk session token.
 export default function RootLayout() {
+  if (process.env.EXPO_PUBLIC_DEID_TEST_MODE === '1') {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <DeidTestHarness />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={clerkTokenCache}>
       <LanguageProvider>

@@ -11,46 +11,6 @@ private struct PrivacyBlurStats {
   var framesWithBackgroundBlur = 0
 }
 
-/** Normalized top-left coordinates. */
-private struct NormalizedRect {
-  let left: CGFloat
-  let top: CGFloat
-  let right: CGFloat
-  let bottom: CGFloat
-
-  var width: CGFloat { max(0, right - left) }
-  var height: CGFloat { max(0, bottom - top) }
-
-  func interpolated(to other: NormalizedRect, fraction: CGFloat) -> NormalizedRect {
-    let t = min(1, max(0, fraction))
-    return NormalizedRect(
-      left: left + (other.left - left) * t,
-      top: top + (other.top - top) * t,
-      right: right + (other.right - right) * t,
-      bottom: bottom + (other.bottom - bottom) * t
-    )
-  }
-
-  func scaledHeight(_ scale: CGFloat) -> NormalizedRect {
-    let padding = height * max(0, scale - 1) / 2
-    return NormalizedRect(
-      left: left,
-      top: max(0, top - padding),
-      right: right,
-      bottom: min(1, bottom + padding)
-    )
-  }
-
-  func coreImageRect(in extent: CGRect) -> CGRect {
-    CGRect(
-      x: extent.minX + left * extent.width,
-      y: extent.minY + (1 - bottom) * extent.height,
-      width: width * extent.width,
-      height: height * extent.height
-    ).intersection(extent)
-  }
-}
-
 private struct PoseKeyframe {
   let seconds: Double
   let person: NormalizedRect?
@@ -384,11 +344,19 @@ private final class FaceBlurProcessor {
   }
 
   private func startExport(asset: AVURLAsset, timeline: PoseTimeline) throws {
+    guard let track = asset.tracks(withMediaType: .video).first else {
+      throw Self.error(8, "The recording does not contain a video track.")
+    }
+    let preferredTransform = track.preferredTransform
     guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
       throw Self.error(3, "This video cannot be prepared for privacy blurring.")
     }
     let composition = AVVideoComposition(asset: asset) { [weak self] request in
-      self?.process(request: request, timeline: timeline)
+      self?.process(
+        request: request,
+        timeline: timeline,
+        preferredTransform: preferredTransform
+      )
     }
     exporter.videoComposition = composition
     exporter.outputURL = outputURL
@@ -401,7 +369,11 @@ private final class FaceBlurProcessor {
     exporter.exportAsynchronously { [weak self] in self?.finishExport() }
   }
 
-  private func process(request: AVAsynchronousCIImageFilteringRequest, timeline: PoseTimeline) {
+  private func process(
+    request: AVAsynchronousCIImageFilteringRequest,
+    timeline: PoseTimeline,
+    preferredTransform: CGAffineTransform
+  ) {
     stateLock.lock()
     let shouldCancel = cancelled
     let existingError = firstFrameError
@@ -437,7 +409,10 @@ private final class FaceBlurProcessor {
         // Missing/rejected detections intentionally redact the entire frame.
         output = hardenedBackground
         if let normalizedPerson = rects.person {
-          let person = normalizedPerson.coreImageRect(in: extent)
+          let person = normalizedPerson.sourceImageRect(
+            in: extent,
+            preferredTransform: preferredTransform
+          )
           guard !person.isEmpty else {
             throw Self.error(6, "The RTMPose person region was empty while blurring the background.")
           }
@@ -461,7 +436,10 @@ private final class FaceBlurProcessor {
       var faceWasDetected = false
       if blurFaces {
         if let normalizedFace = rects.face {
-          let face = normalizedFace.coreImageRect(in: extent)
+          let face = normalizedFace.sourceImageRect(
+            in: extent,
+            preferredTransform: preferredTransform
+          )
           if !face.isEmpty {
             let redacted = source
               .clampedToExtent()
