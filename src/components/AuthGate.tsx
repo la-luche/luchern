@@ -1,5 +1,6 @@
 import { useAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
-import { useEffect, useRef, useState } from 'react';
+import { useNetworkState } from 'expo-network';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,8 +12,18 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensurePatientOnboarded } from '../lib/api';
+import {
+  isConnectionFailure,
+  isMissingClerkAccount,
+  showConnectionAlert,
+  withTimeout,
+} from '../lib/connectivity';
 import { useT } from '../lib/i18n';
 import { Button } from './Button';
+import { ConnectionProblem } from './ConnectionProblem';
+
+const AUTH_REQUEST_TIMEOUT_MS = 15_000;
+const AUTH_BOOTSTRAP_SLOW_MS = 8_000;
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <View className="flex-1 items-center justify-center bg-white">{children}</View>;
@@ -23,6 +34,7 @@ function SignInScreen() {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
+  const net = useNetworkState();
   const t = useT();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -33,32 +45,68 @@ function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const ready = siLoaded && suLoaded;
+  const offline = net.isConnected === false || net.isInternetReachable === false;
+
+  const showFailure = useCallback(
+    (retry: () => void, error?: unknown) => {
+      if (offline || isConnectionFailure(error)) {
+        showConnectionAlert(t, retry, offline);
+        return true;
+      }
+      return false;
+    },
+    [offline, t],
+  );
 
   async function sendCode() {
     if (!ready || !email.trim() || busy) return;
+    if (offline) {
+      showConnectionAlert(t, () => void sendCode(), true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
+      let si: Awaited<ReturnType<NonNullable<typeof signIn>['create']>> | null = null;
       try {
         // Existing account → sign-in with an emailed code.
-        const si = await signIn!.create({ identifier: email.trim() });
+        si = await withTimeout(
+          signIn!.create({ identifier: email.trim() }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'send sign-in code',
+        );
+      } catch (error) {
+        if (!isMissingClerkAccount(error)) throw error;
+      }
+
+      if (si) {
         const factor = si.supportedFirstFactors?.find((f) => f.strategy === 'email_code');
         if (!factor) throw new Error('email code unavailable');
-        await signIn!.prepareFirstFactor({
+        await withTimeout(signIn!.prepareFirstFactor({
           strategy: 'email_code',
           emailAddressId: (factor as any).emailAddressId,
-        });
+        }), AUTH_REQUEST_TIMEOUT_MS, 'prepare sign-in code');
         setMode('signIn');
-      } catch {
+      } else {
         // No account yet → sign up with the same emailed-code flow. Production
         // Clerk intentionally has username and password authentication disabled.
-        await signUp!.create({ emailAddress: email.trim() });
-        await signUp!.prepareEmailAddressVerification({ strategy: 'email_code' });
+        await withTimeout(
+          signUp!.create({ emailAddress: email.trim() }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'create account',
+        );
+        await withTimeout(
+          signUp!.prepareEmailAddressVerification({ strategy: 'email_code' }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'prepare sign-up code',
+        );
         setMode('signUp');
       }
       setStep('code');
     } catch (e: any) {
-      setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.sendCodeError);
+      if (!showFailure(() => void sendCode(), e)) {
+        setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.sendCodeError);
+      }
     } finally {
       setBusy(false);
     }
@@ -66,28 +114,50 @@ function SignInScreen() {
 
   async function verify() {
     if (!ready || !code.trim() || busy) return;
+    if (offline) {
+      showConnectionAlert(t, () => void verify(), true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       if (mode === 'signIn') {
         console.info('AUTH_VERIFY_STAGE sign_in_attempt_start');
-        const res = await signIn!.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
+        const res = await withTimeout(
+          signIn!.attemptFirstFactor({ strategy: 'email_code', code: code.trim() }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'verify sign-in code',
+        );
         console.info(`AUTH_VERIFY_STAGE sign_in_attempt_complete status=${res.status}`);
         if (res.status !== 'complete') throw new Error(t.auth.signInIncomplete);
         console.info('AUTH_VERIFY_STAGE sign_in_set_active_start');
-        await setActiveSignIn!({ session: res.createdSessionId });
+        await withTimeout(
+          setActiveSignIn!({ session: res.createdSessionId }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'activate sign-in session',
+        );
         console.info('AUTH_VERIFY_STAGE sign_in_set_active_complete');
       } else {
         console.info('AUTH_VERIFY_STAGE sign_up_attempt_start');
-        const res = await signUp!.attemptEmailAddressVerification({ code: code.trim() });
+        const res = await withTimeout(
+          signUp!.attemptEmailAddressVerification({ code: code.trim() }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'verify sign-up code',
+        );
         console.info(`AUTH_VERIFY_STAGE sign_up_attempt_complete status=${res.status}`);
         if (res.status !== 'complete') throw new Error(t.auth.signUpIncomplete);
         console.info('AUTH_VERIFY_STAGE sign_up_set_active_start');
-        await setActiveSignUp!({ session: res.createdSessionId });
+        await withTimeout(
+          setActiveSignUp!({ session: res.createdSessionId }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'activate sign-up session',
+        );
         console.info('AUTH_VERIFY_STAGE sign_up_set_active_complete');
       }
     } catch (e: any) {
-      setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.invalidCode);
+      if (!showFailure(() => void verify(), e)) {
+        setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.invalidCode);
+      }
     } finally {
       setBusy(false);
     }
@@ -171,9 +241,35 @@ function SignInScreen() {
  * the email-code screen; signed in → the app (and idempotently onboard the
  * caller as a 'patient' the first time).
  */
-export function AuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({
+  children,
+  onRetryAuth,
+}: {
+  children: React.ReactNode;
+  onRetryAuth: () => void;
+}) {
   const { isLoaded, isSignedIn } = useAuth();
+  const net = useNetworkState();
+  const t = useT();
   const onboarded = useRef(false);
+  const alertShown = useRef(false);
+  const [slow, setSlow] = useState(false);
+  const offline = net.isConnected === false || net.isInternetReachable === false;
+
+  useEffect(() => {
+    if (isLoaded) {
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), AUTH_BOOTSTRAP_SLOW_MS);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (isLoaded || (!offline && !slow) || alertShown.current) return;
+    alertShown.current = true;
+    showConnectionAlert(t, onRetryAuth, offline);
+  }, [isLoaded, offline, onRetryAuth, slow, t]);
 
   useEffect(() => {
     if (isSignedIn && !onboarded.current) {
@@ -185,9 +281,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isSignedIn]);
 
   if (!isLoaded) {
+    if (offline || slow) {
+      return (
+        <ConnectionProblem
+          title={offline ? t.connection.offlineTitle : t.connection.problemTitle}
+          body={offline ? t.connection.offlineBody : t.connection.problemBody}
+          retryLabel={t.connection.tryAgain}
+          onRetry={onRetryAuth}
+        />
+      );
+    }
     return (
       <Centered>
         <ActivityIndicator />
+        <Text className="mt-3 text-[15px] text-ink-muted">{t.connection.connecting}</Text>
       </Centered>
     );
   }

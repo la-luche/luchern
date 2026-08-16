@@ -249,6 +249,15 @@ export const en = {
   offline: {
     message: 'You’re offline. Your recordings will upload when you’re back online.',
   },
+  connection: {
+    connecting: 'Connecting securely…',
+    offlineTitle: 'No internet connection',
+    offlineBody: 'Reconnect to Wi-Fi or mobile data, then try again.',
+    problemTitle: 'Luche can’t connect',
+    problemBody:
+      'Check your internet connection and try again. If other apps work, this network may be blocking Luche.',
+    tryAgain: 'Try again',
+  },
   recordingCard: {
     fallback: 'Recording',
     processingMayTake: 'May take a few minutes',

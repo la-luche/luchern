@@ -17,6 +17,7 @@ import { ResultsTrends, SharedResultsTrends } from '../../components/ResultsTren
 import { Screen } from '../../components/Screen';
 import { SharedRecordingCard } from '../../components/SharedRecordingCard';
 import { useT } from '../../lib/i18n';
+import { isConnectionFailure, showConnectionAlert } from '../../lib/connectivity';
 import {
   fetchSharedPatients,
   fetchSharedTrials,
@@ -69,14 +70,17 @@ export default function ResultsScreen() {
       const response = await fetchSharedTrials(patient.patient_id);
       if (!mounted.current || request !== trialsRequest.current) return;
       setSharedRecordings(flattenSharedTrials(patient, response));
-    } catch {
+    } catch (error) {
       if (!mounted.current || request !== trialsRequest.current) return;
       setSharedRecordings([]);
       setSharedError(true);
+      if (isConnectionFailure(error)) {
+        showConnectionAlert(t, () => void loadTrials(patient));
+      }
     } finally {
       if (mounted.current && request === trialsRequest.current) setTrialsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadPatients = useCallback(
     async (preferredPatientId?: string | null) => {
@@ -98,14 +102,17 @@ export default function ResultsScreen() {
           setSharedRecordings([]);
           setTrialsLoading(false);
         }
-      } catch {
+      } catch (error) {
         if (!mounted.current || request !== patientsRequest.current) return;
         setSharedError(true);
+        if (isConnectionFailure(error)) {
+          showConnectionAlert(t, () => void loadPatients(preferredPatientId));
+        }
       } finally {
         if (mounted.current && request === patientsRequest.current) setPatientsLoading(false);
       }
     },
-    [loadTrials],
+    [loadTrials, t],
   );
 
   useEffect(() => {

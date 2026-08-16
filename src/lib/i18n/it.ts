@@ -247,6 +247,15 @@ export const it: Dict = {
   offline: {
     message: 'Non sei connesso a Internet. Le registrazioni verranno caricate più tardi.',
   },
+  connection: {
+    connecting: 'Connessione sicura in corso…',
+    offlineTitle: 'Nessuna connessione a Internet',
+    offlineBody: 'Riconnettiti al Wi-Fi o ai dati mobili, quindi riprova.',
+    problemTitle: 'Luche non riesce a connettersi',
+    problemBody:
+      'Controlla la connessione e riprova. Se le altre app funzionano, questa rete potrebbe bloccare Luche.',
+    tryAgain: 'Riprova',
+  },
   recordingCard: {
     fallback: 'Registrazione',
     processingMayTake: 'Può richiedere alcuni minuti',

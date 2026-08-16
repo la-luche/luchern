@@ -7,6 +7,7 @@ import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
+import { isConnectionFailure, showConnectionAlert } from '../../lib/connectivity';
 import { localizeSeverity, useT } from '../../lib/i18n';
 import {
   fetchSharedTrialDetail,
@@ -57,14 +58,17 @@ export default function SharedResultDetailScreen() {
       const response = await fetchSharedTrialDetail(trialId);
       if (request !== loadRequest.current) return;
       setDetail(response);
-    } catch {
+    } catch (loadError) {
       if (request !== loadRequest.current) return;
       setDetail(null);
       setError(true);
+      if (isConnectionFailure(loadError)) {
+        showConnectionAlert(t, () => void load());
+      }
     } finally {
       if (request === loadRequest.current) setLoading(false);
     }
-  }, [trialId]);
+  }, [t, trialId]);
 
   useEffect(() => {
     void load();

@@ -1,6 +1,8 @@
 import { ClerkProvider } from '@clerk/clerk-expo';
+import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -10,7 +12,7 @@ import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
-import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
+import { CLERK_PROXY_URL, CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 import { LanguageProvider } from '../lib/i18n';
 import { ToastHost } from '../lib/toast';
 
@@ -22,6 +24,8 @@ import { ToastHost } from '../lib/toast';
 // launch) → AuthGate (email-code sign-in). All app screens run signed-in, so
 // every backend call carries a Clerk session token.
 export default function RootLayout() {
+  const [clerkAttempt, setClerkAttempt] = useState(0);
+
   if (process.env.EXPO_PUBLIC_DEID_TEST_MODE === '1') {
     return (
       <SafeAreaProvider>
@@ -32,13 +36,19 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={clerkTokenCache}>
+    <ClerkProvider
+      key={clerkAttempt}
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      proxyUrl={CLERK_PROXY_URL}
+      tokenCache={clerkTokenCache}
+      __experimental_resourceCache={resourceCache}
+    >
       <LanguageProvider>
         <SafeAreaProvider>
           <StatusBar style="dark" />
           <DemoVideoProvider>
             <DisclaimerGate>
-              <AuthGate>
+              <AuthGate onRetryAuth={() => setClerkAttempt((attempt) => attempt + 1)}>
                 <View className="flex-1 bg-white">
                   <TopBanners />
                   <SafeAreaProvider style={{ flex: 1 }}>

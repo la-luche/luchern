@@ -24,7 +24,9 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
   const [accepted, setAccepted] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
-    AsyncStorage.getItem(ACCEPTED_KEY).then((v) => setAccepted(v === 'true'));
+    AsyncStorage.getItem(ACCEPTED_KEY)
+      .then((v) => setAccepted(v === 'true'))
+      .catch(() => setAccepted(false));
   }, []);
 
   if (accepted === undefined) {
@@ -34,7 +36,7 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
   if (accepted) return <>{children}</>;
 
   const accept = () => {
-    AsyncStorage.setItem(ACCEPTED_KEY, 'true');
+    AsyncStorage.setItem(ACCEPTED_KEY, 'true').catch(() => {});
     setAccepted(true);
   };
 
