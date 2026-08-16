@@ -20,29 +20,20 @@ private struct FaceBlurGeometryTests {
     let normalized = NormalizedRect(left: 0.1, top: 0.2, right: 0.4, bottom: 0.6)
 
     assertRect(
-      normalized.sourceImageRect(
-        in: CGRect(x: 0, y: 0, width: 1920, height: 1080),
-        preferredTransform: .identity
+      normalized.videoCompositionRect(
+        in: CGRect(x: 0, y: 0, width: 1920, height: 1080)
       ),
       equals: CGRect(x: 192, y: 432, width: 576, height: 432)
     )
 
-    // The failing iPhone sample: 1280x720 encoded pixels displayed as 720x1280.
+    // The failing iPhone sample is encoded as 1280x720 with a 90-degree
+    // preferred transform. AVVideoComposition's filter callback has already
+    // applied that transform, so its source and render extents are 720x1280.
     assertRect(
-      normalized.sourceImageRect(
-        in: CGRect(x: 0, y: 0, width: 1280, height: 720),
-        preferredTransform: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 720, ty: 0)
+      normalized.videoCompositionRect(
+        in: CGRect(x: 0, y: 0, width: 720, height: 1280)
       ),
-      equals: CGRect(x: 512, y: 432, width: 512, height: 216)
-    )
-
-    // Also cover the opposite portrait rotation used by some imported videos.
-    assertRect(
-      normalized.sourceImageRect(
-        in: CGRect(x: 0, y: 0, width: 1280, height: 720),
-        preferredTransform: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1280)
-      ),
-      equals: CGRect(x: 256, y: 72, width: 512, height: 216)
+      equals: CGRect(x: 72, y: 512, width: 216, height: 512)
     )
 
     print("FaceBlurGeometryTests passed")

@@ -6,12 +6,17 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } fr
 import {
   addProgressListener,
   blurVideoAsync,
+  diagnoseImageAsync,
+  diagnoseVideoRectsAsync,
+  renderPoseOverlayVideoAsync,
   type FaceBlurResult,
 } from '../../modules/face-blur';
 
 const inputUri = `${FileSystem.documentDirectory}deid-test-input.mp4`;
 const outputUri = `${FileSystem.documentDirectory}deid-test-output.mp4`;
 const reportUri = `${FileSystem.documentDirectory}deid-test-report.json`;
+const probeInputUri = `${FileSystem.documentDirectory}deid-probe-frame.png`;
+const probeDirectory = `${FileSystem.documentDirectory}deid-probe`;
 
 function OutputVideo({ uri }: { uri: string }) {
   const player = useVideoPlayer({ uri }, (videoPlayer) => {
@@ -36,6 +41,28 @@ export function DeidTestHarness() {
     setResult(null);
     setVideoUri(null);
 
+    if (process.env.EXPO_PUBLIC_DEID_PROBE_MODE === '1') {
+      const probeInput = await FileSystem.getInfoAsync(probeInputUri);
+      if (!probeInput.exists) {
+        setStatus('Waiting for Documents/deid-probe-frame.png');
+        setRunning(false);
+        return;
+      }
+      try {
+        await FileSystem.deleteAsync(probeDirectory, { idempotent: true });
+        await FileSystem.makeDirectoryAsync(probeDirectory, { intermediates: true });
+        setStatus('Running one-frame RTMPose diagnostics');
+        const diagnostic = await diagnoseImageAsync(probeInputUri, probeDirectory);
+        setStatus(`Completed ${diagnostic.keypointCount} keypoints`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus(`Failed: ${message}`);
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
+
     const input = await FileSystem.getInfoAsync(inputUri);
     if (!input.exists) {
       setStatus('Waiting for Documents/deid-test-input.mp4');
@@ -51,12 +78,15 @@ export function DeidTestHarness() {
     });
 
     try {
-      setStatus('Processing on this iPhone');
+      const showPoseOverlay = process.env.EXPO_PUBLIC_DEID_OVERLAY_MODE === '1';
+      setStatus(showPoseOverlay ? 'Rendering iPhone keypoints' : 'Processing on this iPhone');
       const startedAt = Date.now();
-      const next = await blurVideoAsync(inputUri, outputUri, operationId, {
-        blurFaces: true,
-        blurBackground: true,
-      });
+      const next = showPoseOverlay
+        ? await renderPoseOverlayVideoAsync(inputUri, outputUri, operationId)
+        : await blurVideoAsync(inputUri, outputUri, operationId, {
+            blurFaces: true,
+            blurBackground: true,
+          });
       const report = {
         source: 'arising-from-chair--trial-211.mp4',
         deviceTest: true,
@@ -67,6 +97,14 @@ export function DeidTestHarness() {
       setResult(next);
       setVideoUri(outputUri);
       setProgress(1);
+      if (process.env.EXPO_PUBLIC_DEID_TIMELINE_MODE === '1') {
+        setStatus('Video ready; comparing rectangle timeline');
+        const timeline = await diagnoseVideoRectsAsync(inputUri);
+        await FileSystem.writeAsStringAsync(
+          `${FileSystem.documentDirectory}deid-test-timeline.json`,
+          `${JSON.stringify(timeline, null, 2)}\n`,
+        );
+      }
       setStatus('Completed');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

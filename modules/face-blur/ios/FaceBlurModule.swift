@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreImage
 import ExpoModulesCore
+import ImageIO
 
 private let progressEvent = "onFaceBlurProgress"
 private let scanProgressShare = 0.45
@@ -15,6 +16,7 @@ private struct PoseKeyframe {
   let seconds: Double
   let person: NormalizedRect?
   let face: NormalizedRect?
+  let landmarks: [RTMPosePoint]?
 }
 
 private struct PrivacyRects {
@@ -39,10 +41,30 @@ private struct PoseTimeline {
     return PoseTimeline(keyframes: keyframes.map { keyframe in
       guard let person = keyframe.person,
             person.width * person.height >= medianArea * 0.25 else {
-        return PoseKeyframe(seconds: keyframe.seconds, person: nil, face: nil)
+        return PoseKeyframe(
+          seconds: keyframe.seconds,
+          person: nil,
+          face: nil,
+          landmarks: keyframe.landmarks
+        )
       }
       return keyframe
     })
+  }
+
+  func nearestKeyframe(at seconds: Double) -> PoseKeyframe? {
+    guard let first = keyframes.first else { return nil }
+    if seconds <= first.seconds { return first }
+    guard let last = keyframes.last else { return nil }
+    if seconds >= last.seconds { return last }
+    var low = 0
+    var high = keyframes.count - 1
+    while low + 1 < high {
+      let middle = (low + high) / 2
+      if keyframes[middle].seconds <= seconds { low = middle } else { high = middle }
+    }
+    return seconds - keyframes[low].seconds <= keyframes[high].seconds - seconds
+      ? keyframes[low] : keyframes[high]
   }
 
   func rects(at seconds: Double) -> PrivacyRects? {
@@ -83,16 +105,19 @@ private final class RTMPoseVideoScanner {
   private let asset: AVURLAsset
   private let progress: (Double) -> Void
   private let isCancelled: () -> Bool
+  private let includeLandmarks: Bool
   private let ciContext = CIContext(options: [.cacheIntermediates: false])
 
   init(
     asset: AVURLAsset,
     progress: @escaping (Double) -> Void,
-    isCancelled: @escaping () -> Bool
+    isCancelled: @escaping () -> Bool,
+    includeLandmarks: Bool = false
   ) {
     self.asset = asset
     self.progress = progress
     self.isCancelled = isCancelled
+    self.includeLandmarks = includeLandmarks
   }
 
   func scan() throws -> PoseTimeline {
@@ -138,7 +163,8 @@ private final class RTMPoseVideoScanner {
         person: person,
         face: landmarks.flatMap { points in
           person.flatMap { faceRect(from: points, person: $0, frameAspect: frameAspect) }
-        }
+        },
+        landmarks: includeLandmarks ? landmarks : nil
       ))
       progress(scanProgressShare * min(1, seconds / duration))
     }
@@ -160,7 +186,16 @@ private final class RTMPoseVideoScanner {
       by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
     )
     let displayExtent = CGRect(origin: .zero, size: extent.size)
-    guard let image = ciContext.createCGImage(displayImage, from: displayExtent) else {
+    // After the track's 90-degree preferred transform, CIContext's CGImage is
+    // rotated 180 degrees relative to the top-left raster consumed by
+    // RTMPoseEngine. Correct both axes so decoded frames match PNG/JPEG input.
+    let topLeftImage = displayImage.transformed(
+      by: CGAffineTransform(
+        translationX: displayExtent.width,
+        y: displayExtent.height
+      ).scaledBy(x: -1, y: -1)
+    )
+    guard let image = ciContext.createCGImage(topLeftImage, from: displayExtent) else {
       throw Self.error(27, "A display-oriented video frame could not be created.")
     }
     return image
@@ -267,6 +302,7 @@ private final class FaceBlurProcessor {
   private let outputURL: URL
   private let blurFaces: Bool
   private let blurBackground: Bool
+  private let showPoseOverlay: Bool
   private let progress: (Double) -> Void
   private let completion: (Result<[String: Any], Error>) -> Void
   private let stateLock = NSLock()
@@ -279,24 +315,33 @@ private final class FaceBlurProcessor {
   private var cancelled = false
   private var firstFrameError: Error?
 
+  /** Match OpenCV's automatic sigma when GaussianBlur is passed sigmaX=0. */
+  private static func openCVGaussianSigma(forRequestedKernel requested: CGFloat) -> CGFloat {
+    var kernel = max(3, Int(requested.rounded()))
+    if kernel.isMultiple(of: 2) { kernel += 1 }
+    return 0.3 * (CGFloat(kernel - 1) * 0.5 - 1) + 0.8
+  }
+
   init(
     inputURL: URL,
     outputURL: URL,
     blurFaces: Bool,
     blurBackground: Bool,
+    showPoseOverlay: Bool = false,
     progress: @escaping (Double) -> Void,
     completion: @escaping (Result<[String: Any], Error>) -> Void
   ) throws {
     guard inputURL.isFileURL, outputURL.isFileURL else {
       throw Self.error(1, "Video privacy processing requires local file URLs.")
     }
-    guard blurFaces || blurBackground else {
+    guard blurFaces || blurBackground || showPoseOverlay else {
       throw Self.error(2, "At least one video privacy option must be enabled.")
     }
     self.inputURL = inputURL
     self.outputURL = outputURL
     self.blurFaces = blurFaces
     self.blurBackground = blurBackground
+    self.showPoseOverlay = showPoseOverlay
     self.progress = progress
     self.completion = completion
   }
@@ -314,7 +359,8 @@ private final class FaceBlurProcessor {
         let detected = try RTMPoseVideoScanner(
           asset: asset,
           progress: self.progress,
-          isCancelled: { [weak self] in self?.isCancelled ?? true }
+          isCancelled: { [weak self] in self?.isCancelled ?? true },
+          includeLandmarks: self.showPoseOverlay
         ).scan()
         let timeline = detected.filteredForBodyOutliers()
         if self.isCancelled { throw Self.cancelledError() }
@@ -344,19 +390,11 @@ private final class FaceBlurProcessor {
   }
 
   private func startExport(asset: AVURLAsset, timeline: PoseTimeline) throws {
-    guard let track = asset.tracks(withMediaType: .video).first else {
-      throw Self.error(8, "The recording does not contain a video track.")
-    }
-    let preferredTransform = track.preferredTransform
     guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
       throw Self.error(3, "This video cannot be prepared for privacy blurring.")
     }
     let composition = AVVideoComposition(asset: asset) { [weak self] request in
-      self?.process(
-        request: request,
-        timeline: timeline,
-        preferredTransform: preferredTransform
-      )
+      self?.process(request: request, timeline: timeline)
     }
     exporter.videoComposition = composition
     exporter.outputURL = outputURL
@@ -371,8 +409,7 @@ private final class FaceBlurProcessor {
 
   private func process(
     request: AVAsynchronousCIImageFilteringRequest,
-    timeline: PoseTimeline,
-    preferredTransform: CGAffineTransform
+    timeline: PoseTimeline
   ) {
     stateLock.lock()
     let shouldCancel = cancelled
@@ -392,6 +429,9 @@ private final class FaceBlurProcessor {
       }
 
       let backgroundMosaicScale = max(24, min(extent.width, extent.height) / 24)
+      let backgroundBlurRadius = Self.openCVGaussianSigma(
+        forRequestedKernel: min(extent.width, extent.height) * 0.055
+      )
       let hardenedBackground = source
         .clampedToExtent()
         .applyingFilter(
@@ -401,7 +441,10 @@ private final class FaceBlurProcessor {
             kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY)
           ]
         )
-        .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 24])
+        .applyingFilter(
+          "CIGaussianBlur",
+          parameters: [kCIInputRadiusKey: backgroundBlurRadius]
+        )
         .cropped(to: extent)
 
       var output = source
@@ -409,10 +452,7 @@ private final class FaceBlurProcessor {
         // Missing/rejected detections intentionally redact the entire frame.
         output = hardenedBackground
         if let normalizedPerson = rects.person {
-          let person = normalizedPerson.sourceImageRect(
-            in: extent,
-            preferredTransform: preferredTransform
-          )
+          let person = normalizedPerson.videoCompositionRect(in: extent)
           guard !person.isEmpty else {
             throw Self.error(6, "The RTMPose person region was empty while blurring the background.")
           }
@@ -420,7 +460,11 @@ private final class FaceBlurProcessor {
             .composited(over: CIImage(color: .black).cropped(to: extent))
             .applyingFilter(
               "CIGaussianBlur",
-              parameters: [kCIInputRadiusKey: max(8, min(extent.width, extent.height) * 0.015)]
+              parameters: [
+                kCIInputRadiusKey: Self.openCVGaussianSigma(
+                  forRequestedKernel: min(extent.width, extent.height) * 0.025
+                )
+              ]
             )
             .cropped(to: extent)
           output = source.applyingFilter(
@@ -436,21 +480,25 @@ private final class FaceBlurProcessor {
       var faceWasDetected = false
       if blurFaces {
         if let normalizedFace = rects.face {
-          let face = normalizedFace.sourceImageRect(
-            in: extent,
-            preferredTransform: preferredTransform
-          )
+          let face = normalizedFace.videoCompositionRect(in: extent)
           if !face.isEmpty {
+            let faceMosaicScale = max(1, face.width / 4)
+            let faceBlurRadius = Self.openCVGaussianSigma(
+              forRequestedKernel: min(face.width, face.height) * 0.18
+            )
             let redacted = source
               .clampedToExtent()
               .applyingFilter(
                 "CIPixellate",
                 parameters: [
-                  kCIInputScaleKey: max(14, min(face.width, face.height) / 4),
+                  kCIInputScaleKey: faceMosaicScale,
                   kCIInputCenterKey: CIVector(x: face.midX, y: face.midY)
                 ]
               )
-              .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 18])
+              .applyingFilter(
+                "CIGaussianBlur",
+                parameters: [kCIInputRadiusKey: faceBlurRadius]
+              )
               .cropped(to: face)
             output = redacted.composited(over: output)
             faceWasDetected = true
@@ -459,6 +507,13 @@ private final class FaceBlurProcessor {
           // Face-only mode must fail closed on a missed pose frame.
           output = hardenedBackground
         }
+      }
+
+
+      if showPoseOverlay, let keyframe = timeline.nearestKeyframe(
+        at: CMTimeGetSeconds(request.compositionTime)
+      ) {
+        output = poseOverlay(over: output, keyframe: keyframe, extent: extent)
       }
 
       stateLock.lock()
@@ -473,6 +528,47 @@ private final class FaceBlurProcessor {
       stateLock.unlock()
       request.finish(with: error)
     }
+  }
+
+
+  private func poseOverlay(
+    over image: CIImage,
+    keyframe: PoseKeyframe,
+    extent: CGRect
+  ) -> CIImage {
+    var output = image
+
+    func compositeBar(_ rect: CGRect, color: CIColor) {
+      let clipped = rect.intersection(extent)
+      guard !clipped.isEmpty, !clipped.isNull else { return }
+      output = CIImage(color: color).cropped(to: clipped)
+        .composited(over: output)
+    }
+
+    func outline(_ normalized: NormalizedRect?, color: CIColor, width: CGFloat) {
+      guard let normalized else { return }
+      let rect = normalized.videoCompositionRect(in: extent)
+      guard !rect.isEmpty else { return }
+      compositeBar(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: width), color: color)
+      compositeBar(CGRect(x: rect.minX, y: rect.maxY - width, width: rect.width, height: width), color: color)
+      compositeBar(CGRect(x: rect.minX, y: rect.minY, width: width, height: rect.height), color: color)
+      compositeBar(CGRect(x: rect.maxX - width, y: rect.minY, width: width, height: rect.height), color: color)
+    }
+
+    outline(keyframe.person, color: CIColor(red: 0, green: 0.85, blue: 1, alpha: 0.95), width: 4)
+    outline(keyframe.face, color: CIColor(red: 1, green: 0.1, blue: 0.85, alpha: 0.95), width: 4)
+
+    for point in keyframe.landmarks ?? [] where point.x.isFinite && point.y.isFinite {
+      let x = extent.minX + CGFloat(point.x) * extent.width
+      let y = extent.minY + (1 - CGFloat(point.y)) * extent.height
+      let confidence = CGFloat(min(1, max(0, point.confidence)))
+      let size: CGFloat = 10
+      compositeBar(
+        CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size),
+        color: CIColor(red: 1 - confidence, green: confidence, blue: 0.05, alpha: 0.98)
+      )
+    }
+    return output
   }
 
   private func startProgressTimer(_ exporter: AVAssetExportSession) {
@@ -602,6 +698,123 @@ public final class FaceBlurModule: Module {
       let processor = self.operations[operationId]
       self.operationsLock.unlock()
       processor?.cancel()
+    }
+
+    AsyncFunction("renderPoseOverlayVideoAsync") {
+      (inputURL: URL, outputURL: URL, operationId: String, promise: Promise) in
+      self.operationsLock.lock()
+      let alreadyRunning = self.operations[operationId] != nil
+      self.operationsLock.unlock()
+      if alreadyRunning {
+        promise.reject("ERR_FACE_BLUR_BUSY", "This recording is already being processed.")
+        return
+      }
+      do {
+        let processor = try FaceBlurProcessor(
+          inputURL: inputURL,
+          outputURL: outputURL,
+          blurFaces: false,
+          blurBackground: false,
+          showPoseOverlay: true,
+          progress: { [weak self] value in
+            DispatchQueue.main.async {
+              self?.sendEvent(progressEvent, ["operationId": operationId, "progress": value])
+            }
+          },
+          completion: { [weak self] result in
+            self?.operationsLock.lock()
+            self?.operations.removeValue(forKey: operationId)
+            self?.operationsLock.unlock()
+            switch result {
+            case .success(let response): promise.resolve(response)
+            case .failure(let error): promise.reject("ERR_FACE_BLUR", error.localizedDescription)
+            }
+          }
+        )
+        self.operationsLock.lock()
+        self.operations[operationId] = processor
+        self.operationsLock.unlock()
+        processor.start()
+      } catch {
+        promise.reject("ERR_FACE_BLUR", error.localizedDescription)
+      }
+    }
+
+    AsyncFunction("diagnoseImageAsync") {
+      (inputURL: URL, outputDirectory: URL, promise: Promise) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          guard inputURL.isFileURL, outputDirectory.isFileURL else {
+            throw NSError(
+              domain: "FaceBlur",
+              code: 40,
+              userInfo: [NSLocalizedDescriptionKey: "Pose diagnostics require local file URLs."]
+            )
+          }
+          guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
+                let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw NSError(
+              domain: "FaceBlur",
+              code: 41,
+              userInfo: [NSLocalizedDescriptionKey: "The diagnostic image could not be decoded."]
+            )
+          }
+          let points = try RTMPoseEngine().analyze(
+            image,
+            diagnosticsDirectory: outputDirectory
+          )
+          promise.resolve([
+            "imageWidth": image.width,
+            "imageHeight": image.height,
+            "keypointCount": points?.count ?? 0,
+            "outputDirectory": outputDirectory.absoluteString
+          ])
+        } catch {
+          promise.reject("ERR_FACE_BLUR_DIAGNOSTICS", error.localizedDescription)
+        }
+      }
+    }
+
+    AsyncFunction("diagnoseVideoRectsAsync") {
+      (inputURL: URL, promise: Promise) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          guard inputURL.isFileURL else {
+            throw NSError(
+              domain: "FaceBlur",
+              code: 42,
+              userInfo: [NSLocalizedDescriptionKey: "Pose diagnostics require a local video URL."]
+            )
+          }
+          let timeline = try RTMPoseVideoScanner(
+            asset: AVURLAsset(url: inputURL),
+            progress: { _ in },
+            isCancelled: { false },
+            includeLandmarks: true
+          ).scan().filteredForBodyOutliers()
+          let frames: [[String: Any]] = timeline.keyframes.enumerated().map { index, keyframe in
+            func values(_ rect: NormalizedRect?) -> [Double]? {
+              guard let rect else { return nil }
+              return [
+                Double(rect.left), Double(rect.top),
+                Double(rect.right), Double(rect.bottom)
+              ]
+            }
+            return [
+              "frameIndex": index,
+              "seconds": keyframe.seconds,
+              "person": values(keyframe.person) as Any,
+              "face": values(keyframe.face) as Any,
+              "keypoints": keyframe.landmarks?.map { point in
+                [Double(point.x), Double(point.y), Double(point.confidence)]
+              } as Any
+            ]
+          }
+          promise.resolve(["frames": frames])
+        } catch {
+          promise.reject("ERR_FACE_BLUR_DIAGNOSTIC", error.localizedDescription)
+        }
+      }
     }
   }
 }

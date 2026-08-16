@@ -30,7 +30,16 @@ struct NormalizedRect {
     )
   }
 
-  func coreImageRect(in extent: CGRect) -> CGRect {
+  /**
+   Maps a display-oriented, normalized top-left box into the Core Image frame.
+
+   `AVVideoComposition(asset:applyingCIFiltersWithHandler:)` supplies its
+   `sourceImage` in render orientation. For a portrait track stored as
+   1280x720 with a 90-degree preferred transform, both `sourceImage.extent`
+   and `request.renderSize` are already 720x1280. Applying the track transform
+   again would rotate the privacy box a second time.
+   */
+  func videoCompositionRect(in extent: CGRect) -> CGRect {
     CGRect(
       x: extent.minX + left * extent.width,
       y: extent.minY + (1 - bottom) * extent.height,
@@ -39,29 +48,4 @@ struct NormalizedRect {
     ).intersection(extent)
   }
 
-  /**
-   Maps a display-oriented pose box back into the encoded Core Image frame.
-
-   RTMPose receives the pixel buffer after `preferredTransform` and an origin
-   normalization. AVVideoComposition supplies the untransformed pixel buffer,
-   so privacy masks must reverse both operations before compositing.
-   */
-  func sourceImageRect(
-    in sourceExtent: CGRect,
-    preferredTransform: CGAffineTransform
-  ) -> CGRect {
-    let transformedExtent = sourceExtent.applying(preferredTransform).integral
-    guard transformedExtent.width > 0, transformedExtent.height > 0 else { return .null }
-
-    let displayExtent = CGRect(origin: .zero, size: transformedExtent.size)
-    let displayRect = coreImageRect(in: displayExtent)
-    let transformedRect = displayRect.offsetBy(
-      dx: transformedExtent.minX,
-      dy: transformedExtent.minY
-    )
-    return transformedRect
-      .applying(preferredTransform.inverted())
-      .standardized
-      .intersection(sourceExtent)
-  }
 }

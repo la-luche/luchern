@@ -89,6 +89,29 @@ private enum RTMPoseError: Error {
   case message(String)
 }
 
+private final class RTMPoseDiagnosticWriter {
+  let directory: URL
+
+  init(directory: URL) throws {
+    self.directory = directory
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+  }
+
+  func write(bytes: [UInt8], name: String) throws {
+    try Data(bytes).write(to: directory.appendingPathComponent(name), options: .atomic)
+  }
+
+  func write(floats: [Float], name: String) throws {
+    let data = floats.withUnsafeBufferPointer { Data(buffer: $0) }
+    try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+  }
+
+  func write(json: [String: Any], name: String) throws {
+    let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+    try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+  }
+}
+
 extension RTMPoseError: LocalizedError {
   var errorDescription: String? {
     switch self {
@@ -123,13 +146,36 @@ final class RTMPoseEngine {
     pose = try ORTSession(env: environment, modelPath: posePath, sessionOptions: nil)
   }
 
-  func analyze(_ image: CGImage) throws -> [RTMPosePoint]? {
+  func analyze(
+    _ image: CGImage,
+    diagnosticsDirectory: URL? = nil
+  ) throws -> [RTMPosePoint]? {
+    let diagnostics = try diagnosticsDirectory.map(RTMPoseDiagnosticWriter.init(directory:))
     let pixels = try PixelImage(image)
-    guard let box = try detectLargestPerson(in: pixels) else { return nil }
-    return try estimatePose(in: pixels, box: box)
+    try diagnostics?.write(bytes: pixels.bytes, name: "display-rgba.bin")
+    guard let box = try detectLargestPerson(in: pixels, diagnostics: diagnostics) else {
+      try diagnostics?.write(json: [
+        "imageWidth": pixels.width,
+        "imageHeight": pixels.height,
+        "detected": false
+      ], name: "result.json")
+      return nil
+    }
+    let points = try estimatePose(in: pixels, box: box, diagnostics: diagnostics)
+    try diagnostics?.write(json: [
+      "imageWidth": pixels.width,
+      "imageHeight": pixels.height,
+      "detected": true,
+      "detectorBox": [box.left, box.top, box.right, box.bottom],
+      "keypoints": points.map { [$0.x, $0.y, CGFloat($0.confidence)] }
+    ], name: "result.json")
+    return points
   }
 
-  private func detectLargestPerson(in image: PixelImage) throws -> DetectionBox? {
+  private func detectLargestPerson(
+    in image: PixelImage,
+    diagnostics: RTMPoseDiagnosticWriter?
+  ) throws -> DetectionBox? {
     let ratio = min(
       Float(Self.detectorHeight) / Float(image.height),
       Float(Self.detectorWidth) / Float(image.width)
@@ -162,6 +208,8 @@ final class RTMPoseEngine {
       }
     }
 
+    try diagnostics?.write(floats: input, name: "detector-input-f32.bin")
+
     let value = try Self.tensor(input, shape: [1, 3, 320, 320])
     let outputs = try detector.run(
       withInputs: ["input": value],
@@ -176,6 +224,8 @@ final class RTMPoseEngine {
       throw RTMPoseError.message("RTMDet returned an unexpected detection shape: \(shape).")
     }
     let values: [Float] = try Self.array(from: dets)
+    try diagnostics?.write(floats: values, name: "detector-output-f32.bin")
+    try diagnostics?.write(json: ["shape": shape], name: "detector-output-shape.json")
     var largest: DetectionBox?
     for index in 0..<shape[1] {
       let offset = index * 5
@@ -193,7 +243,11 @@ final class RTMPoseEngine {
     return largest
   }
 
-  private func estimatePose(in image: PixelImage, box: DetectionBox) throws -> [RTMPosePoint] {
+  private func estimatePose(
+    in image: PixelImage,
+    box: DetectionBox,
+    diagnostics: RTMPoseDiagnosticWriter?
+  ) throws -> [RTMPosePoint] {
     let centerX = (box.left + box.right) * 0.5
     let centerY = (box.top + box.bottom) * 0.5
     var scaleWidth = (box.right - box.left) * 1.25
@@ -224,6 +278,8 @@ final class RTMPoseEngine {
       }
     }
 
+    try diagnostics?.write(floats: input, name: "pose-input-f32.bin")
+
     let value = try Self.tensor(input, shape: [1, 3, 256, 192])
     let outputs = try pose.run(
       withInputs: ["input": value],
@@ -241,6 +297,12 @@ final class RTMPoseEngine {
     }
     let xValues: [Float] = try Self.array(from: xValue)
     let yValues: [Float] = try Self.array(from: yValue)
+    try diagnostics?.write(floats: xValues, name: "simcc-x-f32.bin")
+    try diagnostics?.write(floats: yValues, name: "simcc-y-f32.bin")
+    try diagnostics?.write(
+      json: ["xShape": xShape, "yShape": yShape],
+      name: "pose-output-shapes.json"
+    )
     let xBins = xShape[2]
     let yBins = yShape[2]
 
