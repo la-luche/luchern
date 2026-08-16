@@ -2,6 +2,7 @@ package expo.modules.faceblur
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.opengl.GLES20
@@ -603,6 +604,49 @@ class FaceBlurModule : Module() {
         operation.outputFile.delete()
         rejectCancelled(operationId, operation)
       }
+    }
+
+    AsyncFunction("diagnoseImageAsync") {
+        inputUri: String,
+        outputDirectoryUri: String,
+        promise: Promise,
+      ->
+      val context = appContext.reactContext?.applicationContext
+      val input = localFile(inputUri)
+      val outputDirectory = localFile(outputDirectoryUri)
+      if (context == null || input == null || outputDirectory == null) {
+        promise.reject(
+          "ERR_FACE_BLUR_DIAGNOSTIC",
+          "Pose diagnostics require local input and output URLs.",
+          null,
+        )
+        return@AsyncFunction
+      }
+      Thread({
+        try {
+          val bitmap = BitmapFactory.decodeFile(input.absolutePath)
+            ?: throw IllegalArgumentException("The diagnostic image could not be decoded.")
+          try {
+            val points = RTMPoseEngine(context).use { engine ->
+              engine.analyze(bitmap, outputDirectory)
+            }
+            promise.resolve(mapOf(
+              "imageWidth" to bitmap.width,
+              "imageHeight" to bitmap.height,
+              "keypointCount" to (points?.size ?: 0),
+              "outputDirectory" to outputDirectoryUri,
+            ))
+          } finally {
+            bitmap.recycle()
+          }
+        } catch (error: Throwable) {
+          promise.reject(
+            "ERR_FACE_BLUR_DIAGNOSTIC",
+            error.localizedMessage ?: "Pose diagnostics failed.",
+            error,
+          )
+        }
+      }, "luche-rtmpose-image-diagnostic").start()
     }
   }
 

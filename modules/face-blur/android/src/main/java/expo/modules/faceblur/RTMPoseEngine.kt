@@ -7,8 +7,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.security.MessageDigest
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -26,6 +30,29 @@ private data class DetectionBox(
   val bottom: Float,
 ) {
   val area: Float get() = max(0f, right - left) * max(0f, bottom - top)
+}
+
+private class RTMPoseDiagnosticWriter(private val directory: File) {
+  init {
+    check(directory.mkdirs() || directory.isDirectory) {
+      "Could not create the pose diagnostic directory."
+    }
+  }
+
+  fun writeBytes(values: ByteArray, name: String) {
+    File(directory, name).writeBytes(values)
+  }
+
+  fun writeFloats(values: FloatArray, name: String) {
+    val bytes = ByteBuffer.allocate(values.size * Float.SIZE_BYTES)
+      .order(ByteOrder.LITTLE_ENDIAN)
+    values.forEach(bytes::putFloat)
+    File(directory, name).writeBytes(bytes.array())
+  }
+
+  fun writeJson(value: JSONObject, name: String) {
+    File(directory, name).writeText(value.toString(2) + "\n")
+  }
 }
 
 /** Exact Android implementation of local-pose-debug exp-0012. */
@@ -56,17 +83,42 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
     materializeModel(context, POSE_MODEL, POSE_SHA),
   )
 
-  fun analyze(bitmap: Bitmap): List<RTMPosePoint>? {
+  fun analyze(bitmap: Bitmap, diagnosticsDirectory: File? = null): List<RTMPosePoint>? {
+    val diagnostics = diagnosticsDirectory?.let(::RTMPoseDiagnosticWriter)
     val pixels = IntArray(bitmap.width * bitmap.height)
     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-    val box = detectLargestPerson(pixels, bitmap.width, bitmap.height) ?: return null
-    return estimatePose(pixels, bitmap.width, bitmap.height, box)
+    diagnostics?.writeBytes(rgbaBytes(pixels), "display-rgba.bin")
+    val box = detectLargestPerson(pixels, bitmap.width, bitmap.height, diagnostics)
+    if (box == null) {
+      diagnostics?.writeJson(
+        JSONObject()
+          .put("imageWidth", bitmap.width)
+          .put("imageHeight", bitmap.height)
+          .put("detected", false),
+        "result.json",
+      )
+      return null
+    }
+    val points = estimatePose(pixels, bitmap.width, bitmap.height, box, diagnostics)
+    diagnostics?.writeJson(
+      JSONObject()
+        .put("imageWidth", bitmap.width)
+        .put("imageHeight", bitmap.height)
+        .put("detected", true)
+        .put("detectorBox", JSONArray(listOf(box.left, box.top, box.right, box.bottom)))
+        .put("keypoints", JSONArray(points.map {
+          JSONArray(listOf(it.x, it.y, it.confidence))
+        })),
+      "result.json",
+    )
+    return points
   }
 
   private fun detectLargestPerson(
     pixels: IntArray,
     width: Int,
     height: Int,
+    diagnostics: RTMPoseDiagnosticWriter?,
   ): DetectionBox? {
     val ratio = min(DETECTOR_HEIGHT.toFloat() / height, DETECTOR_WIDTH.toFloat() / width)
     val resizedWidth = (width * ratio).toInt()
@@ -92,6 +144,8 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
       }
     }
 
+    diagnostics?.writeFloats(input, "detector-input-f32.bin")
+
     OnnxTensor.createTensor(
       environment,
       FloatBuffer.wrap(input),
@@ -102,8 +156,17 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
         val batches = result.get("dets").orElseThrow {
           IllegalStateException("RTMDet did not return its detection tensor.")
         }.value as Array<Array<FloatArray>>
+        val detections = batches.firstOrNull().orEmpty()
+        diagnostics?.writeFloats(
+          detections.flatMap { it.asIterable() }.toFloatArray(),
+          "detector-output-f32.bin",
+        )
+        diagnostics?.writeJson(
+          JSONObject().put("shape", JSONArray(listOf(1, detections.size, 5))),
+          "detector-output-shape.json",
+        )
         var largest: DetectionBox? = null
-        for (detection in batches.firstOrNull().orEmpty()) {
+        for (detection in detections) {
           if (detection.size < 5 || detection[4] <= DETECTOR_THRESHOLD) continue
           val box = DetectionBox(
             left = (detection[0] / ratio).coerceIn(0f, (width - 1).toFloat()),
@@ -123,6 +186,7 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
     width: Int,
     height: Int,
     box: DetectionBox,
+    diagnostics: RTMPoseDiagnosticWriter?,
   ): List<RTMPosePoint> {
     val centerX = (box.left + box.right) * 0.5f
     val centerY = (box.top + box.bottom) * 0.5f
@@ -134,7 +198,6 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
     } else {
       scaleWidth = scaleHeight * aspect
     }
-
     val plane = POSE_WIDTH * POSE_HEIGHT
     val input = FloatArray(3 * plane)
     val sample = FloatArray(3)
@@ -151,6 +214,8 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
         input[2 * plane + index] = (sample[0] - means[2]) / stds[2]
       }
     }
+
+    diagnostics?.writeFloats(input, "pose-input-f32.bin")
 
     OnnxTensor.createTensor(
       environment,
@@ -173,6 +238,20 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
         require(xValues.size == KEYPOINT_COUNT && yValues.size == KEYPOINT_COUNT) {
           "RTMPose returned an unexpected keypoint count."
         }
+        diagnostics?.writeFloats(
+          xValues.flatMap { it.asIterable() }.toFloatArray(),
+          "simcc-x-f32.bin",
+        )
+        diagnostics?.writeFloats(
+          yValues.flatMap { it.asIterable() }.toFloatArray(),
+          "simcc-y-f32.bin",
+        )
+        diagnostics?.writeJson(
+          JSONObject()
+            .put("xShape", JSONArray(listOf(1, xValues.size, xValues.firstOrNull()?.size ?: 0)))
+            .put("yShape", JSONArray(listOf(1, yValues.size, yValues.firstOrNull()?.size ?: 0))),
+          "pose-output-shapes.json",
+        )
         return (0 until KEYPOINT_COUNT).map { keypoint ->
           val xMaximum = xValues[keypoint].indices.maxByOrNull { xValues[keypoint][it] } ?: 0
           val yMaximum = yValues[keypoint].indices.maxByOrNull { yValues[keypoint][it] } ?: 0
@@ -188,6 +267,19 @@ internal class RTMPoseEngine(context: Context) : AutoCloseable {
         }
       }
     }
+  }
+
+
+  private fun rgbaBytes(pixels: IntArray): ByteArray {
+    val bytes = ByteArray(pixels.size * 4)
+    pixels.forEachIndexed { index, pixel ->
+      val offset = index * 4
+      bytes[offset] = ((pixel shr 16) and 0xff).toByte()
+      bytes[offset + 1] = ((pixel shr 8) and 0xff).toByte()
+      bytes[offset + 2] = (pixel and 0xff).toByte()
+      bytes[offset + 3] = ((pixel ushr 24) and 0xff).toByte()
+    }
+    return bytes
   }
 
   override fun close() {
