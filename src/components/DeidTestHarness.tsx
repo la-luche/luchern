@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, Text, View } from 'react-native';
 
 import {
   addProgressListener,
@@ -125,7 +125,7 @@ export function DeidTestHarness() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+      <View style={{ flex: 1, padding: 20, gap: 14 }}>
         <Text style={{ fontSize: 24, fontWeight: '700' }}>Luche de-identification device test</Text>
         <Text accessibilityLabel="deid-test-status" style={{ fontSize: 16 }}>{status}</Text>
         <Text style={{ fontSize: 15 }}>Progress: {Math.round(progress * 100)}%</Text>
@@ -151,7 +151,7 @@ export function DeidTestHarness() {
             <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>Run again</Text>
           </Pressable>
         )}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

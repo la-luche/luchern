@@ -34,6 +34,9 @@ export const en = {
     logoutAndDelete: 'Log out and delete videos',
     logoutFailedTitle: 'We couldn’t log you out',
     logoutFailedBody: 'Luche couldn’t finish removing the files from this device. Please try again.',
+    logoutSessionFailedTitle: 'The session is still open',
+    logoutSessionFailedBody:
+      'Your videos were removed, but Luche could not clear the sign-in session from this device. Please try again.',
     deleteAccount: 'Delete account',
     deletingAccount: 'Deleting…',
     deleteWarningTitle: 'Delete your Luche account?',

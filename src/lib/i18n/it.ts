@@ -33,6 +33,9 @@ export const it: Dict = {
     logoutAndDelete: 'Esci ed elimina i video',
     logoutFailedTitle: 'Impossibile uscire dall’account',
     logoutFailedBody: 'Non è stato possibile completare la rimozione dei file da questo dispositivo. Riprova.',
+    logoutSessionFailedTitle: 'La sessione è ancora aperta',
+    logoutSessionFailedBody:
+      'I video sono stati rimossi, ma Luche non ha potuto eliminare la sessione di accesso da questo dispositivo. Riprova.',
     deleteAccount: 'Elimina account',
     deletingAccount: 'Eliminazione…',
     deleteWarningTitle: 'Eliminare il tuo account Luche?',

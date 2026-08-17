@@ -2,12 +2,12 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
+import { ResilientVideo } from '../../components/ResilientVideo';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
 import { formatAnalysisFailureReason, localizeSeverity, useT } from '../../lib/i18n';
@@ -16,13 +16,6 @@ import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
-
-function RecordingVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer({ uri }, (videoPlayer) => {
-    videoPlayer.loop = true;
-  });
-  return <VideoView player={player} style={{ flex: 1 }} nativeControls contentFit="contain" />;
-}
 
 /** Detail for one recording: retained local playback or cloud playback on demand. */
 export default function ResultDetailScreen() {
@@ -41,6 +34,7 @@ export default function ResultDetailScreen() {
   const [remoteVideoUri, setRemoteVideoUri] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const automaticVideoRetry = useRef(0);
 
   const loadRemoteVideo = useCallback(async () => {
     if (!recording?.jobId) {
@@ -63,10 +57,25 @@ export default function ResultDetailScreen() {
   }, [recording?.jobId]);
 
   useEffect(() => {
+    automaticVideoRetry.current = 0;
     setRemoteVideoUri(null);
     setVideoError(false);
     if (recording && !recording.videoUri) void loadRemoteVideo();
   }, [loadRemoteVideo, recording?.id, recording?.videoUri]);
+
+  const handlePlaybackError = useCallback(() => {
+    if (!recording?.videoUri && automaticVideoRetry.current < 1) {
+      automaticVideoRetry.current += 1;
+      void loadRemoteVideo();
+      return;
+    }
+    setVideoError(true);
+  }, [loadRemoteVideo, recording?.videoUri]);
+
+  const handlePlaybackReady = useCallback(() => {
+    automaticVideoRetry.current = 0;
+    setVideoError(false);
+  }, []);
 
   if (loading) {
     return (
@@ -180,9 +189,11 @@ export default function ResultDetailScreen() {
         {/* Video playback. */}
         <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
           {recording.videoUri || remoteVideoUri ? (
-            <RecordingVideo
+            <ResilientVideo
               key={recording.videoUri ?? remoteVideoUri}
               uri={recording.videoUri ?? remoteVideoUri!}
+              onError={handlePlaybackError}
+              onReady={handlePlaybackReady}
             />
           ) : (
             <View className="flex-1 items-center justify-center px-6">

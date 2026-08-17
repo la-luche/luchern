@@ -16,6 +16,7 @@ import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
 import { usePrivacyBlurSettings } from '../lib/faceBlurSettings';
+import { signOutFromDevice } from '../lib/logout';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
 
@@ -34,7 +35,7 @@ export default function AboutScreen() {
   const t = useT();
   const router = useRouter();
   const { user } = useUser();
-  const { signOut } = useClerk();
+  const { setActive, signOut } = useClerk();
   const { logoutAndPurge, restoreAfterFailedPurge, unuploadedCount } = useRecordings();
   const privacyBlur = usePrivacyBlurSettings();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -63,13 +64,25 @@ export default function AboutScreen() {
     setLoggingOut(true);
     try {
       await logoutAndPurge();
-      // AuthGate unmounts the entire Stack as soon as Clerk signs out. Reset
-      // the route while that navigator still exists; dispatching afterward
-      // produces React Navigation's unhandled REPLACE(index) warning.
-      router.replace('/');
-      await signOut();
     } catch {
+      await restoreAfterFailedPurge().catch(() => {});
       Alert.alert(t.profile.logoutFailedTitle, t.profile.logoutFailedBody);
+      setLoggingOut(false);
+      return;
+    }
+
+    // AuthGate unmounts the entire Stack as soon as Clerk signs out. Reset the
+    // route while that navigator still exists; dispatching afterward produces
+    // React Navigation's unhandled REPLACE(index) warning.
+    router.replace('/');
+    try {
+      await signOutFromDevice({
+        remoteSignOut: () => signOut(),
+        deactivateSession: () => setActive({ session: null }),
+      });
+    } catch {
+      await restoreAfterFailedPurge().catch(() => {});
+      Alert.alert(t.profile.logoutSessionFailedTitle, t.profile.logoutSessionFailedBody);
       setLoggingOut(false);
     }
   };

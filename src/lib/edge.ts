@@ -6,6 +6,15 @@ export const CANONICAL_CLERK_ORIGIN = 'https://clerk.luche.ai';
 export const RUSSIAN_CLERK_PROXY = `${RUSSIAN_EDGE_ORIGIN}/__clerk`;
 
 let preferredApiBase = PRIMARY_API_BASE;
+let clerkTransportFallback: (() => boolean) | null = null;
+
+// A merely eventual 200 is not a healthy direct Clerk path: on affected
+// Russian networks the environment request completes in ~600 ms, then one of
+// the parallel bootstrap streams hangs. Give direct a short first chance; a
+// normal/VPN route wins it, while a throttled path selects the Russian edge
+// before ClerkProvider can enter a half-restored state.
+const DIRECT_CLERK_PROBE_TIMEOUT_MS = 400;
+const RUSSIAN_CLERK_PROBE_TIMEOUT_MS = 3_500;
 
 export function apiBaseOrder(): string[] {
   const other = preferredApiBase === PRIMARY_API_BASE
@@ -22,6 +31,21 @@ export function preferApiBase(base: string): void {
 
 export function resetPreferredApiBase(): void {
   preferredApiBase = PRIMARY_API_BASE;
+}
+
+/** RootLayout owns ClerkProvider; API code uses this hook when token refresh
+ * proves that the direct Clerk route is unusable after its health GET passed. */
+export function registerClerkTransportFallback(
+  fallback: () => boolean,
+): () => void {
+  clerkTransportFallback = fallback;
+  return () => {
+    if (clerkTransportFallback === fallback) clerkTransportFallback = null;
+  };
+}
+
+export function requestClerkTransportFallback(): boolean {
+  return clerkTransportFallback?.() ?? false;
 }
 
 async function probe(url: string, timeoutMs: number): Promise<boolean> {
@@ -42,24 +66,23 @@ async function probe(url: string, timeoutMs: number): Promise<boolean> {
 }
 
 /**
- * Pick the Clerk transport before mounting ClerkProvider. Both probes start at
- * once, but the canonical Frontend API gets a short preference window. This
- * keeps the normal path direct while automatically selecting the Russian
- * same-instance proxy when the direct route is blocked.
+ * Pick the Clerk transport before mounting ClerkProvider. Always try the
+ * canonical Frontend API first, then fall back to the Russian same-instance
+ * proxy. If both health checks are inconclusive, prefer the fallback: a later
+ * explicit retry can still switch back to direct.
  */
 export async function selectClerkProxyUrl(): Promise<string | undefined> {
-  const direct = probe(`${CANONICAL_CLERK_ORIGIN}/v1/environment`, 1_600);
-  const russian = probe(`${RUSSIAN_CLERK_PROXY}/v1/environment`, 3_500);
-
-  if (await direct) {
+  if (await probe(`${CANONICAL_CLERK_ORIGIN}/v1/environment`, DIRECT_CLERK_PROBE_TIMEOUT_MS)) {
     preferApiBase(PRIMARY_API_BASE);
     return undefined;
   }
-  if (await russian) {
+  if (await probe(`${RUSSIAN_CLERK_PROXY}/v1/environment`, RUSSIAN_CLERK_PROBE_TIMEOUT_MS)) {
     preferApiBase(RUSSIAN_API_BASE);
     return RUSSIAN_CLERK_PROXY;
   }
-  return undefined;
+
+  preferApiBase(RUSSIAN_API_BASE);
+  return RUSSIAN_CLERK_PROXY;
 }
 
 function routeStorageUrl(url: string): string {

@@ -30,7 +30,17 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 /** Email one-time-code sign-in / sign-up (the instance's only first factor). */
-function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
+type AuthRetry = { email: string; nonce: number };
+
+function SignInScreen({
+  authRetry,
+  onAuthRetryConsumed,
+  onDirectAuthFailure,
+}: {
+  authRetry: AuthRetry | null;
+  onAuthRetryConsumed: () => void;
+  onDirectAuthFailure: (email: string) => boolean;
+}) {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
@@ -39,10 +49,11 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(authRetry?.email ?? '');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const startedAuthRetry = useRef<number | null>(null);
 
   const ready = siLoaded && suLoaded;
   const offline = net.isConnected === false || net.isInternetReachable === false;
@@ -50,18 +61,22 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
   const showFailure = useCallback(
     (retry: () => void, error?: unknown) => {
       if (offline || isConnectionFailure(error)) {
-        showConnectionAlert(t, offline ? retry : onRetryAuth, offline);
+        showConnectionAlert(t, retry, offline);
         return true;
       }
       return false;
     },
-    [offline, onRetryAuth, t],
+    [offline, t],
   );
 
-  async function sendCode() {
-    if (!ready || !email.trim() || busy) return;
+  const sendCodeForEmail = useCallback(async (
+    emailValue: string,
+    allowRussianFallback: boolean,
+  ) => {
+    const identifier = emailValue.trim();
+    if (!ready || !identifier || busy) return;
     if (offline) {
-      showConnectionAlert(t, () => void sendCode(), true);
+      showConnectionAlert(t, () => void sendCodeForEmail(identifier, false), true);
       return;
     }
     setBusy(true);
@@ -71,7 +86,7 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
       try {
         // Existing account → sign-in with an emailed code.
         si = await withTimeout(
-          signIn!.create({ identifier: email.trim() }),
+          signIn!.create({ identifier }),
           AUTH_REQUEST_TIMEOUT_MS,
           'send sign-in code',
         );
@@ -91,7 +106,7 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
         // No account yet → sign up with the same emailed-code flow. Production
         // Clerk intentionally has username and password authentication disabled.
         await withTimeout(
-          signUp!.create({ emailAddress: email.trim() }),
+          signUp!.create({ emailAddress: identifier }),
           AUTH_REQUEST_TIMEOUT_MS,
           'create account',
         );
@@ -104,13 +119,48 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
       }
       setStep('code');
     } catch (e: any) {
-      if (!showFailure(() => void sendCode(), e)) {
+      if (
+        allowRussianFallback
+        && isConnectionFailure(e)
+        && onDirectAuthFailure(identifier)
+      ) {
+        console.info('CLERK_TRANSPORT direct_auth_failed fallback=russian');
+        return;
+      }
+      if (!showFailure(() => void sendCodeForEmail(identifier, false), e)) {
         setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.sendCodeError);
       }
     } finally {
       setBusy(false);
     }
-  }
+  }, [
+    busy,
+    offline,
+    onDirectAuthFailure,
+    ready,
+    showFailure,
+    signIn,
+    signUp,
+    t,
+  ]);
+
+  const sendCode = useCallback(
+    () => sendCodeForEmail(email, true),
+    [email, sendCodeForEmail],
+  );
+
+  useEffect(() => {
+    if (
+      !ready
+      || !authRetry
+      || startedAuthRetry.current === authRetry.nonce
+    ) return;
+
+    startedAuthRetry.current = authRetry.nonce;
+    setEmail(authRetry.email);
+    onAuthRetryConsumed();
+    void sendCodeForEmail(authRetry.email, false);
+  }, [authRetry, onAuthRetryConsumed, ready, sendCodeForEmail]);
 
   async function verify() {
     if (!ready || !code.trim() || busy) return;
@@ -244,9 +294,17 @@ function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
 export function AuthGate({
   children,
   onRetryAuth,
+  authRetry,
+  onAuthRetryConsumed,
+  onDirectBootstrapFailure,
+  onDirectAuthFailure,
 }: {
   children: React.ReactNode;
   onRetryAuth: () => void;
+  authRetry: AuthRetry | null;
+  onAuthRetryConsumed: () => void;
+  onDirectBootstrapFailure: () => boolean;
+  onDirectAuthFailure: (email: string) => boolean;
 }) {
   const { isLoaded, isSignedIn } = useAuth();
   const net = useNetworkState();
@@ -267,9 +325,10 @@ export function AuthGate({
 
   useEffect(() => {
     if (isLoaded || (!offline && !slow) || alertShown.current) return;
+    if (!offline && slow && onDirectBootstrapFailure()) return;
     alertShown.current = true;
     showConnectionAlert(t, onRetryAuth, offline);
-  }, [isLoaded, offline, onRetryAuth, slow, t]);
+  }, [isLoaded, offline, onDirectBootstrapFailure, onRetryAuth, slow, t]);
 
   useEffect(() => {
     if (isSignedIn && !onboarded.current) {
@@ -298,6 +357,14 @@ export function AuthGate({
       </Centered>
     );
   }
-  if (!isSignedIn) return <SignInScreen onRetryAuth={onRetryAuth} />;
+  if (!isSignedIn) {
+    return (
+      <SignInScreen
+        authRetry={authRetry}
+        onAuthRetryConsumed={onAuthRetryConsumed}
+        onDirectAuthFailure={onDirectAuthFailure}
+      />
+    );
+  }
   return <>{children}</>;
 }

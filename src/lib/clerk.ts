@@ -1,3 +1,4 @@
+import { resourceCache as createClerkResourceCache } from '@clerk/clerk-expo/resource-cache';
 import * as SecureStore from 'expo-secure-store';
 
 /**
@@ -14,14 +15,23 @@ export const CLERK_PUBLISHABLE_KEY =
 const secureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };
+const CLERK_CLIENT_JWT_KEY = '__clerk_client_jwt';
+const CLERK_SESSION_RESOURCE_PREFIXES = [
+  '__clerk_cache_client_',
+  '__clerk_cache_session_jwt_',
+];
+const RESOURCE_CLEAR_TIMEOUT_MS = 5_000;
 const memoryTokens = new Map<string, string>();
 let secureStoreWrites = Promise.resolve();
+type ClerkResourceStore = ReturnType<typeof createClerkResourceCache>;
+const clerkResourceStores = new Map<string, ClerkResourceStore>();
 
-function enqueueSecureStoreWrite(write: () => Promise<void>) {
-  secureStoreWrites = secureStoreWrites
+function enqueueSecureStoreWrite(write: () => Promise<void>): Promise<void> {
+  const queued = secureStoreWrites
     .catch(() => {})
-    .then(write)
-    .catch(() => {});
+    .then(write);
+  secureStoreWrites = queued.catch(() => {});
+  return queued;
 }
 
 /**
@@ -46,12 +56,55 @@ export const clerkTokenCache = {
   },
   saveToken(key: string, value: string) {
     memoryTokens.set(key, value);
-    enqueueSecureStoreWrite(() => SecureStore.setItemAsync(key, value, secureStoreOptions));
+    void enqueueSecureStoreWrite(() => SecureStore.setItemAsync(key, value, secureStoreOptions));
     return Promise.resolve();
   },
   clearToken(key: string) {
     memoryTokens.delete(key);
-    enqueueSecureStoreWrite(() => SecureStore.deleteItemAsync(key, secureStoreOptions));
-    return Promise.resolve();
+    return enqueueSecureStoreWrite(() => SecureStore.deleteItemAsync(key, secureStoreOptions));
   },
 };
+
+/**
+ * Clerk's offline resource cache stores the signed-in client separately from
+ * the bearer token. Track the opaque cache keys Clerk actually uses so an
+ * offline logout can clear both without depending on package-internal paths.
+ */
+export function clerkResourceCache(): ClerkResourceStore {
+  const store = createClerkResourceCache();
+  return {
+    async get(key: string) {
+      clerkResourceStores.set(key, store);
+      return store.get(key);
+    },
+    async set(key: string, value: string) {
+      clerkResourceStores.set(key, store);
+      return store.set(key, value);
+    },
+  };
+}
+
+function isSessionResourceKey(key: string): boolean {
+  return CLERK_SESSION_RESOURCE_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+async function clearResourceKey(key: string, store: ClerkResourceStore): Promise<void> {
+  await store.set(key, '');
+  const deadline = Date.now() + RESOURCE_CLEAR_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if ((await store.get(key)) === '') return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Clerk resource cache did not clear: ${key}`);
+}
+
+/** Durably remove every local credential/snapshot that can restore a session. */
+export async function clearClerkLocalSession(): Promise<void> {
+  const resourceClears = [...clerkResourceStores.entries()]
+    .filter(([key]) => isSessionResourceKey(key))
+    .map(([key, store]) => clearResourceKey(key, store));
+  await Promise.all([
+    clerkTokenCache.clearToken(CLERK_CLIENT_JWT_KEY),
+    ...resourceClears,
+  ]);
+}

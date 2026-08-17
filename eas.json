@@ -6,7 +6,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "android": {
         "buildType": "apk"
       }

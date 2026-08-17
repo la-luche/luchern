@@ -1,8 +1,7 @@
 import { ClerkProvider } from '@clerk/clerk-expo';
-import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -12,12 +11,13 @@ import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
-import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
+import { CLERK_PUBLISHABLE_KEY, clerkResourceCache, clerkTokenCache } from '../lib/clerk';
 import {
   PRIMARY_API_BASE,
   RUSSIAN_API_BASE,
   RUSSIAN_CLERK_PROXY,
   preferApiBase,
+  registerClerkTransportFallback,
   selectClerkProxyUrl,
 } from '../lib/edge';
 import { LanguageProvider } from '../lib/i18n';
@@ -33,6 +33,13 @@ import { ToastHost } from '../lib/toast';
 export default function RootLayout() {
   const [clerkAttempt, setClerkAttempt] = useState(0);
   const [clerkProxyUrl, setClerkProxyUrl] = useState<string | undefined | null>(null);
+  const [authRetry, setAuthRetry] = useState<{ email: string; nonce: number } | null>(null);
+  const authRetryNonce = useRef(0);
+  const clerkProxyUrlRef = useRef<string | undefined | null>(null);
+
+  useEffect(() => {
+    clerkProxyUrlRef.current = clerkProxyUrl;
+  }, [clerkProxyUrl]);
 
   const configureClerkTransport = useCallback(async () => {
     setClerkProxyUrl(null);
@@ -46,13 +53,44 @@ export default function RootLayout() {
   }, [configureClerkTransport]);
 
   const switchClerkTransport = useCallback(() => {
+    setAuthRetry(null);
     setClerkProxyUrl((current) => {
-      const next = current ? undefined : RUSSIAN_CLERK_PROXY;
-      preferApiBase(next ? RUSSIAN_API_BASE : PRIMARY_API_BASE);
+      // Direct gets one chance. Once fallback is active, Retry remounts the
+      // same Russian provider to clear SDK state; it never bounces a Russian
+      // user back onto the route that was already proven unreliable.
+      const next = current === undefined ? RUSSIAN_CLERK_PROXY : current;
+      preferApiBase(next === RUSSIAN_CLERK_PROXY ? RUSSIAN_API_BASE : PRIMARY_API_BASE);
       return next;
     });
     setClerkAttempt((attempt) => attempt + 1);
   }, []);
+
+  const switchDirectClerkToRussian = useCallback((): boolean => {
+    if (clerkProxyUrlRef.current !== undefined) return false;
+
+    clerkProxyUrlRef.current = RUSSIAN_CLERK_PROXY;
+    preferApiBase(RUSSIAN_API_BASE);
+    setClerkProxyUrl(RUSSIAN_CLERK_PROXY);
+    setClerkAttempt((attempt) => attempt + 1);
+    return true;
+  }, []);
+
+  useEffect(
+    () => registerClerkTransportFallback(switchDirectClerkToRussian),
+    [switchDirectClerkToRussian],
+  );
+
+  const retryAuthViaRussianEdge = useCallback((email: string): boolean => {
+    // `undefined` is Clerk's direct transport. Never bounce a failed Russian
+    // request back to the route that was already blocked.
+    if (clerkProxyUrl !== undefined) return false;
+
+    authRetryNonce.current += 1;
+    setAuthRetry({ email, nonce: authRetryNonce.current });
+    return switchDirectClerkToRussian();
+  }, [clerkProxyUrl, switchDirectClerkToRussian]);
+
+  const consumeAuthRetry = useCallback(() => setAuthRetry(null), []);
 
   if (process.env.EXPO_PUBLIC_DEID_TEST_MODE === '1') {
     return (
@@ -80,14 +118,20 @@ export default function RootLayout() {
       publishableKey={CLERK_PUBLISHABLE_KEY}
       proxyUrl={clerkProxyUrl}
       tokenCache={clerkTokenCache}
-      __experimental_resourceCache={resourceCache}
+      __experimental_resourceCache={clerkResourceCache}
     >
       <LanguageProvider>
         <SafeAreaProvider>
           <StatusBar style="dark" />
           <DemoVideoProvider>
             <DisclaimerGate>
-              <AuthGate onRetryAuth={switchClerkTransport}>
+              <AuthGate
+                onRetryAuth={switchClerkTransport}
+                authRetry={authRetry}
+                onAuthRetryConsumed={consumeAuthRetry}
+                onDirectBootstrapFailure={switchDirectClerkToRussian}
+                onDirectAuthFailure={retryAuthViaRussianEdge}
+              >
                 <View className="flex-1 bg-white">
                   <TopBanners />
                   <SafeAreaProvider style={{ flex: 1 }}>

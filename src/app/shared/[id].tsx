@@ -1,11 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
+import { ResilientVideo } from '../../components/ResilientVideo';
 import { Screen } from '../../components/Screen';
 import { isConnectionFailure, showConnectionAlert } from '../../lib/connectivity';
 import { localizeSeverity, useT } from '../../lib/i18n';
@@ -16,21 +16,6 @@ import {
 import { getTest } from '../../lib/tests';
 import { METHODOLOGY_URL } from '../../lib/links';
 import { COLORS } from '../../lib/theme';
-
-function RemoteVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer({ uri }, (videoPlayer) => {
-    videoPlayer.loop = true;
-  });
-
-  return (
-    <VideoView
-      player={player}
-      style={{ flex: 1 }}
-      nativeControls
-      contentFit="contain"
-    />
-  );
-}
 
 function formatGrade(detail: SharedTrialDetail): string {
   const grade = detail.updrs_grade
@@ -48,6 +33,7 @@ export default function SharedResultDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const loadRequest = useRef(0);
+  const automaticVideoRetry = useRef(0);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(trialId) || trialId <= 0) return;
@@ -71,11 +57,26 @@ export default function SharedResultDetailScreen() {
   }, [t, trialId]);
 
   useEffect(() => {
+    automaticVideoRetry.current = 0;
     void load();
     return () => {
       ++loadRequest.current;
     };
   }, [load]);
+
+  const handlePlaybackError = useCallback(() => {
+    if (automaticVideoRetry.current < 1) {
+      automaticVideoRetry.current += 1;
+      void load();
+      return;
+    }
+    setError(true);
+  }, [load]);
+
+  const handlePlaybackReady = useCallback(() => {
+    automaticVideoRetry.current = 0;
+    setError(false);
+  }, []);
 
   if (!Number.isInteger(trialId) || trialId <= 0) return <Redirect href="/results" />;
 
@@ -105,7 +106,12 @@ export default function SharedResultDetailScreen() {
 
         <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
           {detail ? (
-            <RemoteVideo key={detail.video_url} uri={detail.video_url} />
+            <ResilientVideo
+              key={detail.video_url}
+              uri={detail.video_url}
+              onError={handlePlaybackError}
+              onReady={handlePlaybackReady}
+            />
           ) : (
             <View className="flex-1 items-center justify-center px-6">
               {loading ? (

@@ -34,6 +34,9 @@ export const ru: Dict = {
     logoutAndDelete: 'Выйти и удалить видео',
     logoutFailedTitle: 'Не удалось выйти',
     logoutFailedBody: 'Не удалось полностью удалить файлы с устройства. Попробуйте ещё раз.',
+    logoutSessionFailedTitle: 'Сеанс всё ещё открыт',
+    logoutSessionFailedBody:
+      'Видео удалены, но Luche не смог удалить данные сеанса с этого устройства. Попробуйте ещё раз.',
     deleteAccount: 'Удалить аккаунт',
     deletingAccount: 'Удаляем…',
     deleteWarningTitle: 'Удалить аккаунт Luche?',

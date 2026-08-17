@@ -13,7 +13,11 @@ import {
   ApiNetworkError,
   apiFetch,
 } from '../api';
-import { preferApiBase, resetPreferredApiBase } from '../edge';
+import {
+  preferApiBase,
+  registerClerkTransportFallback,
+  resetPreferredApiBase,
+} from '../edge';
 
 function response({
   ok = true,
@@ -69,6 +73,87 @@ describe('mobile API transport', () => {
       `${API_BASE}/patients`,
       `${FALLBACK_API_BASE}/patients`,
     ]);
+  });
+
+  it('retries a safe read on a fresh Russian-edge connection', async () => {
+    preferApiBase(FALLBACK_API_BASE);
+    (global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(response({ json: { patients: [] } }));
+
+    await apiFetch('/patients');
+
+    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
+      `${FALLBACK_API_BASE}/patients`,
+      `${FALLBACK_API_BASE}/patients`,
+    ]);
+  });
+
+  it('switches ClerkProvider when signed-in token refresh cannot use direct Clerk', async () => {
+    const fallback = jest.fn(() => true);
+    const unregister = registerClerkTransportFallback(fallback);
+    (getClerkInstance as jest.Mock).mockReturnValue({
+      session: { getToken: jest.fn().mockRejectedValue(new TypeError('Network request failed')) },
+    });
+
+    await expect(apiFetch('/trials/299')).rejects.toBeInstanceOf(ApiNetworkError);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    unregister();
+  });
+
+  it('retries one failed Clerk token refresh before surfacing an error', async () => {
+    const getToken = jest.fn()
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce('fresh-token');
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: { getToken } });
+    (global.fetch as jest.Mock).mockResolvedValue(response({ json: { patients: [] } }));
+
+    await apiFetch('/patients');
+
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/patients'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer fresh-token' }),
+      }),
+    );
+  });
+
+  it('deduplicates simultaneous Clerk token refreshes', async () => {
+    let resolveToken!: (token: string) => void;
+    const pendingToken = new Promise<string>((resolve) => { resolveToken = resolve; });
+    const getToken = jest.fn().mockReturnValue(pendingToken);
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: { getToken } });
+    (global.fetch as jest.Mock).mockResolvedValue(response({ json: {} }));
+
+    const requests = Promise.all([apiFetch('/patients'), apiFetch('/me/trials')]);
+    resolveToken('shared-token');
+    await requests;
+
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the token and repeats a request after an explicit 401', async () => {
+    const getToken = jest.fn()
+      .mockResolvedValueOnce('expired-token')
+      .mockResolvedValueOnce('fresh-token');
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: { getToken } });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(response({ ok: false, status: 401 }))
+      .mockResolvedValueOnce(response({ json: { patients: [] } }));
+
+    await apiFetch('/patients');
+
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect((global.fetch as jest.Mock).mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer fresh-token' }),
+      }),
+    );
   });
 
   it('does not repeat an ambiguous POST but sends its retry to the other edge', async () => {

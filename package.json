@@ -61,6 +61,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "postinstall": "node ./scripts/patch-react-native-touch-handler.js",
     "test": "jest"
   },
   "private": true,
