@@ -153,20 +153,26 @@ private final class RTMPoseVideoScanner {
         throw Self.cancelledError()
       }
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-      let image = try displayImage(pixelBuffer: pixelBuffer, transform: track.preferredTransform)
-      let landmarks = try engine.analyze(image)
-      let seconds = max(0, CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample)))
-      let person = landmarks.flatMap(personRect)
-      let frameAspect = CGFloat(image.width) / CGFloat(max(1, image.height))
-      keyframes.append(PoseKeyframe(
-        seconds: seconds,
-        person: person,
-        face: landmarks.flatMap { points in
-          person.flatMap { faceRect(from: points, person: $0, frameAspect: frameAspect) }
-        },
-        landmarks: includeLandmarks ? landmarks : nil
-      ))
-      progress(scanProgressShare * min(1, seconds / duration))
+      let keyframe = try autoreleasepool { () throws -> PoseKeyframe in
+        let image = try displayImage(
+          pixelBuffer: pixelBuffer,
+          transform: track.preferredTransform
+        )
+        let landmarks = try engine.analyze(image)
+        let seconds = max(0, CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample)))
+        let person = landmarks.flatMap(personRect)
+        let frameAspect = CGFloat(image.width) / CGFloat(max(1, image.height))
+        return PoseKeyframe(
+          seconds: seconds,
+          person: person,
+          face: landmarks.flatMap { points in
+            person.flatMap { faceRect(from: points, person: $0, frameAspect: frameAspect) }
+          },
+          landmarks: includeLandmarks ? landmarks : nil
+        )
+      }
+      keyframes.append(keyframe)
+      progress(scanProgressShare * min(1, keyframe.seconds / duration))
     }
 
     if reader.status == .failed {

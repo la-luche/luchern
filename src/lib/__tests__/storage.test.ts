@@ -44,7 +44,7 @@ jest.mock('../cloud', () => ({
 import { AnalysisNeedsRetryError, createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
 import { __testing } from '../storage';
 
-const { driveOnce } = __testing;
+const { driveOnce, recoverInterruptedPrivacyWork } = __testing;
 
 const baseRec = () => ({
   id: 'r1',
@@ -52,6 +52,48 @@ const baseRec = () => ({
   createdAt: 0,
   videoUri: 'file:///clip.mp4',
   status: 'uploading' as const,
+});
+
+describe('recoverInterruptedPrivacyWork', () => {
+  it('turns interrupted local privacy work into an explicit retry state', () => {
+    const interrupted = {
+      ...baseRec(),
+      status: 'preparing' as const,
+      faceBlurRequested: true,
+      backgroundBlurRequested: true,
+      privacyBlurState: 'processing' as const,
+      privacyBlurProgress: 0.3,
+    };
+
+    const result = recoverInterruptedPrivacyWork([interrupted]);
+
+    expect(result.recoveredIds).toEqual(['r1']);
+    expect(result.recordings[0]).toMatchObject({
+      status: 'blur_failed',
+      privacyBlurState: 'failed',
+      permanent: false,
+      resumable: false,
+    });
+    expect(result.recordings[0]?.privacyBlurProgress).toBeUndefined();
+  });
+
+  it('leaves uploads, completed privacy work, and ordinary failures unchanged', () => {
+    const recordings = [
+      baseRec(),
+      {
+        ...baseRec(),
+        id: 'r2',
+        status: 'processing' as const,
+        privacyBlurState: 'completed' as const,
+      },
+      { ...baseRec(), id: 'r3', status: 'failed' as const, resumable: true },
+    ];
+
+    expect(recoverInterruptedPrivacyWork(recordings)).toEqual({
+      recordings,
+      recoveredIds: [],
+    });
+  });
 });
 
 describe('driveOnce', () => {

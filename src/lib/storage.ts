@@ -598,6 +598,32 @@ function cancelOperations() {
   for (const operation of operations.values()) operation.controller.abort();
 }
 
+function recoverInterruptedPrivacyWork(recordings: Recording[]): {
+  recordings: Recording[];
+  recoveredIds: string[];
+} {
+  const recoveredIds: string[] = [];
+  const recovered = recordings.map((recording) => {
+    const privacyIncomplete =
+      (recording.faceBlurRequested || recording.backgroundBlurRequested) &&
+      recording.privacyBlurState !== 'completed' &&
+      recording.privacyBlurState !== 'bypassed';
+    if (recording.status !== 'preparing' || !privacyIncomplete) return recording;
+
+    recoveredIds.push(recording.id);
+    return {
+      ...recording,
+      status: 'blur_failed' as const,
+      privacyBlurState: 'failed' as const,
+      privacyBlurProgress: undefined,
+      failReason: 'Video privacy processing was interrupted.',
+      permanent: false,
+      resumable: false,
+    };
+  });
+  return { recordings: recovered, recoveredIds };
+}
+
 async function activateAccount(accountId: string): Promise<void> {
   if (activeAccountId === accountId && cache) return;
   if (requestedAccountId === accountId && activationPromise) return activationPromise;
@@ -610,7 +636,15 @@ async function activateAccount(accountId: string): Promise<void> {
     suspended = false;
     cache = null;
     loadPromise = null;
-    await ensureLoaded();
+    const loaded = await ensureLoaded();
+    const recovered = recoverInterruptedPrivacyWork(loaded);
+    if (recovered.recoveredIds.length > 0) {
+      cache = recovered.recordings;
+      await persist();
+      recordDiagnostic('privacy_blur_interrupted', {
+        recordingIds: recovered.recoveredIds.join(','),
+      });
+    }
     emit();
     // Local storage is enough to render the list/empty state. Do not make the
     // screen's loading flag wait on a network request that can be slow or
@@ -899,4 +933,4 @@ export function useRecordings() {
   };
 }
 
-export const __testing = { driveOnce };
+export const __testing = { driveOnce, recoverInterruptedPrivacyWork };
