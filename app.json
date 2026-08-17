@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Luche Deid Test",
+    "name": "Luche",
     "slug": "luche-rn",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,11 +9,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/images/luche-app-icon.png",
-      "bundleIdentifier": "ai.getferal.luche.deidtest",
-      "appleTeamId": "C896A4TZRB",
+      "bundleIdentifier": "ai.getferal.luche",
+      "appleTeamId": "CVR9PS8CQG",
       "supportsTablet": false,
       "infoPlist": {
-        "CFBundleDisplayName": "Luche Deid Test",
+        "CFBundleDisplayName": "Luche",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
