@@ -13,7 +13,13 @@ import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
-import { selectClerkProxyUrl } from '../lib/edge';
+import {
+  PRIMARY_API_BASE,
+  RUSSIAN_API_BASE,
+  RUSSIAN_CLERK_PROXY,
+  preferApiBase,
+  selectClerkProxyUrl,
+} from '../lib/edge';
 import { LanguageProvider } from '../lib/i18n';
 import { ToastHost } from '../lib/toast';
 
@@ -38,6 +44,15 @@ export default function RootLayout() {
   useEffect(() => {
     void configureClerkTransport();
   }, [configureClerkTransport]);
+
+  const switchClerkTransport = useCallback(() => {
+    setClerkProxyUrl((current) => {
+      const next = current ? undefined : RUSSIAN_CLERK_PROXY;
+      preferApiBase(next ? RUSSIAN_API_BASE : PRIMARY_API_BASE);
+      return next;
+    });
+    setClerkAttempt((attempt) => attempt + 1);
+  }, []);
 
   if (process.env.EXPO_PUBLIC_DEID_TEST_MODE === '1') {
     return (
@@ -72,7 +87,7 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <DemoVideoProvider>
             <DisclaimerGate>
-              <AuthGate onRetryAuth={() => void configureClerkTransport()}>
+              <AuthGate onRetryAuth={switchClerkTransport}>
                 <View className="flex-1 bg-white">
                   <TopBanners />
                   <SafeAreaProvider style={{ flex: 1 }}>

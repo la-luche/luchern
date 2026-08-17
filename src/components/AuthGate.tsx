@@ -30,7 +30,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 /** Email one-time-code sign-in / sign-up (the instance's only first factor). */
-function SignInScreen() {
+function SignInScreen({ onRetryAuth }: { onRetryAuth: () => void }) {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
@@ -50,12 +50,12 @@ function SignInScreen() {
   const showFailure = useCallback(
     (retry: () => void, error?: unknown) => {
       if (offline || isConnectionFailure(error)) {
-        showConnectionAlert(t, retry, offline);
+        showConnectionAlert(t, offline ? retry : onRetryAuth, offline);
         return true;
       }
       return false;
     },
-    [offline, t],
+    [offline, onRetryAuth, t],
   );
 
   async function sendCode() {
@@ -298,6 +298,6 @@ export function AuthGate({
       </Centered>
     );
   }
-  if (!isSignedIn) return <SignInScreen />;
+  if (!isSignedIn) return <SignInScreen onRetryAuth={onRetryAuth} />;
   return <>{children}</>;
 }

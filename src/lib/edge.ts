@@ -48,8 +48,8 @@ async function probe(url: string, timeoutMs: number): Promise<boolean> {
  * same-instance proxy when the direct route is blocked.
  */
 export async function selectClerkProxyUrl(): Promise<string | undefined> {
-  const direct = probe(`${CANONICAL_CLERK_ORIGIN}/.well-known/jwks.json`, 1_600);
-  const russian = probe(`${RUSSIAN_CLERK_PROXY}/.well-known/jwks.json`, 3_500);
+  const direct = probe(`${CANONICAL_CLERK_ORIGIN}/v1/environment`, 1_600);
+  const russian = probe(`${RUSSIAN_CLERK_PROXY}/v1/environment`, 3_500);
 
   if (await direct) {
     preferApiBase(PRIMARY_API_BASE);
