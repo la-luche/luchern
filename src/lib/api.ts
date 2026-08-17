@@ -5,6 +5,14 @@ import { Platform } from 'react-native';
 import { CLERK_PUBLISHABLE_KEY } from './clerk';
 import { isConnectionFailure, withTimeout } from './connectivity';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import {
+  CANONICAL_CLERK_ORIGIN,
+  PRIMARY_API_BASE,
+  RUSSIAN_API_BASE,
+  apiBaseOrder,
+  preferApiBase,
+  routeRussianStorageUrls,
+} from './edge';
 
 /**
  * Backend client: base URL + auth.
@@ -13,10 +21,12 @@ import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
  * retired anonymous device identity would silently put uploads in a different
  * account and break cross-device history.
  */
-export const API_BASE = 'https://feral-api.ratemepls.com';
-const CLERK_FRONTEND_API = 'https://clerk.luche.ai';
+export const API_BASE = PRIMARY_API_BASE;
+export const FALLBACK_API_BASE = RUSSIAN_API_BASE;
 
 const REQUEST_TIMEOUT_MS = 8_000;
+const AUTOMATIC_FALLBACK_METHODS = new Set(['GET', 'HEAD']);
+const RETRYABLE_GATEWAY_STATUSES = new Set([502, 503, 504]);
 
 export class ApiError extends Error {
   constructor(
@@ -67,38 +77,60 @@ async function fetchWithNetworkDiagnostic(
   path: string,
   reqId: string,
   init: RequestInit,
-): Promise<Response> {
+): Promise<{ response: Response; endpoint: string }> {
   const method = (init.method ?? 'GET').toUpperCase();
-  const controller = new AbortController();
-  let timedOut = false;
-  const abortFromCaller = () => controller.abort();
-  if (init.signal?.aborted) controller.abort();
-  else init.signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  const endpoints = apiBaseOrder();
+  const canRepeat = AUTOMATIC_FALLBACK_METHODS.has(method);
+  let lastError: ApiNetworkError | ApiTimeoutError | undefined;
 
-  try {
-    return await fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (init.signal?.aborted) throw error;
-    const wrapped = timedOut
-      ? new ApiTimeoutError(path, reqId, API_BASE)
-      : new ApiNetworkError(path, reqId, error, API_BASE);
-    recordDiagnostic('api_network_error', {
-      requestId: reqId,
-      method,
-      path,
-      endpoint: API_BASE,
-      timedOut,
-      ...diagnosticErrorData(wrapped),
-    });
-    throw wrapped;
-  } finally {
-    clearTimeout(timer);
-    init.signal?.removeEventListener('abort', abortFromCaller);
+  for (const [index, endpoint] of endpoints.entries()) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort();
+    if (init.signal?.aborted) controller.abort();
+    else init.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${endpoint}${path}`, { ...init, signal: controller.signal });
+      if (
+        canRepeat
+        && RETRYABLE_GATEWAY_STATUSES.has(response.status)
+        && index < endpoints.length - 1
+      ) {
+        preferApiBase(endpoints[index + 1]);
+        continue;
+      }
+      preferApiBase(endpoint);
+      return { response, endpoint };
+    } catch (error) {
+      if (init.signal?.aborted) throw error;
+      const wrapped = timedOut
+        ? new ApiTimeoutError(path, reqId, endpoint)
+        : new ApiNetworkError(path, reqId, error, endpoint);
+      lastError = wrapped;
+      const fallbackAvailable = index < endpoints.length - 1;
+      if (fallbackAvailable) preferApiBase(endpoints[index + 1]);
+      recordDiagnostic('api_network_error', {
+        requestId: reqId,
+        method,
+        path,
+        endpoint,
+        timedOut,
+        fallbackAvailable: canRepeat && fallbackAvailable,
+        ...diagnosticErrorData(wrapped),
+      });
+      if (!canRepeat || !fallbackAvailable) throw wrapped;
+    } finally {
+      clearTimeout(timer);
+      init.signal?.removeEventListener('abort', abortFromCaller);
+    }
   }
+
+  throw lastError ?? new ApiNetworkError(path, reqId, null);
 }
 
 const lastErrorDiagnostic = new Map<string, number>();
@@ -147,7 +179,7 @@ export async function ensurePatientOnboarded(): Promise<void> {
   if (!token) return;
   const reqId = requestId();
   const path = '/me/onboard';
-  const res = await fetchWithNetworkDiagnostic(path, reqId, {
+  const { response: res } = await fetchWithNetworkDiagnostic(path, reqId, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -178,11 +210,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     token = await getToken();
   } catch (error) {
     if (isConnectionFailure(error)) {
-      throw new ApiNetworkError(path, reqId, error, CLERK_FRONTEND_API);
+      throw new ApiNetworkError(path, reqId, error, CANONICAL_CLERK_ORIGIN);
     }
     throw error;
   }
-  const res = await fetchWithNetworkDiagnostic(path, reqId, {
+  const { response: res, endpoint } = await fetchWithNetworkDiagnostic(path, reqId, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -197,5 +229,5 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     recordApiError(reqId, init.method ?? 'GET', path, res.status);
     throw new ApiError(res.status, path, body, init.method ?? 'GET', reqId);
   }
-  return (await res.json()) as T;
+  return routeRussianStorageUrls((await res.json()) as T, endpoint);
 }

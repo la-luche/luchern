@@ -2,8 +2,8 @@ import { ClerkProvider } from '@clerk/clerk-expo';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '../global.css';
@@ -13,6 +13,7 @@ import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
+import { selectClerkProxyUrl } from '../lib/edge';
 import { LanguageProvider } from '../lib/i18n';
 import { ToastHost } from '../lib/toast';
 
@@ -25,6 +26,18 @@ import { ToastHost } from '../lib/toast';
 // every backend call carries a Clerk session token.
 export default function RootLayout() {
   const [clerkAttempt, setClerkAttempt] = useState(0);
+  const [clerkProxyUrl, setClerkProxyUrl] = useState<string | undefined | null>(null);
+
+  const configureClerkTransport = useCallback(async () => {
+    setClerkProxyUrl(null);
+    const proxyUrl = await selectClerkProxyUrl();
+    setClerkProxyUrl(proxyUrl);
+    setClerkAttempt((attempt) => attempt + 1);
+  }, []);
+
+  useEffect(() => {
+    void configureClerkTransport();
+  }, [configureClerkTransport]);
 
   if (process.env.EXPO_PUBLIC_DEID_TEST_MODE === '1') {
     return (
@@ -35,10 +48,22 @@ export default function RootLayout() {
     );
   }
 
+  if (clerkProxyUrl === null) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <View className="flex-1 items-center justify-center bg-white">
+          <ActivityIndicator />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <ClerkProvider
-      key={clerkAttempt}
+      key={`${clerkAttempt}:${clerkProxyUrl ?? 'direct'}`}
       publishableKey={CLERK_PUBLISHABLE_KEY}
+      proxyUrl={clerkProxyUrl}
       tokenCache={clerkTokenCache}
       __experimental_resourceCache={resourceCache}
     >
@@ -47,7 +72,7 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <DemoVideoProvider>
             <DisclaimerGate>
-              <AuthGate onRetryAuth={() => setClerkAttempt((attempt) => attempt + 1)}>
+              <AuthGate onRetryAuth={() => void configureClerkTransport()}>
                 <View className="flex-1 bg-white">
                   <TopBanners />
                   <SafeAreaProvider style={{ flex: 1 }}>

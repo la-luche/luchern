@@ -8,10 +8,12 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 
 import {
   API_BASE,
+  FALLBACK_API_BASE,
   ApiError,
   ApiNetworkError,
   apiFetch,
 } from '../api';
+import { preferApiBase, resetPreferredApiBase } from '../edge';
 
 function response({
   ok = true,
@@ -35,6 +37,7 @@ function response({
 describe('mobile API transport', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetPreferredApiBase();
     (getClerkInstance as jest.Mock).mockReturnValue({
       session: { getToken: jest.fn().mockResolvedValue('token') },
     });
@@ -55,11 +58,30 @@ describe('mobile API transport', () => {
     );
   });
 
-  it('never repeats a request after an ambiguous network failure', async () => {
-    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+  it('falls back to the Russian edge for a safe read', async () => {
+    (global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(response({ json: { patients: [] } }));
 
-    await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiNetworkError);
+    await apiFetch('/patients');
+
+    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
+      `${API_BASE}/patients`,
+      `${FALLBACK_API_BASE}/patients`,
+    ]);
+  });
+
+  it('does not repeat an ambiguous POST but sends its retry to the other edge', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
+
+    await expect(apiFetch('/invites', { method: 'POST' })).rejects.toBeInstanceOf(
+      ApiNetworkError,
+    );
     expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce(response({ json: { token: '1234' } }));
+    await apiFetch('/invites', { method: 'POST' });
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(`${FALLBACK_API_BASE}/invites`);
   });
 
   it('surfaces HTTP responses without trying another hostname', async () => {
@@ -67,5 +89,23 @@ describe('mobile API transport', () => {
 
     await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiError);
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes a Russian-edge presigned URL through its R2 proxy', async () => {
+    preferApiBase(FALLBACK_API_BASE);
+    (global.fetch as jest.Mock).mockResolvedValueOnce(response({
+      json: {
+        upload_url: 'https://account.r2.cloudflarestorage.com/prod-svet/a.mp4?sig=abc',
+        upload_id: 'upload-1',
+      },
+    }));
+
+    const result = await apiFetch<{ upload_url: string }>('/uploads/request-url', {
+      method: 'POST',
+    });
+
+    expect(result.upload_url).toBe(
+      'https://xn--e1alyq.xn--p1ai/r2/prod-svet/a.mp4?sig=abc',
+    );
   });
 });
