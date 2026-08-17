@@ -11,19 +11,6 @@ import * as SecureStore from 'expo-secure-store';
 export const CLERK_PUBLISHABLE_KEY =
   'pk_live_Y2xlcmsubHVjaGUuYWkk';
 
-/**
- * Direct Luche edge used by clients in regions where Cloudflare is throttled
- * or blocked. Keep the override for local/staging work; production builds use
- * the Hetzner gateway by default.
- */
-export const LUCHE_GATEWAY_BASE = (
-  process.env.EXPO_PUBLIC_LUCHE_GATEWAY_URL ?? 'https://gateway.luche.ai'
-).replace(/\/+$/, '');
-
-export const CLERK_PROXY_URL = (
-  process.env.EXPO_PUBLIC_CLERK_PROXY_URL ?? 'https://luche.ai/__clerk'
-).replace(/\/+$/, '');
-
 const secureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };

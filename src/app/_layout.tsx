@@ -12,7 +12,7 @@ import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
-import { CLERK_PROXY_URL, CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
+import { CLERK_PUBLISHABLE_KEY, clerkTokenCache } from '../lib/clerk';
 import { LanguageProvider } from '../lib/i18n';
 import { ToastHost } from '../lib/toast';
 
@@ -39,7 +39,6 @@ export default function RootLayout() {
     <ClerkProvider
       key={clerkAttempt}
       publishableKey={CLERK_PUBLISHABLE_KEY}
-      proxyUrl={CLERK_PROXY_URL}
       tokenCache={clerkTokenCache}
       __experimental_resourceCache={resourceCache}
     >

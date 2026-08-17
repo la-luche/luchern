@@ -2,7 +2,7 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-import { CLERK_PROXY_URL, CLERK_PUBLISHABLE_KEY, LUCHE_GATEWAY_BASE } from './clerk';
+import { CLERK_PUBLISHABLE_KEY } from './clerk';
 import { isConnectionFailure, withTimeout } from './connectivity';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 
@@ -13,12 +13,10 @@ import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
  * retired anonymous device identity would silently put uploads in a different
  * account and break cross-device history.
  */
-export const API_BASE = `${LUCHE_GATEWAY_BASE}/api`;
-export const LEGACY_API_BASE = 'https://feral-api.ratemepls.com';
+export const API_BASE = 'https://feral-api.ratemepls.com';
+const CLERK_FRONTEND_API = 'https://clerk.luche.ai';
 
 const REQUEST_TIMEOUT_MS = 8_000;
-const FALLBACK_TIMEOUT_MS = 5_000;
-const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE']);
 
 export class ApiError extends Error {
   constructor(
@@ -71,47 +69,36 @@ async function fetchWithNetworkDiagnostic(
   init: RequestInit,
 ): Promise<Response> {
   const method = (init.method ?? 'GET').toUpperCase();
-  const endpoints = IDEMPOTENT_METHODS.has(method)
-    ? [...new Set([API_BASE, LEGACY_API_BASE])]
-    : [API_BASE];
-  let lastError: unknown;
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort();
+  if (init.signal?.aborted) controller.abort();
+  else init.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
-  for (const [index, endpoint] of endpoints.entries()) {
-    const controller = new AbortController();
-    let timedOut = false;
-    const abortFromCaller = () => controller.abort();
-    if (init.signal?.aborted) controller.abort();
-    else init.signal?.addEventListener('abort', abortFromCaller, { once: true });
-    const timeoutMs = index === 0 ? REQUEST_TIMEOUT_MS : FALLBACK_TIMEOUT_MS;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
-
-    try {
-      return await fetch(`${endpoint}${path}`, { ...init, signal: controller.signal });
-    } catch (error) {
-      if (init.signal?.aborted) throw error;
-      const wrapped = timedOut
-        ? new ApiTimeoutError(path, reqId, endpoint)
-        : new ApiNetworkError(path, reqId, error, endpoint);
-      lastError = wrapped;
-      recordDiagnostic('api_network_error', {
-        requestId: reqId,
-        method,
-        path,
-        endpoint,
-        timedOut,
-        fallbackAvailable: index < endpoints.length - 1,
-        ...diagnosticErrorData(wrapped),
-      });
-    } finally {
-      clearTimeout(timer);
-      init.signal?.removeEventListener('abort', abortFromCaller);
-    }
+  try {
+    return await fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
+    const wrapped = timedOut
+      ? new ApiTimeoutError(path, reqId, API_BASE)
+      : new ApiNetworkError(path, reqId, error, API_BASE);
+    recordDiagnostic('api_network_error', {
+      requestId: reqId,
+      method,
+      path,
+      endpoint: API_BASE,
+      timedOut,
+      ...diagnosticErrorData(wrapped),
+    });
+    throw wrapped;
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener('abort', abortFromCaller);
   }
-
-  throw lastError ?? new ApiNetworkError(path, reqId, null);
 }
 
 const lastErrorDiagnostic = new Map<string, number>();
@@ -130,7 +117,8 @@ function recordApiError(requestId: string, method: string, path: string, status:
 /** Clerk session JWT when signed in, else null. Freshly minted (Clerk refreshes). */
 async function clerkToken(): Promise<string | null> {
   try {
-    // The singleton is configured by ClerkProvider, including its proxy URL.
+    // The singleton is configured by ClerkProvider using Clerk's canonical
+    // custom Frontend API encoded by the production publishable key.
     const clerk = getClerkInstance({ publishableKey: CLERK_PUBLISHABLE_KEY });
     if (clerk.session) {
       return await withTimeout(
@@ -190,7 +178,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     token = await getToken();
   } catch (error) {
     if (isConnectionFailure(error)) {
-      throw new ApiNetworkError(path, reqId, error, CLERK_PROXY_URL);
+      throw new ApiNetworkError(path, reqId, error, CLERK_FRONTEND_API);
     }
     throw error;
   }

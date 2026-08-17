@@ -8,7 +8,6 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 
 import {
   API_BASE,
-  LEGACY_API_BASE,
   ApiError,
   ApiNetworkError,
   apiFetch,
@@ -42,7 +41,7 @@ describe('mobile API transport', () => {
     global.fetch = jest.fn();
   });
 
-  it('uses the Luche product domain first', async () => {
+  it('uses the canonical Pi backend', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(response({ json: { patients: [] } }));
 
     await apiFetch('/patients');
@@ -56,25 +55,10 @@ describe('mobile API transport', () => {
     );
   });
 
-  it('falls back to the legacy hostname for safe reads after a transport failure', async () => {
-    (global.fetch as jest.Mock)
-      .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValueOnce(response({ json: { patients: [] } }));
-
-    await apiFetch('/patients');
-
-    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
-      `${API_BASE}/patients`,
-      `${LEGACY_API_BASE}/patients`,
-    ]);
-  });
-
-  it('never repeats a POST on another hostname after an ambiguous network failure', async () => {
+  it('never repeats a request after an ambiguous network failure', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
 
-    await expect(apiFetch('/invites', { method: 'POST' })).rejects.toBeInstanceOf(
-      ApiNetworkError,
-    );
+    await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiNetworkError);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
