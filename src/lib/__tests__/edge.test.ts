@@ -1,3 +1,5 @@
+jest.mock('../diagnostics', () => ({ recordDiagnostic: jest.fn() }));
+
 import {
   PRIMARY_API_BASE,
   RUSSIAN_API_BASE,
@@ -53,18 +55,18 @@ describe('edge selection', () => {
       .mockResolvedValueOnce({ ok: true });
 
     const selected = selectClerkProxyUrl();
-    await jest.advanceTimersByTimeAsync(400);
+    await jest.advanceTimersByTimeAsync(2000);
 
     await expect(selected).resolves.toBe(RUSSIAN_CLERK_PROXY);
     expect(apiBaseOrder()[0]).toBe(RUSSIAN_API_BASE);
     jest.useRealTimers();
   });
 
-  it('uses the Russian fallback when both health checks are inconclusive', async () => {
+  it('stays on the canonical route when both health checks are inconclusive', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('blocked'));
 
-    await expect(selectClerkProxyUrl()).resolves.toBe(RUSSIAN_CLERK_PROXY);
-    expect(apiBaseOrder()[0]).toBe(RUSSIAN_API_BASE);
+    await expect(selectClerkProxyUrl()).resolves.toBeUndefined();
+    expect(apiBaseOrder()[0]).toBe(PRIMARY_API_BASE);
   });
 
   it('lets token refresh request a ClerkProvider transport switch', () => {

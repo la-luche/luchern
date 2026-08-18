@@ -55,9 +55,22 @@ export function recordDiagnostic(event: string, data?: DiagnosticEvent['data']):
 
 export function diagnosticErrorData(error: unknown): Record<string, string | number> {
   if (!(error instanceof Error)) return { error: String(error).slice(0, 240) };
-  const extra = error as Error & { status?: number; path?: string; requestId?: string };
+  const extra = error as Error & {
+    status?: number;
+    path?: string;
+    requestId?: string;
+    cause?: unknown;
+  };
+  // The wrapper's message is generic ("network request failed"); the platform
+  // error underneath ("Connection reset by peer", "Unable to resolve host")
+  // is what distinguishes a dead server from DNS from no connectivity.
+  const cause = extra.cause;
+  const causeText = cause instanceof Error
+    ? `${cause.name}: ${cause.message}`
+    : cause != null ? String(cause) : undefined;
   return {
     error: error.name,
+    ...(causeText ? { cause: causeText.slice(0, 240) } : {}),
     // Status/path/request id are enough for support, so do not persist an API
     // response body on device.
     ...(extra.status == null ? { message: error.message.slice(0, 240) } : {}),

@@ -13,7 +13,6 @@ import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
 import { CLERK_PUBLISHABLE_KEY, clerkResourceCache, clerkTokenCache } from '../lib/clerk';
 import {
-  PRIMARY_API_BASE,
   RUSSIAN_API_BASE,
   RUSSIAN_CLERK_PROXY,
   preferApiBase,
@@ -54,16 +53,11 @@ export default function RootLayout() {
 
   const switchClerkTransport = useCallback(() => {
     setAuthRetry(null);
-    setClerkProxyUrl((current) => {
-      // Direct gets one chance. Once fallback is active, Retry remounts the
-      // same Russian provider to clear SDK state; it never bounces a Russian
-      // user back onto the route that was already proven unreliable.
-      const next = current === undefined ? RUSSIAN_CLERK_PROXY : current;
-      preferApiBase(next === RUSSIAN_CLERK_PROXY ? RUSSIAN_API_BASE : PRIMARY_API_BASE);
-      return next;
-    });
-    setClerkAttempt((attempt) => attempt + 1);
-  }, []);
+    // Retry assumes nothing about which route is healthy: re-run the health
+    // probes so a session stuck on a dead route (in either direction) can
+    // escape without a cold start.
+    void configureClerkTransport();
+  }, [configureClerkTransport]);
 
   const switchDirectClerkToRussian = useCallback((): boolean => {
     if (clerkProxyUrlRef.current !== undefined) return false;
@@ -75,9 +69,23 @@ export default function RootLayout() {
     return true;
   }, []);
 
+  const reprobeAt = useRef(0);
+  const recoverClerkTransport = useCallback((): boolean => {
+    if (clerkProxyUrlRef.current === null) return false; // probe already running
+    if (clerkProxyUrlRef.current === undefined) return switchDirectClerkToRussian();
+    // A token-refresh connection failure on the Russian proxy may mean the
+    // edge itself is down. Re-run the probes so the session can escape; the
+    // cooldown keeps transient blips from remount-thrashing ClerkProvider.
+    const now = Date.now();
+    if (now - reprobeAt.current < 30_000) return false;
+    reprobeAt.current = now;
+    void configureClerkTransport();
+    return true;
+  }, [configureClerkTransport, switchDirectClerkToRussian]);
+
   useEffect(
-    () => registerClerkTransportFallback(switchDirectClerkToRussian),
-    [switchDirectClerkToRussian],
+    () => registerClerkTransportFallback(recoverClerkTransport),
+    [recoverClerkTransport],
   );
 
   const retryAuthViaRussianEdge = useCallback((email: string): boolean => {

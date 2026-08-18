@@ -75,7 +75,7 @@ describe('mobile API transport', () => {
     ]);
   });
 
-  it('retries a safe read on a fresh Russian-edge connection', async () => {
+  it('falls back to the primary base when a Russian-edge read fails', async () => {
     preferApiBase(FALLBACK_API_BASE);
     (global.fetch as jest.Mock)
       .mockRejectedValueOnce(new TypeError('Network request failed'))
@@ -85,8 +85,38 @@ describe('mobile API transport', () => {
 
     expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
       `${FALLBACK_API_BASE}/patients`,
+      `${API_BASE}/patients`,
+    ]);
+  });
+
+  it('retries a Russian-edge read on a fresh connection when primary is blocked', async () => {
+    preferApiBase(FALLBACK_API_BASE);
+    (global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(response({ json: { patients: [] } }));
+
+    await apiFetch('/patients');
+
+    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
+      `${FALLBACK_API_BASE}/patients`,
+      `${API_BASE}/patients`,
       `${FALLBACK_API_BASE}/patients`,
     ]);
+  });
+
+  it('sends the retry of a failed Russian-edge POST to the primary base', async () => {
+    preferApiBase(FALLBACK_API_BASE);
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
+
+    await expect(apiFetch('/invites', { method: 'POST' })).rejects.toBeInstanceOf(
+      ApiNetworkError,
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce(response({ json: { token: '1234' } }));
+    await apiFetch('/invites', { method: 'POST' });
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(`${API_BASE}/invites`);
   });
 
   it('switches ClerkProvider when signed-in token refresh cannot use direct Clerk', async () => {

@@ -1,7 +1,10 @@
+import { getNetworkStateAsync } from 'expo-network';
+
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import {
   PRIMARY_API_BASE,
   RUSSIAN_API_BASE,
+  apiBaseLabel,
   apiBaseOrder,
   preferApiBase,
 } from './edge';
@@ -9,10 +12,11 @@ import {
 /**
  * Shared transport policy for every JSON API request.
  *
- * Safe reads may move from the direct API to the Russian edge. Once the
- * Russian route has been selected, a failed read retries that same route on a
- * fresh connection instead of bouncing back to a route already known to be
- * blocked. Writes are never repeated after an ambiguous transport failure.
+ * Safe reads always get one attempt on each base, preferred first — no route
+ * is ever a dead end. The base that answers becomes the preferred base for
+ * subsequent requests (reads and writes alike). Writes are never repeated
+ * after an ambiguous transport failure, but a failed write flips the
+ * preference so its next explicit retry tries the other base.
  */
 export const REQUEST_TIMEOUT_MS = 8_000;
 
@@ -42,14 +46,37 @@ export class ApiTimeoutError extends Error {
   }
 }
 
+/** Attach the device's network state to the event when it can be read fast;
+ * a support log line must never wait on (or fail with) the state lookup. */
+function recordNetworkErrorDiagnostic(
+  data: Record<string, string | number | boolean>,
+): void {
+  void Promise.race([
+    getNetworkStateAsync(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+  ])
+    .catch(() => null)
+    .then((state) => {
+      recordDiagnostic('api_network_error', {
+        ...data,
+        ...(state
+          ? {
+              networkType: String(state.type ?? 'unknown'),
+              internetReachable: state.isInternetReachable ?? null,
+            }
+          : {}),
+      });
+    });
+}
+
 function attemptOrder(method: string): string[] {
   const [preferred, fallback] = apiBaseOrder();
   if (!SAFE_REPEAT_METHODS.has(method)) return [preferred];
-
-  // Direct gets one chance before the known-good Russian fallback. On the
-  // Russian route, retry once there; the edge closes every response/socket.
-  if (preferred === RUSSIAN_API_BASE) return [preferred, preferred];
-  return [preferred, fallback];
+  // Third slot restores the fresh-connection retry the Russian edge needs
+  // (it closes every response/socket, so a first attempt on a reused socket
+  // can fail spuriously) — and gives the preferred base the same courtesy
+  // when the other base is blocked outright.
+  return [preferred, fallback, preferred];
 }
 
 export async function fetchWithTransport(
@@ -91,17 +118,18 @@ export async function fetchWithTransport(
 
       if (hasNextAttempt) {
         preferApiBase(endpoints[index + 1]);
-      } else if (endpoint === PRIMARY_API_BASE) {
+      } else {
         // A write cannot be replayed safely, but its next explicit user retry
-        // should use the fallback instead of repeating the failed direct path.
-        preferApiBase(RUSSIAN_API_BASE);
+        // should try the other base instead of repeating the one that failed.
+        preferApiBase(endpoint === PRIMARY_API_BASE ? RUSSIAN_API_BASE : PRIMARY_API_BASE);
       }
 
-      recordDiagnostic('api_network_error', {
+      recordNetworkErrorDiagnostic({
         requestId: reqId,
         method,
         path,
-        endpoint,
+        endpoint: apiBaseLabel(endpoint),
+        attempt: index + 1,
         timedOut,
         retryScheduled: hasNextAttempt,
         ...diagnosticErrorData(wrapped),
