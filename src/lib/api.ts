@@ -9,6 +9,7 @@ import {
   CANONICAL_CLERK_ORIGIN,
   PRIMARY_API_BASE,
   RUSSIAN_API_BASE,
+  preferApiBase,
   requestClerkTransportFallback,
   routeRussianStorageUrls,
 } from './edge';
@@ -171,11 +172,28 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       continue;
     }
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
+      const body = await withTimeout(res.text(), REQUEST_TIMEOUT_MS, 'read error body')
+        .catch(() => '');
       recordApiError(reqId, init.method ?? 'GET', path, res.status);
       throw new ApiError(res.status, path, body, init.method ?? 'GET', reqId);
     }
-    return routeRussianStorageUrls((await res.json()) as T, endpoint);
+    try {
+      // fetch resolves on HEADERS; a network that stalls mid-body (RU DPI
+      // partial blocking) would otherwise hang res.json() forever with the
+      // transport's abort timer already cleared.
+      const parsed = (await withTimeout(
+        res.json(),
+        REQUEST_TIMEOUT_MS,
+        'read response body',
+      )) as T;
+      return routeRussianStorageUrls(parsed, endpoint);
+    } catch (error) {
+      // Headers arrived but the body stalled or arrived garbled — this base
+      // is compromised despite "succeeding". Demote it so the caller's retry
+      // takes the other route instead of re-stalling here.
+      preferApiBase(endpoint === API_BASE ? FALLBACK_API_BASE : API_BASE);
+      throw new ApiNetworkError(path, reqId, error, endpoint);
+    }
   }
 
   throw new ApiError(401, path, '', init.method ?? 'GET', reqId);

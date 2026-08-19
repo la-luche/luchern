@@ -1,6 +1,12 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { ApiError, apiFetch } from './api';
+import {
+  PRIMARY_API_BASE,
+  RUSSIAN_API_BASE,
+  RUSSIAN_EDGE_ORIGIN,
+  preferApiBase,
+} from './edge';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import type { CloudResult } from './types';
 import type { EvaluatedSide, TestId } from './tests';
@@ -83,6 +89,18 @@ function noScoreReasons(trial: TrialDetail): string[] {
  * before the separate createAnalysisTrial call, so a transient API failure
  * never forces the large file to be sent again.
  */
+/**
+ * The raw R2 PUT bypasses fetchWithTransport, so a blocked or stalled R2
+ * path must flip the API-base preference by hand: the retry's presign then
+ * arrives via the other base and routeRussianStorageUrls yields the
+ * alternate upload route (direct R2 ↔ the edge's /r2 proxy). Without this,
+ * a healthy primary API + blocked R2 is an infinite retry loop.
+ */
+function demoteUploadRoute(uploadUrl: string): void {
+  const viaEdgeProxy = uploadUrl.startsWith(RUSSIAN_EDGE_ORIGIN);
+  preferApiBase(viaEdgeProxy ? PRIMARY_API_BASE : RUSSIAN_API_BASE);
+}
+
 export async function uploadRecording(
   videoUri: string,
   testId: TestId,
@@ -162,6 +180,7 @@ export async function uploadRecording(
       ...diagnosticErrorData(error),
     });
     if (signal?.aborted) throw new OperationCancelledError();
+    demoteUploadRoute(req.upload_url);
     if (stalled) throw new Error('upload stalled for 45 seconds');
     throw error;
   } finally {
@@ -176,6 +195,9 @@ export async function uploadRecording(
       status: put.status,
       ...(r2Code ? { r2Code } : {}),
     });
+    // A real R2 rejection carries an XML <Code>; an error status without one
+    // is a middlebox/DPI block page — reroute the retry.
+    if (!r2Code) demoteUploadRoute(req.upload_url);
     throw new Error(`upload failed (${put.status})`);
   }
   onProgress?.(1);

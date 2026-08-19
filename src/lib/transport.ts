@@ -21,7 +21,6 @@ import {
 export const REQUEST_TIMEOUT_MS = 8_000;
 
 const SAFE_REPEAT_METHODS = new Set(['GET', 'HEAD']);
-const RETRYABLE_GATEWAY_STATUSES = new Set([502, 503, 504]);
 
 export class ApiNetworkError extends Error {
   constructor(
@@ -102,11 +101,21 @@ export async function fetchWithTransport(
     try {
       const response = await fetch(`${endpoint}${path}`, { ...init, signal: controller.signal });
       const hasNextAttempt = index < endpoints.length - 1;
-      if (RETRYABLE_GATEWAY_STATUSES.has(response.status) && hasNextAttempt) {
+      if (response.ok) {
+        // Only a genuine success promotes a base. A middlebox can answer
+        // with 403/451/5xx on one route while the other is healthy — an
+        // HTTP error must never mark the route preferred.
+        preferApiBase(endpoint);
+        return { response, endpoint };
+      }
+      // 401 is an auth semantic (token refresh upstream), identical on both
+      // bases; everything else on a safe read gets the next attempt so a
+      // DPI/gateway error page on one route is not a dead end. The final
+      // attempt's response is surfaced so real app errors still reach callers.
+      if (response.status !== 401 && hasNextAttempt && SAFE_REPEAT_METHODS.has(method)) {
         preferApiBase(endpoints[index + 1]);
         continue;
       }
-      preferApiBase(endpoint);
       return { response, endpoint };
     } catch (error) {
       if (init.signal?.aborted) throw error;

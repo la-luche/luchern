@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { recordDiagnostic } from './diagnostics';
 
 export const PRIMARY_API_BASE = 'https://feral-api.ratemepls.com';
@@ -16,17 +18,41 @@ export function apiBaseLabel(base: string | undefined): string {
   return base == null ? 'unknown' : 'other';
 }
 
+/** The transport the last session PROVED out. A probe pass is necessary but
+ * not sufficient for direct on throttled RU networks (the probe can succeed
+ * while the bootstrap streams hang), so the watchdog's verdict from a past
+ * session outranks a probe win — see selectClerkProxyUrl. */
+const CLERK_TRANSPORT_KEY = 'luche.clerkTransport.v1';
+export type ClerkTransport = 'direct' | 'ru-edge';
+
+export function persistClerkTransport(transport: ClerkTransport): void {
+  void AsyncStorage.setItem(CLERK_TRANSPORT_KEY, transport).catch(() => {});
+}
+
+async function storedClerkTransport(): Promise<ClerkTransport | null> {
+  try {
+    const value = await AsyncStorage.getItem(CLERK_TRANSPORT_KEY);
+    return value === 'direct' || value === 'ru-edge' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 let preferredApiBase = PRIMARY_API_BASE;
 let clerkTransportFallback: (() => boolean) | null = null;
 
 // A merely eventual 200 is not a healthy direct Clerk path: on affected
 // Russian networks the environment request completes in ~600 ms, then one of
-// the parallel bootstrap streams hangs. Give direct a real chance first — a
-// cold TLS handshake on a normal US network can take ~1 s, and 400 ms exiled
-// healthy users to the Russian edge. A genuinely throttled path still misses
-// 2 s and selects the edge before ClerkProvider mounts.
-const DIRECT_CLERK_PROBE_TIMEOUT_MS = 2_000;
-const RUSSIAN_CLERK_PROBE_TIMEOUT_MS = 3_500;
+// the parallel bootstrap streams hangs. Give direct a real chance — a cold
+// TLS handshake from a phone routinely needs 2+ s (400 ms and even 2 s exiled
+// healthy US users to the edge). Both probes run in parallel and direct wins
+// whenever it succeeds, so a wide window costs no extra startup time.
+// Sized for reliability, not speed: on RU LTE the edge needs 2-3.5 s just to
+// answer a probe, and a window that clips it drops the launch into the
+// both-failed default — the worst outcome on such a network. Probes run in
+// parallel, so the widest window bounds the total startup wait.
+const DIRECT_CLERK_PROBE_TIMEOUT_MS = 5_000;
+const RUSSIAN_CLERK_PROBE_TIMEOUT_MS = 8_000;
 
 export function apiBaseOrder(): string[] {
   const other = preferredApiBase === PRIMARY_API_BASE
@@ -78,7 +104,13 @@ async function probe(url: string, timeoutMs: number): Promise<boolean> {
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
-    return response.ok;
+    if (!response.ok) return false;
+    // Headers alone are not proof of a usable route: carrier DPI has been
+    // observed delivering headers in 200 ms and killing the body stream
+    // (probe log 2026-08-19). The abort timer is still armed here, so a
+    // stalled body fails the probe instead of hanging it.
+    await response.text();
+    return true;
   } catch {
     return false;
   } finally {
@@ -95,24 +127,45 @@ async function probe(url: string, timeoutMs: number): Promise<boolean> {
  * for the whole session.
  */
 export async function selectClerkProxyUrl(): Promise<string | undefined> {
-  const direct = await timedProbe(
-    `${CANONICAL_CLERK_ORIGIN}/v1/environment`,
-    DIRECT_CLERK_PROBE_TIMEOUT_MS,
-  );
+  // Both probes race in parallel, but direct has priority: a slow-yet-healthy
+  // direct handshake must never lose to a fast edge answer.
+  const [stored, direct, edge] = await Promise.all([
+    storedClerkTransport(),
+    timedProbe(`${CANONICAL_CLERK_ORIGIN}/v1/environment`, DIRECT_CLERK_PROBE_TIMEOUT_MS),
+    timedProbe(`${RUSSIAN_CLERK_PROXY}/v1/environment`, RUSSIAN_CLERK_PROBE_TIMEOUT_MS),
+  ]);
+
+  // A past session's watchdog demoted direct on this device (RU throttling
+  // passes the probe but hangs the bootstrap). Honor that verdict — but only
+  // while the edge actually answers, so this can never become a dead end.
+  if (stored === 'ru-edge' && edge.ok) {
+    recordDiagnostic('clerk_transport_selected', {
+      transport: 'ru-edge',
+      reason: 'persisted_verdict',
+      directProbeMs: direct.ms,
+      edgeProbeMs: edge.ms,
+    });
+    preferApiBase(RUSSIAN_API_BASE);
+    return RUSSIAN_CLERK_PROXY;
+  }
+
   if (direct.ok) {
+    // Never let a probe win erase a runtime-proven ru-edge verdict: on RU
+    // networks the direct probe passes deceptively, and reaching here with a
+    // stored verdict only means the edge probe blipped once. Verdict demotion
+    // to 'direct' requires runtime proof (the auth/bootstrap flip paths).
+    if (stored !== 'ru-edge') persistClerkTransport('direct');
     recordDiagnostic('clerk_transport_selected', {
       transport: 'clerk-direct',
       directProbeMs: direct.ms,
+      edgeProbeMs: edge.ms,
     });
     preferApiBase(PRIMARY_API_BASE);
     return undefined;
   }
 
-  const edge = await timedProbe(
-    `${RUSSIAN_CLERK_PROXY}/v1/environment`,
-    RUSSIAN_CLERK_PROBE_TIMEOUT_MS,
-  );
   if (edge.ok) {
+    persistClerkTransport('ru-edge');
     recordDiagnostic('clerk_transport_selected', {
       transport: 'ru-edge',
       directProbeMs: direct.ms,
@@ -122,12 +175,20 @@ export async function selectClerkProxyUrl(): Promise<string | undefined> {
     return RUSSIAN_CLERK_PROXY;
   }
 
+  // Both probes failed: nothing was learned, so the stored verdict is the
+  // best prior — a slow-but-alive route beats the canonical default that a
+  // past session already proved unusable. No verdict → canonical direct.
+  const fallback: ClerkTransport = stored ?? 'direct';
   recordDiagnostic('clerk_transport_selected', {
-    transport: 'clerk-direct',
+    transport: fallback === 'ru-edge' ? 'ru-edge' : 'clerk-direct',
     reason: 'both_probes_failed',
     directProbeMs: direct.ms,
     edgeProbeMs: edge.ms,
   });
+  if (fallback === 'ru-edge') {
+    preferApiBase(RUSSIAN_API_BASE);
+    return RUSSIAN_CLERK_PROXY;
+  }
   preferApiBase(PRIMARY_API_BASE);
   return undefined;
 }

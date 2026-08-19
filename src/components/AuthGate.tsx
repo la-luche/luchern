@@ -18,11 +18,15 @@ import {
   showConnectionAlert,
   withTimeout,
 } from '../lib/connectivity';
+import { diagnosticErrorData, recordDiagnostic } from '../lib/diagnostics';
 import { useT } from '../lib/i18n';
 import { Button } from './Button';
 import { ConnectionProblem } from './ConnectionProblem';
 
-const AUTH_REQUEST_TIMEOUT_MS = 15_000;
+// Generous by design: on throttled networks (RU direct) each Clerk round trip
+// can take 4+ s and the sign-in flow is several of them. A slow route that
+// finishes beats a fast timeout that forces transport flip-and-retry churn.
+const AUTH_REQUEST_TIMEOUT_MS = 30_000;
 const AUTH_BOOTSTRAP_SLOW_MS = 8_000;
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -119,12 +123,16 @@ function SignInScreen({
       }
       setStep('code');
     } catch (e: any) {
+      recordDiagnostic('auth_send_code_failed', {
+        flipAllowed: allowRussianFallback,
+        ...diagnosticErrorData(e),
+      });
       if (
         allowRussianFallback
         && isConnectionFailure(e)
         && onDirectAuthFailure(identifier)
       ) {
-        console.info('CLERK_TRANSPORT direct_auth_failed fallback=russian');
+        recordDiagnostic('auth_transport_flip', { trigger: 'send_code' });
         return;
       }
       if (!showFailure(() => void sendCodeForEmail(identifier, false), e)) {
@@ -205,6 +213,7 @@ function SignInScreen({
         console.info('AUTH_VERIFY_STAGE sign_up_set_active_complete');
       }
     } catch (e: any) {
+      recordDiagnostic('auth_verify_failed', { mode, ...diagnosticErrorData(e) });
       if (!showFailure(() => void verify(), e)) {
         setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.invalidCode);
       }
@@ -311,6 +320,13 @@ export function AuthGate({
   const t = useT();
   const onboarded = useRef(false);
   const alertShown = useRef(false);
+  // A native alert can outlive the outage it reported; its Try-again must be
+  // a no-op once Clerk has loaded, or a stale tap restarts a healthy session.
+  const isLoadedRef = useRef(isLoaded);
+  isLoadedRef.current = isLoaded;
+  const retryIfStillStuck = useCallback(() => {
+    if (!isLoadedRef.current) onRetryAuth();
+  }, [onRetryAuth]);
   const [slow, setSlow] = useState(false);
   const offline = net.isConnected === false || net.isInternetReachable === false;
 
@@ -325,10 +341,14 @@ export function AuthGate({
 
   useEffect(() => {
     if (isLoaded || (!offline && !slow) || alertShown.current) return;
-    if (!offline && slow && onDirectBootstrapFailure()) return;
+    if (!offline && slow && onDirectBootstrapFailure()) {
+      recordDiagnostic('auth_bootstrap_slow', { recovered: 'transport_flip' });
+      return;
+    }
+    recordDiagnostic('auth_bootstrap_slow', { recovered: 'alert', offline });
     alertShown.current = true;
-    showConnectionAlert(t, onRetryAuth, offline);
-  }, [isLoaded, offline, onDirectBootstrapFailure, onRetryAuth, slow, t]);
+    showConnectionAlert(t, retryIfStillStuck, offline);
+  }, [isLoaded, offline, onDirectBootstrapFailure, retryIfStillStuck, slow, t]);
 
   useEffect(() => {
     if (isSignedIn && !onboarded.current) {

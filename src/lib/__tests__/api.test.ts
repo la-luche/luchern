@@ -199,11 +199,34 @@ describe('mobile API transport', () => {
     expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(`${FALLBACK_API_BASE}/invites`);
   });
 
-  it('surfaces HTTP responses without trying another hostname', async () => {
+  it('retries a read on the other hostname when one serves an HTTP error', async () => {
+    // A 403/451 can be a DPI middlebox on one route; only response.ok marks
+    // a base healthy, and safe reads get the remaining attempts.
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(response({ ok: false, status: 403 }))
+      .mockResolvedValueOnce(response({ json: { patients: [] } }));
+
+    await apiFetch('/patients');
+
+    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
+      `${API_BASE}/patients`,
+      `${FALLBACK_API_BASE}/patients`,
+    ]);
+  });
+
+  it('surfaces the final HTTP error when every attempt is refused', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(response({ ok: false, status: 403 }));
 
     await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiError);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not bounce a 401 across hostnames', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(response({ ok: false, status: 401 }));
+
+    await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiError);
+    // One attempt per auth pass; 401 triggers token refresh, not a base flip.
+    expect((global.fetch as jest.Mock).mock.calls.every(([url]) => String(url).startsWith(API_BASE))).toBe(true);
   });
 
   it('routes a Russian-edge presigned URL through its R2 proxy', async () => {
