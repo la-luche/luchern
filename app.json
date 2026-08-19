@@ -62,7 +62,16 @@
       ],
       "expo-secure-store",
       "expo-localization",
-      "./plugins/with-ios26-touch-fix"
+      "./plugins/with-ios26-touch-fix",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useLegacyPackaging": true
+          }
+        }
+      ],
+      "./plugins/with-android-lean-apk"
     ],
     "experiments": {
       "typedRoutes": true,
