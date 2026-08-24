@@ -14,36 +14,36 @@ import {
 describe('edge selection', () => {
   beforeEach(async () => {
     resetPreferredApiBase();
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
     await jest
       .requireMock('@react-native-async-storage/async-storage')
       .clear();
   });
 
   it('keeps Clerk and API direct when the canonical Frontend API works', async () => {
-    (global.fetch as jest.Mock).mockImplementation((url: string) =>
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) =>
       Promise.resolve({ ok: url.includes('clerk.luche.ai'), text: async () => '{}' }),
     );
 
     await expect(selectClerkProxyUrl()).resolves.toBeUndefined();
     expect(apiBaseOrder()[0]).toBe(PRIMARY_API_BASE);
     // Both probes run in parallel; direct's success wins regardless of timing.
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('selects the Russian same-instance proxy when direct Clerk is blocked', async () => {
-    (global.fetch as jest.Mock).mockImplementation((url: string) =>
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) =>
       Promise.resolve({ ok: url.includes('xn--e1alyq.xn--p1ai'), text: async () => '{}' }),
     );
 
     await expect(selectClerkProxyUrl()).resolves.toBe(RUSSIAN_CLERK_PROXY);
     expect(apiBaseOrder()[0]).toBe(RUSSIAN_API_BASE);
-    expect(global.fetch).toHaveBeenNthCalledWith(
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('clerk.luche.ai'),
       expect.any(Object),
     );
-    expect(global.fetch).toHaveBeenNthCalledWith(
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('xn--e1alyq.xn--p1ai'),
       expect.any(Object),
@@ -52,7 +52,7 @@ describe('edge selection', () => {
 
   it('selects Russian before mounting Clerk when direct is too slow', async () => {
     jest.useFakeTimers();
-    (global.fetch as jest.Mock)
+    (globalThis.fetch as jest.Mock)
       .mockImplementationOnce((_url, { signal }: RequestInit) => new Promise((_resolve, reject) => {
         signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
       }))
@@ -67,7 +67,7 @@ describe('edge selection', () => {
   });
 
   it('stays on the canonical route when both health checks are inconclusive', async () => {
-    (global.fetch as jest.Mock).mockRejectedValue(new Error('blocked'));
+    (globalThis.fetch as jest.Mock).mockRejectedValue(new Error('blocked'));
 
     await expect(selectClerkProxyUrl()).resolves.toBeUndefined();
     expect(apiBaseOrder()[0]).toBe(PRIMARY_API_BASE);
@@ -76,7 +76,7 @@ describe('edge selection', () => {
   it('honors a persisted ru-edge verdict over a passing direct probe', async () => {
     const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
     await AsyncStorage.setItem('luche.clerkTransport.v1', 'ru-edge');
-    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, text: async () => '{}' });
+    (globalThis.fetch as jest.Mock).mockResolvedValue({ ok: true, text: async () => '{}' });
 
     await expect(selectClerkProxyUrl()).resolves.toBe(RUSSIAN_CLERK_PROXY);
     expect(apiBaseOrder()[0]).toBe(RUSSIAN_API_BASE);
@@ -86,7 +86,7 @@ describe('edge selection', () => {
   it('ignores a persisted ru-edge verdict when the edge probe fails', async () => {
     const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
     await AsyncStorage.setItem('luche.clerkTransport.v1', 'ru-edge');
-    (global.fetch as jest.Mock).mockImplementation((url: string) =>
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) =>
       Promise.resolve({ ok: url.includes('clerk.luche.ai'), text: async () => '{}' }),
     );
 
@@ -98,7 +98,7 @@ describe('edge selection', () => {
   it('converges across launches: runtime verdict outlives deceptive probe wins', async () => {
     const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
     const { persistClerkTransport } = jest.requireActual('../edge');
-    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, text: async () => '{}' });
+    (globalThis.fetch as jest.Mock).mockResolvedValue({ ok: true, text: async () => '{}' });
 
     // Launch 1: no verdict, direct probe passes (deceptively on RU) → direct.
     await expect(selectClerkProxyUrl()).resolves.toBeUndefined();
