@@ -38,6 +38,9 @@ export function ResultsTrends({ recordings }: { recordings: Recording[] }) {
       <Text className="text-[16px] font-semibold text-ink">
         {t.resultsList.trendsTitle}
       </Text>
+      <Text className="text-[14px] leading-5 text-ink-muted">
+        {t.resultsList.trendsDisclaimer}
+      </Text>
 
       {sections.map(({ test, points }) => (
         <View key={test.id} className="rounded-2xl border border-ink-faint bg-white p-4">
@@ -99,6 +102,9 @@ export function SharedResultsTrends({
     <View className="gap-3 pb-4">
       <Text className="text-[16px] font-semibold text-ink">
         {t.resultsList.personProgress(ownerName)}
+      </Text>
+      <Text className="text-[14px] leading-5 text-ink-muted">
+        {t.resultsList.trendsDisclaimer}
       </Text>
 
       {sections.map((section) => (

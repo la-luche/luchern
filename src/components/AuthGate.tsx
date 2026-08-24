@@ -1,8 +1,11 @@
 import { useAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useNetworkState } from 'expo-network';
+import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Text,
@@ -18,7 +21,7 @@ import {
   showConnectionAlert,
   withTimeout,
 } from '../lib/connectivity';
-import { diagnosticErrorData, recordDiagnostic } from '../lib/diagnostics';
+import { diagnosticErrorData, exportDiagnostics, recordDiagnostic } from '../lib/diagnostics';
 import { useT } from '../lib/i18n';
 import { Button } from './Button';
 import { ConnectionProblem } from './ConnectionProblem';
@@ -60,7 +63,12 @@ function SignInScreen({
   const startedAuthRetry = useRef<number | null>(null);
 
   const ready = siLoaded && suLoaded;
-  const offline = net.isConnected === false || net.isInternetReachable === false;
+  // isInternetReachable is Android's Google connectivity probe — on DPI
+  // networks that blackhole Google it reports false while the Russian edge is
+  // perfectly reachable, and gating on it here vetoes the exact ru-edge
+  // fallback built for those networks (observed 2026-08-19). Only a missing
+  // network connection blocks an attempt; reachability=false is unknown.
+  const offline = net.isConnected === false;
 
   const showFailure = useCallback(
     (retry: () => void, error?: unknown) => {
@@ -156,6 +164,26 @@ function SignInScreen({
     () => sendCodeForEmail(email, true),
     [email, sendCodeForEmail],
   );
+
+  // Same exporter as the About screen, reachable signed-out: when sign-in
+  // itself fails there is no other way to get the transport diagnostics off
+  // the device (release builds are not debuggable).
+  const downloadLogs = useCallback(async () => {
+    try {
+      if (!FileSystem.cacheDirectory || !(await Sharing.isAvailableAsync())) {
+        throw new Error('sharing unavailable');
+      }
+      const uri = `${FileSystem.cacheDirectory}luche-diagnostics.json`;
+      await FileSystem.writeAsStringAsync(uri, await exportDiagnostics());
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/json',
+        dialogTitle: t.about.diagnosticsShareTitle,
+        UTI: 'public.json',
+      });
+    } catch {
+      Alert.alert(t.about.diagnosticsFailedTitle, t.about.diagnosticsFailedBody);
+    }
+  }, [t]);
 
   useEffect(() => {
     if (
@@ -271,7 +299,17 @@ function SignInScreen({
 
         <View className="mt-6">
           {step === 'email' ? (
-            <Button title={busy ? t.auth.sending : t.auth.sendCode} onPress={sendCode} disabled={busy || !ready} />
+            <>
+              <Button title={busy ? t.auth.sending : t.auth.sendCode} onPress={sendCode} disabled={busy || !ready} />
+              <View className="mt-3">
+                <Button
+                  title={t.auth.downloadLogs}
+                  variant="secondary"
+                  onPress={() => void downloadLogs()}
+                  disabled={busy}
+                />
+              </View>
+            </>
           ) : (
             <>
               <Button title={busy ? t.auth.verifying : t.auth.verify} onPress={verify} disabled={busy || !ready} />
@@ -328,7 +366,10 @@ export function AuthGate({
     if (!isLoadedRef.current) onRetryAuth();
   }, [onRetryAuth]);
   const [slow, setSlow] = useState(false);
-  const offline = net.isConnected === false || net.isInternetReachable === false;
+  // Same rule as SignInScreen: reachability=false is Android's blocked Google
+  // probe, not proof of no connectivity — it must not suppress the bootstrap
+  // transport flip on partially-blocked networks.
+  const offline = net.isConnected === false;
 
   useEffect(() => {
     if (isLoaded) {

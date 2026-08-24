@@ -1,5 +1,5 @@
 import { clearClerkLocalSession } from './clerk';
-import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { clearDiagnostics, diagnosticErrorData, recordDiagnostic } from './diagnostics';
 
 interface SignOutFromDeviceOptions {
   remoteSignOut: () => Promise<void>;
@@ -19,12 +19,16 @@ export async function signOutFromDevice({
 }: SignOutFromDeviceOptions): Promise<'remote' | 'local'> {
   try {
     await remoteSignOut();
+    // Diagnostics belong to the account session that just ended — flush so the
+    // next sign-in starts a clean log.
+    await clearDiagnostics().catch(() => {});
     return 'remote';
   } catch (error) {
     recordDiagnostic('logout_remote_signout_failed', diagnosticErrorData(error));
     await deactivateSession();
     await clearLocalSession();
     recordDiagnostic('logout_local_fallback_completed');
+    await clearDiagnostics().catch(() => {});
     return 'local';
   }
 }

@@ -1,0 +1,85 @@
+diff --git a/node_modules/@clerk/clerk-expo/dist/provider/ClerkProvider.js b/node_modules/@clerk/clerk-expo/dist/provider/ClerkProvider.js
+index 96b7535..c274f2d 100644
+--- a/node_modules/@clerk/clerk-expo/dist/provider/ClerkProvider.js
++++ b/node_modules/@clerk/clerk-expo/dist/provider/ClerkProvider.js
+@@ -63,6 +63,7 @@ function ClerkProvider(props) {
+       sdkMetadata: SDK_METADATA,
+       Clerk: (0, import_runtime.isNative)() ? (0, import_singleton.getClerkInstance)({
+         publishableKey: pk,
++        proxyUrl: rest.proxyUrl != null ? rest.proxyUrl : "",
+         tokenCache,
+         __experimental_passkeys,
+         __experimental_resourceCache
+@@ -75,7 +76,7 @@ function ClerkProvider(props) {
+       },
+       children
+     },
+-    pk
++    pk + "|" + (rest.proxyUrl || "direct")
+   );
+ }
+ // Annotate the CommonJS export names for ESM import in node:
+diff --git a/node_modules/@clerk/clerk-expo/dist/provider/singleton/createClerkInstance.js b/node_modules/@clerk/clerk-expo/dist/provider/singleton/createClerkInstance.js
+index 8deece7..9593c40 100644
+--- a/node_modules/@clerk/clerk-expo/dist/provider/singleton/createClerkInstance.js
++++ b/node_modules/@clerk/clerk-expo/dist/provider/singleton/createClerkInstance.js
+@@ -43,6 +43,25 @@ var import_utils = require("../../utils");
+ const KEY = "__clerk_client_jwt";
+ let clerk;
+ let __internal_clerk;
++function rewriteRequestUrlThroughProxy(requestUrl, proxyUrl) {
++  if (!requestUrl || !proxyUrl) {
++    return requestUrl;
++  }
++  try {
++    const url = new URL(requestUrl.toString());
++    const proxy = new URL(proxyUrl);
++    const proxyPath = proxy.pathname.replace(/\/+$/, "");
++    const requestPath = url.pathname.startsWith("/") ? url.pathname : `/${url.pathname}`;
++    url.protocol = proxy.protocol;
++    url.username = proxy.username;
++    url.password = proxy.password;
++    url.host = proxy.host;
++    url.pathname = `${proxyPath}${requestPath}`;
++    return url;
++  } catch {
++    return requestUrl;
++  }
++}
+ function createClerkInstance(ClerkClass) {
+   return (options) => {
+     var _a;
+@@ -55,13 +74,17 @@ function createClerkInstance(ClerkClass) {
+       import_errorThrower.errorThrower.throwMissingPublishableKeyError();
+     }
+     const hasKeyChanged = __internal_clerk && !!publishableKey && publishableKey !== __internal_clerk.publishableKey;
+-    if (!__internal_clerk || hasKeyChanged) {
++    const desiredProxyUrl = (options == null ? void 0 : options.proxyUrl) || "";
++    console.log(`[clerk-singleton] getClerkInstance desiredProxyUrl=${desiredProxyUrl || "(direct)"} existing=${__internal_clerk ? __internal_clerk.__luche_proxyUrl || "(direct)" : "(none)"}`);
++    const hasProxyChanged = __internal_clerk && (options == null ? void 0 : options.proxyUrl) !== void 0 && desiredProxyUrl !== (__internal_clerk.__luche_proxyUrl || "");
++    if (!__internal_clerk || hasKeyChanged || hasProxyChanged) {
+       if (hasKeyChanged) {
+         (_a = tokenCache.clearToken) == null ? void 0 : _a.call(tokenCache, KEY);
+       }
+       const getToken = tokenCache.getToken;
+       const saveToken = tokenCache.saveToken;
+-      __internal_clerk = clerk = new ClerkClass(publishableKey);
++      __internal_clerk = clerk = desiredProxyUrl ? new ClerkClass(publishableKey, { proxyUrl: desiredProxyUrl }) : new ClerkClass(publishableKey);
++      __internal_clerk.__luche_proxyUrl = desiredProxyUrl;
+       if (import_react_native.Platform.OS === "ios" || import_react_native.Platform.OS === "android") {
+         __internal_clerk.__internal_createPublicCredentials = (publicKeyCredential) => {
+           var _a2, _b;
+@@ -132,6 +155,13 @@ function createClerkInstance(ClerkClass) {
+       }
+       __internal_clerk.__unstable__onBeforeRequest(async (requestInit) => {
+         var _a2;
++        // clerk-js 5.127.0's proxyUrl getter returns an empty string outside a
++        // browser, so native FAPI requests are still built against the direct
++        // frontend API even when proxyUrl reached the constructor. Rewrite the
++        // finalized URL at Clerk's supported request hook instead.
++        if (desiredProxyUrl && requestInit.url) {
++          requestInit.url = rewriteRequestUrlThroughProxy(requestInit.url, desiredProxyUrl);
++        }
+         requestInit.credentials = "omit";
+         (_a2 = requestInit.url) == null ? void 0 : _a2.searchParams.append("_is_native", "1");
+         const jwt = await getToken(KEY);

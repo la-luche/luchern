@@ -2,10 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Linking, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useT } from '../lib/i18n';
+import { METHODOLOGY_URL } from '../lib/links';
 import { COLORS } from '../lib/theme';
 import { Button } from './Button';
 import { LanguagePicker } from './LanguagePicker';
@@ -61,6 +62,13 @@ export function DisclaimerGate({ children }: { children: ReactNode }) {
           <Text selectable className="mb-8 text-center text-[16px] leading-6 text-ink/70">
             {t.disclaimer.body2}
           </Text>
+          <View className="mb-3">
+            <Button
+              title={t.profile.scienceMethodology}
+              variant="secondary"
+              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+            />
+          </View>
           <Button title={t.common.iUnderstand} onPress={accept} />
         </ScrollView>
       </SafeAreaView>

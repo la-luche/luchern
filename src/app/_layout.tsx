@@ -6,6 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '../global.css';
+
 import { AuthGate } from '../components/AuthGate';
 import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
@@ -23,7 +24,10 @@ import {
   selectClerkProxyUrl,
 } from '../lib/edge';
 import { LanguageProvider } from '../lib/i18n';
+import { installRequestLog } from '../lib/requestLog';
 import { ToastHost } from '../lib/toast';
+
+installRequestLog();
 
 // Single stack for the whole app. Headers are hidden — each screen draws its
 // own minimal top bar to match the Luche look. App is portrait-locked and

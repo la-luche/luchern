@@ -3,6 +3,7 @@ jest.mock('../clerk', () => ({
 }));
 jest.mock('../diagnostics', () => ({
   recordDiagnostic: jest.fn(),
+  clearDiagnostics: jest.fn().mockResolvedValue(undefined),
   diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
 }));
 
