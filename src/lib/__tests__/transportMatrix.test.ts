@@ -121,7 +121,7 @@ function respond(state: RouteState, signal: AbortSignal | undefined): Promise<Re
 }
 
 function installFetch(primary: RouteState, edge: RouteState): void {
-  global.fetch = jest.fn((url: string, init?: RequestInit) => {
+  globalThis.fetch = jest.fn((url: string, init?: RequestInit) => {
     const isEdge = String(url).startsWith(RUSSIAN_EDGE_ORIGIN);
     return respond(isEdge ? edge : primary, init?.signal ?? undefined);
   }) as unknown as typeof fetch;
@@ -217,11 +217,11 @@ describe('network-condition matrix', () => {
     const first = await settle(apiFetch('/ping'));
     expect(first.ok).toBe(false);
 
-    const calls = (global.fetch as jest.Mock).mock.calls.length;
+    const calls = (globalThis.fetch as jest.Mock).mock.calls.length;
     const second = await settle(apiFetch('/ping'));
     expect(second.ok).toBe(true);
     // Retry went straight to the edge (demoted preference), not primary.
-    const retryUrl = (global.fetch as jest.Mock).mock.calls[calls][0] as string;
+    const retryUrl = (globalThis.fetch as jest.Mock).mock.calls[calls][0] as string;
     expect(retryUrl.startsWith(FALLBACK_API_BASE)).toBe(true);
   });
 
@@ -230,7 +230,7 @@ describe('network-condition matrix', () => {
 
     const result = await settle(apiFetch('/ping'));
     expect(result.ok).toBe(true);
-    const urls = (global.fetch as jest.Mock).mock.calls.map(([u]) => u as string);
+    const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([u]) => u as string);
     expect(urls[0]).toBe(`${API_BASE}/ping`);
     expect(urls[1].startsWith(FALLBACK_API_BASE)).toBe(true);
   });
@@ -250,6 +250,6 @@ describe('network-condition matrix', () => {
 
     const result = await settle(apiFetch('/ping'));
     expect(result.ok).toBe(true);
-    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(`${PRIMARY_API_BASE}/ping`);
+    expect((globalThis.fetch as jest.Mock).mock.calls[0][0]).toBe(`${PRIMARY_API_BASE}/ping`);
   });
 });
