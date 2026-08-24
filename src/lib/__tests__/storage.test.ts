@@ -195,7 +195,14 @@ describe('driveOnce', () => {
     const rec = { ...baseRec(), status: 'processing' as const, uploadId: 'up-1' };
     const patch = await driveOnce(rec, { maxBackoffs: 0 });
     expect(uploadRecording).not.toHaveBeenCalled();
-    expect(createAnalysisTrial).toHaveBeenCalledWith('up-1', 'gait', 'r1', 0, undefined);
+    expect(createAnalysisTrial).toHaveBeenCalledWith(
+      'up-1',
+      'gait',
+      'r1',
+      0,
+      undefined,
+      undefined,
+    );
     expect(patch.status).toBe('done');
   });
 
@@ -218,8 +225,31 @@ describe('driveOnce', () => {
       'r1',
       0,
       'left',
+      undefined,
     );
     expect(patch).toMatchObject({ status: 'done', result: { updrsGrade: 1.5 } });
+  });
+
+  it('keeps a guest recording attached to the selected guest during submission', async () => {
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: '201' });
+    (pollResult as jest.Mock).mockResolvedValue({ score: 0.25, label: 'Slight' });
+    const rec = {
+      ...baseRec(),
+      guestId: 'guest-201',
+      status: 'processing' as const,
+      uploadId: 'up-201',
+    };
+
+    await driveOnce(rec, { maxBackoffs: 0 });
+
+    expect(createAnalysisTrial).toHaveBeenCalledWith(
+      'up-201',
+      'gait',
+      'r1',
+      0,
+      undefined,
+      'guest-201',
+    );
   });
 
   it('keeps uploadId when the small trial request fails', async () => {

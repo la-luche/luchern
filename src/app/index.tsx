@@ -6,13 +6,12 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
-import { TestRow } from '../components/TestRow';
 import { useT } from '../lib/i18n';
-import { endSession, startSession } from '../lib/session';
+import { startSession } from '../lib/session';
 import { TESTS } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 
-/** Menu: run-all session, the test rows, and previous recordings. */
+/** Decluttered top-level menu: all movements, one movement, guests, history. */
 export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
@@ -21,11 +20,6 @@ export default function MenuScreen() {
   const startFullCheck = () => {
     startSession(TESTS.map((test) => test.id));
     router.push({ pathname: '/test/[id]', params: { id: TESTS[0].id } });
-  };
-
-  const openSingle = (id: string) => {
-    endSession(); // single-test taps run as one-offs, never part of a session
-    router.push({ pathname: '/test/[id]', params: { id } });
   };
 
   return (
@@ -61,19 +55,11 @@ export default function MenuScreen() {
           <Text className="text-[28px] font-bold text-ink">{t.common.appName}</Text>
         </View>
 
-        {/* Run-all session. */}
-        <View className="mt-6">
+        {/* The three recording entry points deliberately share one treatment. */}
+        <View className="mt-6 gap-3">
           <Button title={t.menu.startFullCheck} onPress={startFullCheck} />
-          <Text className="mt-2 text-center text-[13px] text-ink-muted">
-            {t.menu.orSingle}
-          </Text>
-        </View>
-
-        {/* Test rows. */}
-        <View className="mt-4 gap-3.5">
-          {TESTS.map((test) => (
-            <TestRow key={test.id} test={test} onPress={() => openSingle(test.id)} />
-          ))}
+          <Button title={t.menu.recordOne} onPress={() => router.push('/tests')} />
+          <Button title={t.menu.guests} onPress={() => router.push('/guests')} />
         </View>
 
         {/* Previous recordings. */}

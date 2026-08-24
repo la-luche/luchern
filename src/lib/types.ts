@@ -46,6 +46,8 @@ export interface CloudResult {
 export interface Recording {
   id: string;
   testId: TestId;
+  /** Owner-private guest profile. Omitted for the signed-in person's own test. */
+  guestId?: string;
   /** Anatomical side selected before a unilateral hand/foot/leg capture. */
   evaluatedSide?: EvaluatedSide;
   /** Epoch millis. */

@@ -37,6 +37,32 @@ describe('createAnalysisTrial', () => {
       }),
     });
   });
+
+  it('sends an owner-private guest id when the recording belongs to a guest', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({ trial_id: 201 });
+
+    await createAnalysisTrial(
+      'upload-guest',
+      'gait',
+      'local-guest',
+      0,
+      undefined,
+      'guest-201',
+    );
+
+    expect(apiFetch).toHaveBeenCalledWith('/trials', {
+      method: 'POST',
+      body: JSON.stringify({
+        upload_id: 'upload-guest',
+        test_type_id: 'gait',
+        recorded_at: '1970-01-01T00:00:00.000Z',
+        metadata: {},
+        client_trial_id: 'local-guest',
+        guest_id: 'guest-201',
+        analyze: true,
+      }),
+    });
+  });
 });
 
 describe('pollResult', () => {

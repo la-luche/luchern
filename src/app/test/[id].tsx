@@ -107,7 +107,7 @@ function OverlaySteps({ steps }: { steps: readonly string[] }) {
  * shows "Test N of M" + a Skip control.
  */
 export default function InstructionScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
@@ -201,7 +201,12 @@ export default function InstructionScreen() {
               }}
             >
               <Pressable
-                onPress={() => router.push({ pathname: '/record/[id]', params: { id: test.id } })}
+                onPress={() =>
+                  router.push({
+                    pathname: '/record/[id]',
+                    params: { id: test.id, ...(guestId ? { guestId } : {}) },
+                  })
+                }
                 accessibilityRole="button"
                 accessibilityLabel={t.instruction.ready}
                 className="h-16 items-center justify-center rounded-full bg-white px-6 active:opacity-80"

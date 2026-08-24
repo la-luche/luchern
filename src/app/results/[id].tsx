@@ -19,7 +19,7 @@ import { COLORS } from '../../lib/theme';
 
 /** Detail for one recording: retained local playback or cloud playback on demand. */
 export default function ResultDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
   const router = useRouter();
   const {
     recordings,
@@ -28,7 +28,7 @@ export default function ResultDetailScreen() {
     retry,
     retryPrivacyBlurring,
     uploadWithoutPrivacyBlurring,
-  } = useRecordings();
+  } = useRecordings({ guestId });
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
   const [remoteVideoUri, setRemoteVideoUri] = useState<string | null>(null);
@@ -88,7 +88,21 @@ export default function ResultDetailScreen() {
     );
   }
 
-  if (!recording) return <Redirect href="/results" />;
+  if (!recording) {
+    return guestId ? (
+      <Redirect href={{ pathname: '/guests/[id]', params: { id: guestId } }} />
+    ) : (
+      <Redirect href="/results" />
+    );
+  }
+
+  const leaveResult = () => {
+    if (guestId) {
+      router.dismissTo({ pathname: '/guests/[id]', params: { id: guestId } });
+    } else {
+      router.navigate('/');
+    }
+  };
 
   const test = getTest(recording.testId);
   const privacyPending = Boolean(
@@ -145,7 +159,7 @@ export default function ResultDetailScreen() {
         onPress: async () => {
           try {
             await remove(recording.id);
-            router.back();
+            leaveResult();
           } catch {
             Alert.alert(t.result.deleteFailedTitle, t.result.deleteFailedBody);
           }
@@ -173,6 +187,7 @@ export default function ResultDetailScreen() {
     <Screen>
       <Header
         title={test ? t.tests[test.id].name : t.result.fallbackTitle}
+        onBack={guestId ? leaveResult : undefined}
         right={
           <Pressable
             onPress={confirmDelete}
@@ -346,7 +361,10 @@ export default function ResultDetailScreen() {
             disabled={videoLoading || privacyPending}
           />
           <View className="mt-3">
-            <Button title={t.result.backToMenu} onPress={() => router.navigate('/')} />
+            <Button
+              title={guestId ? t.result.backToGuest : t.result.backToMenu}
+              onPress={leaveResult}
+            />
           </View>
         </View>
       </ScrollView>

@@ -218,6 +218,7 @@ export async function createAnalysisTrial(
   clientTrialId: string,
   recordedAtMs: number,
   evaluatedSide?: EvaluatedSide,
+  guestId?: string,
   signal?: AbortSignal,
 ): Promise<{ jobId: string }> {
   throwIfCancelled(signal);
@@ -230,6 +231,7 @@ export async function createAnalysisTrial(
         recorded_at: new Date(recordedAtMs).toISOString(),
         metadata: evaluatedSide ? { evaluated_side: evaluatedSide } : {},
         client_trial_id: clientTrialId,
+        ...(guestId ? { guest_id: guestId } : {}),
         analyze: true,
       }),
       signal,

@@ -35,7 +35,7 @@ function formatElapsed(seconds: number): string {
  * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
@@ -119,7 +119,7 @@ export default function RecordScreen() {
     setSubmitting(true);
     try {
       // Omit side metadata so the backend can infer the evaluated side.
-      const rec = await addRecording(test.id, tempUri);
+      const rec = await addRecording(test.id, tempUri, undefined, guestId);
       submittedRef.current = true; // storage now owns the file — don't clean it up
       cues.saved();
       showToast(t.toast.saved);
@@ -134,7 +134,10 @@ export default function RecordScreen() {
           router.replace('/results');
         }
       } else {
-        router.replace({ pathname: '/results/[id]', params: { id: rec.id } });
+        router.replace({
+          pathname: '/results/[id]',
+          params: { id: rec.id, ...(guestId ? { guestId } : {}) },
+        });
       }
     } catch (error) {
       setSubmitting(false);

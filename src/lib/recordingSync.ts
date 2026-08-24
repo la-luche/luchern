@@ -25,8 +25,10 @@ interface OwnedTrialsResponse {
   trials: OwnedTrialSummary[];
 }
 
-export function fetchOwnedTrials(): Promise<OwnedTrialsResponse> {
-  return apiFetch<OwnedTrialsResponse>('/me/trials');
+export function fetchOwnedTrials(guestId?: string): Promise<OwnedTrialsResponse> {
+  return apiFetch<OwnedTrialsResponse>(
+    guestId ? `/guests/${encodeURIComponent(guestId)}/trials` : '/me/trials',
+  );
 }
 
 const LABELS = ['Normal', 'Slight', 'Mild', 'Moderate', 'Severe'];
@@ -66,6 +68,7 @@ function remoteRecording(
   trial: OwnedTrialSummary,
   local: Recording | undefined,
   now: number,
+  guestId?: string,
 ): Recording | null {
   const validTestId = testId(trial.test_type_id);
   if (!validTestId) return null;
@@ -77,6 +80,7 @@ function remoteRecording(
   return {
     id: trial.client_trial_id || local?.id || `server-${trial.trial_id}`,
     testId: validTestId,
+    guestId,
     evaluatedSide: evaluatedSide(trial.evaluated_side) ?? local?.evaluatedSide,
     createdAt,
     videoUri: keepLocalVideo ? local?.videoUri : undefined,
@@ -118,6 +122,7 @@ export function mergeOwnedTrials(
   localRecordings: Recording[],
   trials: OwnedTrialSummary[],
   now: number = Date.now(),
+  guestId?: string,
 ): RecordingMergeResult {
   const localByClientId = new Map(localRecordings.map((recording) => [recording.id, recording]));
   const localByTrialId = new Map(
@@ -132,7 +137,7 @@ export function mergeOwnedTrials(
   for (const trial of trials) {
     const local = localByClientId.get(trial.client_trial_id) ?? localByTrialId.get(String(trial.trial_id));
     if (local) matchedLocalIds.add(local.id);
-    const merged = remoteRecording(trial, local, now);
+    const merged = remoteRecording(trial, local, now, guestId);
     if (!merged) continue;
     if (local?.videoUri && !merged.videoUri) localUrisToDelete.add(local.videoUri);
     recordings.push(merged);
@@ -149,4 +154,20 @@ export function mergeOwnedTrials(
 
   recordings.sort((a, b) => b.createdAt - a.createdAt);
   return { recordings, localUrisToDelete: [...localUrisToDelete] };
+}
+
+/** Merge one server endpoint without allowing it to alter another history scope. */
+export function mergeTrialScope(
+  localRecordings: Recording[],
+  trials: OwnedTrialSummary[],
+  guestId?: string,
+  now: number = Date.now(),
+): RecordingMergeResult {
+  const inScope = localRecordings.filter((recording) => recording.guestId === guestId);
+  const outsideScope = localRecordings.filter((recording) => recording.guestId !== guestId);
+  const merged = mergeOwnedTrials(inScope, trials, now, guestId);
+  return {
+    recordings: [...outsideScope, ...merged.recordings].sort((a, b) => b.createdAt - a.createdAt),
+    localUrisToDelete: merged.localUrisToDelete,
+  };
 }

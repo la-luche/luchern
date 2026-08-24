@@ -22,7 +22,7 @@ import {
   persistRecordingFile,
   rebindRecordingFileUri,
 } from './recordingFiles';
-import { fetchOwnedTrials, mergeOwnedTrials } from './recordingSync';
+import { fetchOwnedTrials, mergeTrialScope } from './recordingSync';
 import type { EvaluatedSide, TestId } from './tests';
 import type { Recording } from './types';
 import {
@@ -215,6 +215,7 @@ async function createTrialWithRetry(
             rec.id,
             rec.createdAt,
             rec.evaluatedSide,
+            rec.guestId,
             signal,
           )
         : await createAnalysisTrial(
@@ -223,6 +224,7 @@ async function createTrialWithRetry(
             rec.id,
             rec.createdAt,
             rec.evaluatedSide,
+            rec.guestId,
           );
       return response.jobId;
     } catch (error) {
@@ -563,12 +565,14 @@ function drive(rec: Recording): Promise<void> {
   return promise;
 }
 
-async function refreshFromServer(expectedEpoch: number = accountEpoch): Promise<void> {
+async function refreshFromServer(
+  guestId?: string,
+  expectedEpoch: number = accountEpoch,
+): Promise<void> {
   if (!isCurrent(expectedEpoch)) return;
-  const local = await ensureLoaded();
   let response: Awaited<ReturnType<typeof fetchOwnedTrials>>;
   try {
-    response = await fetchOwnedTrials();
+    response = await fetchOwnedTrials(guestId);
   } catch (error) {
     // A brand-new Clerk session can render children just before AuthGate's
     // idempotent onboarding request finishes. Complete it and retry once.
@@ -578,13 +582,18 @@ async function refreshFromServer(expectedEpoch: number = accountEpoch): Promise<
       error.responseBody.includes('not_onboarded')
     ) {
       await ensurePatientOnboarded();
-      response = await fetchOwnedTrials();
+      response = await fetchOwnedTrials(guestId);
     } else {
       throw error;
     }
   }
   if (!isCurrent(expectedEpoch)) return;
-  const merged = mergeOwnedTrials(local, response.trials);
+  // Read the cache after the network response so concurrent personal/guest
+  // refreshes preserve the scope that finished first instead of reviving a
+  // stale pre-request snapshot.
+  const local = await ensureLoaded();
+  if (!isCurrent(expectedEpoch)) return;
+  const merged = mergeTrialScope(local, response.trials, guestId);
   cache = merged.recordings;
   await persist(expectedEpoch);
   if (!isCurrent(expectedEpoch)) return;
@@ -651,7 +660,7 @@ async function activateAccount(accountId: string): Promise<void> {
     // offline; merge cloud history in the background when it arrives.
     resumePending();
     const epoch = accountEpoch;
-    void refreshFromServer(epoch)
+    void refreshFromServer(undefined, epoch)
       .then(() => resumePending())
       .catch((error) => {
         recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
@@ -669,6 +678,7 @@ async function add(
   testId: TestId,
   videoUri: string,
   evaluatedSide?: EvaluatedSide,
+  guestId?: string,
 ): Promise<Recording> {
   const list = await ensureLoaded();
   const epoch = accountEpoch;
@@ -681,6 +691,7 @@ async function add(
   const rec: Recording = {
     id,
     testId,
+    guestId,
     evaluatedSide,
     createdAt: Date.now(),
     videoUri: durableUri,
@@ -738,6 +749,7 @@ async function removeById(id: string) {
         recording.id,
         recording.createdAt,
         recording.evaluatedSide,
+        recording.guestId,
       );
       jobId = recovered.jobId;
     }
@@ -861,21 +873,24 @@ async function purgeForLogout(): Promise<void> {
   emit();
 }
 
-export function useRecordings() {
+export function useRecordings(
+  scope: { guestId?: string; includeGuests?: boolean } = {},
+) {
   const { user } = useUser();
   const accountId = user?.id ?? null;
-  const [recordings, setRecordings] = useState<Recording[]>(cache ?? []);
+  const { guestId, includeGuests = false } = scope;
+  const [allRecordings, setAllRecordings] = useState<Recording[]>(cache ?? []);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     const sync = () => {
-      if (mounted) setRecordings(cache ? [...cache] : []);
+      if (mounted) setAllRecordings(cache ? [...cache] : []);
     };
     listeners.add(sync);
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active' || !accountId) return;
-      void refreshFromServer().catch((error) => {
+      void refreshFromServer(guestId).catch((error) => {
         recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
       });
       resumePending();
@@ -883,13 +898,27 @@ export function useRecordings() {
 
     if (accountId) {
       setLoading(true);
-      void activateAccount(accountId).finally(() => {
-        if (!mounted) return;
-        sync();
-        setLoading(false);
-      });
+      void activateAccount(accountId)
+        .then(() => {
+          if (!mounted) return;
+          // Local storage renders immediately; guest cloud history merges in
+          // the background just like personal history does at activation.
+          sync();
+          setLoading(false);
+          if (guestId) {
+            void refreshFromServer(guestId).catch((error) => {
+              recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
+            });
+          }
+        })
+        .catch((error) => {
+          recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
+          if (!mounted) return;
+          sync();
+          setLoading(false);
+        });
     } else {
-      setRecordings([]);
+      setAllRecordings([]);
       setLoading(false);
     }
     return () => {
@@ -897,7 +926,7 @@ export function useRecordings() {
       listeners.delete(sync);
       appStateSubscription.remove();
     };
-  }, [accountId]);
+  }, [accountId, guestId]);
 
   const addRecording = useCallback(add, []);
   const remove = useCallback(removeById, []);
@@ -907,16 +936,20 @@ export function useRecordings() {
     (id: string) => void sendWithoutPrivacyBlur(id),
     [],
   );
-  const refresh = useCallback(() => refreshFromServer(), []);
+  const refresh = useCallback(() => refreshFromServer(guestId), [guestId]);
   const logoutAndPurge = useCallback(() => purgeForLogout(), []);
   const restoreAfterFailedPurge = useCallback(
     () => (accountId ? activateAccount(accountId) : Promise.resolve()),
     [accountId],
   );
   const unuploadedCount = useMemo(
-    () => recordings.filter((recording) => recording.videoUri && !recording.jobId).length,
-    [recordings],
+    () => allRecordings.filter((recording) => recording.videoUri && !recording.jobId).length,
+    [allRecordings],
   );
+  const recordings = useMemo(() => {
+    if (includeGuests) return allRecordings;
+    return allRecordings.filter((recording) => recording.guestId === guestId);
+  }, [allRecordings, guestId, includeGuests]);
 
   return {
     recordings,

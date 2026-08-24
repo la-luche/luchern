@@ -1,6 +1,11 @@
 jest.mock('../api', () => ({ apiFetch: jest.fn() }));
 
-import { LOCAL_VIDEO_RETENTION_MS, mergeOwnedTrials, type OwnedTrialSummary } from '../recordingSync';
+import {
+  LOCAL_VIDEO_RETENTION_MS,
+  mergeOwnedTrials,
+  mergeTrialScope,
+  type OwnedTrialSummary,
+} from '../recordingSync';
 import type { Recording } from '../types';
 
 const now = Date.parse('2026-07-17T12:00:00Z');
@@ -50,6 +55,16 @@ describe('mergeOwnedTrials', () => {
     expect(merged.recordings[0].videoUri).toBeUndefined();
   });
 
+  it('tags guest history returned by the guest-scoped sync endpoint', () => {
+    const merged = mergeOwnedTrials([], [trial()], now, 'guest-42');
+
+    expect(merged.recordings[0]).toMatchObject({
+      id: 'local-42',
+      guestId: 'guest-42',
+      jobId: '42',
+    });
+  });
+
   it('keeps uploaded clips locally for three days', () => {
     const merged = mergeOwnedTrials([local()], [trial()], now);
 
@@ -90,5 +105,42 @@ describe('mergeOwnedTrials', () => {
 
     expect(merged.recordings).toEqual([]);
     expect(merged.localUrisToDelete).toEqual([existing.videoUri]);
+  });
+});
+
+describe('mergeTrialScope', () => {
+  const personal = local({ id: 'personal', jobId: '10' });
+  const guest = local({ id: 'guest', jobId: '20', guestId: 'guest-1' });
+
+  it('does not remove guest history while refreshing personal history', () => {
+    const merged = mergeTrialScope(
+      [personal, guest],
+      [trial({ trial_id: 10, client_trial_id: 'personal' })],
+      undefined,
+      now,
+    );
+
+    expect(merged.recordings.map((recording) => recording.id).sort()).toEqual([
+      'guest',
+      'personal',
+    ]);
+    expect(merged.recordings.find((recording) => recording.id === 'guest')?.guestId).toBe(
+      'guest-1',
+    );
+  });
+
+  it('does not remove personal history while refreshing one guest', () => {
+    const merged = mergeTrialScope(
+      [personal, guest],
+      [trial({ trial_id: 20, client_trial_id: 'guest' })],
+      'guest-1',
+      now,
+    );
+
+    expect(merged.recordings.map((recording) => recording.id).sort()).toEqual([
+      'guest',
+      'personal',
+    ]);
+    expect(merged.recordings.find((recording) => recording.id === 'personal')?.guestId).toBeUndefined();
   });
 });

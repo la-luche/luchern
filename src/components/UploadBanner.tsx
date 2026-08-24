@@ -14,7 +14,7 @@ import { uploadingCount } from '../lib/uploadRetry';
  * Participates in the root layout so it never covers navigation or screen UI.
  */
 export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boolean }) {
-  const { recordings, retry } = useRecordings();
+  const { recordings, retry } = useRecordings({ includeGuests: true });
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useT();
@@ -22,7 +22,16 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
   const topInset = includeTopInset ? insets.top : 0;
   const openRecordings = (items: { id: string }[]) => {
     if (items.length === 1) {
-      router.push({ pathname: '/results/[id]', params: { id: items[0].id } });
+      const recording = recordings.find((item) => item.id === items[0].id);
+      router.push({
+        pathname: '/results/[id]',
+        params: {
+          id: items[0].id,
+          ...(recording?.guestId ? { guestId: recording.guestId } : {}),
+        },
+      });
+    } else if (items.some((item) => recordings.find((r) => r.id === item.id)?.guestId)) {
+      router.push('/guests');
     } else {
       router.push('/results');
     }
