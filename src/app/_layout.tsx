@@ -12,6 +12,7 @@ import { DeidTestHarness } from '../components/DeidTestHarness';
 import { DemoVideoProvider } from '../components/DemoVideoProvider';
 import { DisclaimerGate } from '../components/DisclaimerGate';
 import { TopBanners } from '../components/OfflineBanner';
+import { BUNDLED_GIT_COMMIT } from '../generated/release';
 import { CLERK_PUBLISHABLE_KEY, clerkResourceCache, clerkTokenCache } from '../lib/clerk';
 import { recordDiagnostic } from '../lib/diagnostics';
 import {
@@ -28,6 +29,9 @@ import { installRequestLog } from '../lib/requestLog';
 import { ToastHost } from '../lib/toast';
 
 installRequestLog();
+if (BUNDLED_GIT_COMMIT) {
+  console.info(`[luche] ${BUNDLED_GIT_COMMIT.bundleMarker}`);
+}
 
 // Single stack for the whole app. Headers are hidden — each screen draws its
 // own minimal top bar to match the Luche look. App is portrait-locked and
