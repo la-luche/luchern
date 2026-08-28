@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import type { TestId } from './tests';
+import type { FullTestStep } from './tests';
 
 /**
  * Guided "run all" session: walk the patient through an ordered list of tests
@@ -10,11 +10,11 @@ import type { TestId } from './tests';
  */
 type SessionState = {
   active: boolean;
-  testIds: readonly TestId[];
+  steps: readonly FullTestStep[];
   index: number;
 };
 
-let state: SessionState = { active: false, testIds: [], index: 0 };
+let state: SessionState = { active: false, steps: [], index: 0 };
 const listeners = new Set<() => void>();
 
 function set(next: SessionState) {
@@ -22,26 +22,26 @@ function set(next: SessionState) {
   listeners.forEach((l) => l());
 }
 
-/** Begin a session over the given ordered tests, starting at the first. */
-export function startSession(testIds: readonly TestId[]) {
-  set({ active: true, testIds, index: 0 });
+/** Begin a session over the given ordered test/side steps, starting at the first. */
+export function startSession(steps: readonly FullTestStep[]) {
+  set({ active: true, steps, index: 0 });
 }
 
 export function endSession() {
   if (!state.active) return;
-  set({ active: false, testIds: [], index: 0 });
+  set({ active: false, steps: [], index: 0 });
 }
 
 /**
- * Advance to the next test. Returns the next TestId, or null if the session is
+ * Advance to the next test/side step, or return null if the session is
  * finished (the caller should then endSession() and leave the flow).
  */
-export function advanceSession(): TestId | null {
+export function advanceSession(): FullTestStep | null {
   if (!state.active) return null;
   const nextIndex = state.index + 1;
-  if (nextIndex >= state.testIds.length) return null;
+  if (nextIndex >= state.steps.length) return null;
   set({ ...state, index: nextIndex });
-  return state.testIds[nextIndex] ?? null;
+  return state.steps[nextIndex] ?? null;
 }
 
 function subscribe(l: () => void) {
@@ -56,8 +56,8 @@ function getSnapshot() {
 }
 
 export interface SessionView extends SessionState {
-  /** The test the session is currently on, or null when inactive. */
-  current: TestId | null;
+  /** The test/side step the session is currently on, or null when inactive. */
+  current: FullTestStep | null;
   /** 1-based position for display. */
   position: number;
   total: number;
@@ -67,8 +67,8 @@ export function useSession(): SessionView {
   const s = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return {
     ...s,
-    current: s.active ? (s.testIds[s.index] ?? null) : null,
+    current: s.active ? (s.steps[s.index] ?? null) : null,
     position: s.index + 1,
-    total: s.testIds.length,
+    total: s.steps.length,
   };
 }

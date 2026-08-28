@@ -11,12 +11,12 @@ import { Button } from '../../components/Button';
 import { FramingGuide, ReviewPanel } from '../../components/Capture';
 import { Screen } from '../../components/Screen';
 import { cues } from '../../lib/cues';
-import { useT } from '../../lib/i18n';
+import { formatEvaluatedSide, useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { advanceSession, endSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
-import { getTest } from '../../lib/tests';
+import { getTest, type EvaluatedSide } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
 type Phase = 'framing' | 'recording' | 'review';
@@ -35,7 +35,11 @@ function formatElapsed(seconds: number): string {
  * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
-  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
+  const { id, guestId, side } = useLocalSearchParams<{
+    id: string;
+    guestId?: string;
+    side?: string;
+  }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
@@ -53,6 +57,7 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
+  const [selectedLens, setSelectedLens] = useState<string | undefined>();
 
   // Pending clip awaiting review. Refs mirror it so the unmount cleanup can
   // delete an un-submitted temp file without capturing stale state.
@@ -87,6 +92,14 @@ export default function RecordScreen() {
   if (!test) return <Redirect href="/" />;
 
   const permissionsGranted = camPerm?.granted;
+  const routeSide: EvaluatedSide | undefined =
+    side === 'left' || side === 'right' ? side : undefined;
+  const sessionSide =
+    session.active && session.current?.testId === test.id
+      ? session.current.evaluatedSide
+      : undefined;
+  const evaluatedSide = test.sideSpecific ? (routeSide ?? sessionSide) : undefined;
+  const sideLabel = formatEvaluatedSide(t, test, evaluatedSide);
 
   const beginRecording = async () => {
     if (!cameraRef.current || !cameraReady) {
@@ -118,8 +131,7 @@ export default function RecordScreen() {
     if (!tempUri || submitting) return;
     setSubmitting(true);
     try {
-      // Omit side metadata so the backend can infer the evaluated side.
-      const rec = await addRecording(test.id, tempUri, undefined, guestId);
+      const rec = await addRecording(test.id, tempUri, evaluatedSide, guestId);
       submittedRef.current = true; // storage now owns the file — don't clean it up
       cues.saved();
       showToast(t.toast.saved);
@@ -128,10 +140,17 @@ export default function RecordScreen() {
         // doesn't block — the clip is saved and retries in the background.
         const next = advanceSession();
         if (next) {
-          router.replace({ pathname: '/test/[id]', params: { id: next } });
+          router.replace({
+            pathname: '/test/[id]',
+            params: { id: next.testId, ...(guestId ? { guestId } : {}) },
+          });
         } else {
           endSession();
-          router.replace('/results');
+          if (guestId) {
+            router.replace({ pathname: '/guests/[id]', params: { id: guestId } });
+          } else {
+            router.replace('/results');
+          }
         }
       } else {
         router.replace({
@@ -157,6 +176,16 @@ export default function RecordScreen() {
   const flip = () => {
     setFacing((f) => (f === 'back' ? 'front' : 'back'));
     setTorch(false); // torch is a back-camera feature; reset on flip
+    setSelectedLens(undefined);
+  };
+
+  const selectPreferredLens = ({ lenses }: { lenses: string[] }) => {
+    if (test.id !== 'gait' || facing !== 'back') return;
+    setSelectedLens(
+      lenses.includes('builtInUltraWideAngleCamera')
+        ? 'builtInUltraWideAngleCamera'
+        : undefined,
+    );
   };
 
   const stepZoom = (delta: number) =>
@@ -203,11 +232,13 @@ export default function RecordScreen() {
             mode="video"
             facing={facing}
             zoom={zoom}
+            selectedLens={facing === 'back' ? selectedLens : undefined}
             enableTorch={torch && facing === 'back'}
             mute
             videoQuality="720p"
             videoBitrate={3000000}
             onCameraReady={() => setCameraReady(true)}
+            onAvailableLensesChanged={selectPreferredLens}
             onMountError={({ message }) => {
               setCameraReady(false);
               recordDiagnostic('camera_mount_failed', { testId: test.id, message });
@@ -267,6 +298,7 @@ export default function RecordScreen() {
               <View className="max-w-full rounded-full bg-black/55 px-4 py-2">
                 <Text className="text-center text-[17px] font-semibold text-white">
                   {t.tests[test.id].name}
+                  {sideLabel ? ` · ${sideLabel}` : ''}
                 </Text>
               </View>
               <View className="max-w-full rounded-2xl bg-black/55 px-4 py-2">

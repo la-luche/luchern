@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { en, type Dict } from './en';
 import { it } from './it';
 import { ru } from './ru';
+import type { EvaluatedSide, TestConfig } from '../tests';
 
 export type Lang = 'en' | 'it' | 'ru';
 
@@ -57,6 +58,19 @@ export function useT(): Dict {
 export function useLang(): { lang: Lang; setLang: (l: Lang) => void } {
   const { lang, setLang } = useCtx();
   return { lang, setLang };
+}
+
+/** Localized standalone label for an explicitly instructed hand or leg. */
+export function formatEvaluatedSide(
+  t: Dict,
+  test: TestConfig,
+  side: EvaluatedSide | undefined,
+): string | undefined {
+  if (!side || !test.sideLimb) return undefined;
+  if (test.sideLimb === 'hand') {
+    return side === 'left' ? t.instruction.leftHand : t.instruction.rightHand;
+  }
+  return side === 'left' ? t.instruction.leftLeg : t.instruction.rightLeg;
 }
 
 const SEVERITY_MAP: Record<string, keyof Dict['severity']> = {

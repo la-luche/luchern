@@ -16,7 +16,9 @@ import { RecordingCard } from '../../components/RecordingCard';
 import { Screen } from '../../components/Screen';
 import { fetchGuest, type Guest, updateGuest } from '../../lib/guests';
 import { useT } from '../../lib/i18n';
+import { startSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
+import { FULL_TEST_FLOW } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed' | 'invalid';
@@ -195,10 +197,11 @@ export default function GuestProfileScreen() {
 
           <View className="mt-7">
             <Button
-              title={t.guests.startNewTest}
+              title={t.guests.startFullCheck}
               onPress={() => {
                 queueSave();
-                router.push({ pathname: '/tests', params: { guestId: id } });
+                startSession(FULL_TEST_FLOW);
+                router.push({ pathname: '/prepare', params: { mode: 'full', guestId: id } });
               }}
             />
           </View>

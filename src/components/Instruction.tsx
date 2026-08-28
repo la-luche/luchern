@@ -90,8 +90,14 @@ export function DemoVideo({
             style={StyleSheet.absoluteFill}
           />
         ) : (
-          <View className="absolute inset-0 items-center justify-center gap-3 bg-ink-faint">
-            <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+          <View
+            className={`absolute inset-0 items-center justify-center gap-3 ${fullScreen ? 'bg-black' : 'bg-ink-faint'}`}
+          >
+            {!hasVideo && fullScreen ? (
+              <Text className="text-[34px] font-bold tracking-[6px] text-white/70">TBD</Text>
+            ) : (
+              <MaterialCommunityIcons name={icon} size={44} color={COLORS.inkMuted} />
+            )}
             {hasVideo ? <ActivityIndicator color={COLORS.inkMuted} /> : null}
           </View>
         ))}

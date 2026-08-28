@@ -10,7 +10,12 @@ import { Header } from '../../components/Header';
 import { ResilientVideo } from '../../components/ResilientVideo';
 import { Screen } from '../../components/Screen';
 import { StatusPill } from '../../components/StatusPill';
-import { formatAnalysisFailureReason, localizeSeverity, useT } from '../../lib/i18n';
+import {
+  formatAnalysisFailureReason,
+  formatEvaluatedSide,
+  localizeSeverity,
+  useT,
+} from '../../lib/i18n';
 import { METHODOLOGY_URL } from '../../lib/links';
 import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
 import { useRecordings } from '../../lib/storage';
@@ -105,6 +110,7 @@ export default function ResultDetailScreen() {
   };
 
   const test = getTest(recording.testId);
+  const sideLabel = test ? formatEvaluatedSide(t, test, recording.evaluatedSide) : undefined;
   const privacyPending = Boolean(
     (recording.faceBlurRequested || recording.backgroundBlurRequested) &&
       recording.privacyBlurState !== 'completed' &&
@@ -120,7 +126,8 @@ export default function ResultDetailScreen() {
     try {
       // Copy to a doctor-friendly filename (test + date) so the shared clip is
       // self-explanatory, then open the share sheet (email, WhatsApp, AirDrop…).
-      const name = test ? t.tests[test.id].name : t.result.fallbackTitle;
+      const baseName = test ? t.tests[test.id].name : t.result.fallbackTitle;
+      const name = sideLabel ? `${baseName}_${sideLabel}` : baseName;
       const date = new Date(recording.createdAt).toISOString().slice(0, 10);
       const safe = `Luche_${name}_${date}`.replace(/[^\w-]+/g, '_');
       let uri = recording.videoUri ?? remoteVideoUri ?? (await loadRemoteVideo());
@@ -201,6 +208,12 @@ export default function ResultDetailScreen() {
       />
 
       <ScrollView contentContainerClassName="px-6 pb-10">
+        {sideLabel ? (
+          <View className="mb-3 self-start rounded-full bg-ink-faint px-4 py-2">
+            <Text className="text-[14px] font-semibold text-ink">{sideLabel}</Text>
+          </View>
+        ) : null}
+
         {/* Video playback. */}
         <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
           {recording.videoUri || remoteVideoUri ? (

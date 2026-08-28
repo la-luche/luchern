@@ -7,7 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { DemoVideo } from '../../components/Instruction';
-import { useT } from '../../lib/i18n';
+import { formatEvaluatedSide, useT } from '../../lib/i18n';
 import { advanceSession, endSession, useSession } from '../../lib/session';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
@@ -102,9 +102,9 @@ function OverlaySteps({ steps }: { steps: readonly string[] }) {
 
 /**
  * Per-test instruction guide, kept intentionally minimal for an older patient:
- * a demo clip (shows the movement), a few big plain-language steps (phone setup
- * folded into step 1), and one large button. During a guided session it also
- * shows "Test N of M" + a Skip control.
+ * a demo clip, movement-only steps, and one large button. Shared camera and
+ * framing guidance is shown once on the preparation screen before this guide.
+ * During a guided session it also shows "Test N of M" + a Skip control.
  */
 export default function InstructionScreen() {
   const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
@@ -118,15 +118,24 @@ export default function InstructionScreen() {
   if (!test) return <Redirect href="/" />;
 
   const tt = t.tests[test.id];
-  const inSession = session.active && session.current === test.id;
+  const inSession = session.active && session.current?.testId === test.id;
+  const evaluatedSide = inSession ? session.current?.evaluatedSide : undefined;
+  const sideLabel = formatEvaluatedSide(t, test, evaluatedSide);
 
   const skip = () => {
     const next = advanceSession();
     if (next) {
-      router.replace({ pathname: '/test/[id]', params: { id: next } });
+      router.replace({
+        pathname: '/test/[id]',
+        params: { id: next.testId, ...(guestId ? { guestId } : {}) },
+      });
     } else {
       endSession();
-      router.replace('/results');
+      if (guestId) {
+        router.replace({ pathname: '/guests/[id]', params: { id: guestId } });
+      } else {
+        router.replace('/results');
+      }
     }
   };
 
@@ -179,6 +188,16 @@ export default function InstructionScreen() {
           )}
         </View>
 
+        {sideLabel ? (
+          <View pointerEvents="none" className="items-center px-20">
+            <View className="rounded-full bg-black/60 px-4 py-2">
+              <Text className="text-[16px] font-bold text-white" style={TEXT_SHADOW}>
+                {sideLabel}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View className="flex-1 justify-end">
           {/* The action never scrolls off-screen. Only unusually long localized
               copy scrolls within the dark lower panel above it. */}
@@ -204,7 +223,11 @@ export default function InstructionScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/record/[id]',
-                    params: { id: test.id, ...(guestId ? { guestId } : {}) },
+                    params: {
+                      id: test.id,
+                      ...(evaluatedSide ? { side: evaluatedSide } : {}),
+                      ...(guestId ? { guestId } : {}),
+                    },
                   })
                 }
                 accessibilityRole="button"

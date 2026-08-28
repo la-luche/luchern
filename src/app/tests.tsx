@@ -17,8 +17,8 @@ export default function TestPickerScreen() {
   const openTest = (id: string) => {
     endSession();
     router.push({
-      pathname: '/test/[id]',
-      params: { id, ...(guestId ? { guestId } : {}) },
+      pathname: '/prepare',
+      params: { mode: 'single', id, ...(guestId ? { guestId } : {}) },
     });
   };
 

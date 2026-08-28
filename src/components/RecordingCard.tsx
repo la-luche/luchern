@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
-import { localizeSeverity, useT } from '../lib/i18n';
+import { formatEvaluatedSide, localizeSeverity, useT } from '../lib/i18n';
 import { getTest } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 import type { Recording } from '../lib/types';
@@ -28,6 +28,8 @@ export function RecordingCard({
   const t = useT();
   const test = getTest(recording.testId);
   const name = test ? t.tests[test.id].name : t.recordingCard.fallback;
+  const sideLabel = test ? formatEvaluatedSide(t, test, recording.evaluatedSide) : undefined;
+  const accessibleName = sideLabel ? `${name}, ${sideLabel}` : name;
   const updrsGrade = recording.result
     ? recording.result.updrsGrade ?? Math.min(4, Math.max(0, recording.result.score * 4))
     : undefined;
@@ -35,7 +37,7 @@ export function RecordingCard({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={t.recordingCard.a11y(name, formatDate(recording.createdAt))}
+      accessibilityLabel={t.recordingCard.a11y(accessibleName, formatDate(recording.createdAt))}
       className="flex-row items-center rounded-2xl border border-ink-faint bg-white p-4 active:opacity-70"
     >
       {/* Thumbnail placeholder — a real thumbnail lands with cloud/video work. */}
@@ -49,6 +51,9 @@ export function RecordingCard({
 
       <View className="ml-4 flex-1 gap-1">
         <Text className="text-[17px] font-semibold text-ink">{name}</Text>
+        {sideLabel ? (
+          <Text className="text-[14px] font-semibold text-ink-muted">{sideLabel}</Text>
+        ) : null}
         <Text className="text-[15px] text-ink-muted">{formatDate(recording.createdAt)}</Text>
         <StatusPill status={recording.status} />
         {recording.status === 'processing' && (

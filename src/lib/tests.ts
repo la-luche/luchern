@@ -29,10 +29,12 @@ export interface TestConfig {
   icon: MCIName;
   /** The backend must know which anatomical limb the patient was instructed to use. */
   sideSpecific?: boolean;
+  /** User-facing anatomical noun used to disambiguate left/right guided steps. */
+  sideLimb?: 'hand' | 'leg';
   /**
    * Looping demo clip shown on the instruction screen. require()'d mp4 in
-   * assets/demos/. Optional — tests without a filmed demo yet show an icon
-   * placeholder instead.
+   * assets/demos/. Optional — full-screen guides without a filmed demo show a
+   * black TBD placeholder instead.
    */
   demoVideo?: number;
   /** First-frame image shown instantly while the demo video loads. */
@@ -48,6 +50,7 @@ export const TESTS: TestConfig[] = [
     updrsItem: 'MDS-UPDRS 3.4',
     icon: 'gesture-tap',
     sideSpecific: true,
+    sideLimb: 'hand',
     demoVideo: require('../../assets/demos/FingerTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/FingerTappingDemo.jpg'),
     demoFraming: { scale: 1, x: 0, y: -0.08 },
@@ -57,15 +60,17 @@ export const TESTS: TestConfig[] = [
     updrsItem: 'MDS-UPDRS 3.5',
     icon: 'hand-back-right',
     sideSpecific: true,
+    sideLimb: 'hand',
     demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandMovementsDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.09 },
+    demoFraming: { scale: 1, x: 0, y: 0 },
   },
   {
     id: 'pronationSupination',
     updrsItem: 'MDS-UPDRS 3.6',
     icon: 'rotate-3d-variant',
     sideSpecific: true,
+    sideLimb: 'hand',
     demoVideo: require('../../assets/demos/HandTurnsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandTurnsDemo.jpg'),
     demoFraming: { scale: 1, x: 0, y: -0.09 },
@@ -75,18 +80,20 @@ export const TESTS: TestConfig[] = [
     updrsItem: 'MDS-UPDRS 3.7',
     icon: 'foot-print',
     sideSpecific: true,
+    sideLimb: 'leg',
     demoVideo: require('../../assets/demos/ToeTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ToeTappingDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.13 },
+    demoFraming: { scale: 1, x: 0, y: -0.18 },
   },
   {
     id: 'legAgility',
     updrsItem: 'MDS-UPDRS 3.8',
     icon: 'shoe-print',
     sideSpecific: true,
+    sideLimb: 'leg',
     demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/LegAgilityDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.14 },
+    demoFraming: { scale: 1, x: 0, y: -0.22 },
   },
   {
     id: 'arisingFromChair',
@@ -94,7 +101,7 @@ export const TESTS: TestConfig[] = [
     icon: 'seat',
     demoVideo: require('../../assets/demos/ChairDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ChairDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.29 },
+    demoFraming: { scale: 1, x: 0, y: 0 },
   },
   {
     id: 'gait',
@@ -112,6 +119,31 @@ export const TESTS: TestConfig[] = [
     demoPoster: require('../../assets/demos/posters/RestTremorDemo.jpg'),
     demoFraming: { scale: 1, x: 0, y: -0.15 },
   },
+];
+
+export interface FullTestStep {
+  testId: TestId;
+  evaluatedSide?: EvaluatedSide;
+}
+
+/**
+ * Guided full check, kept in lockstep with feral-api/telegram_tests.py.
+ * Unilateral movements are recorded left then right before advancing; rest
+ * tremor remains available as an individual recording but is not in this flow.
+ */
+export const FULL_TEST_FLOW: readonly FullTestStep[] = [
+  { testId: 'fingerTapping', evaluatedSide: 'left' },
+  { testId: 'fingerTapping', evaluatedSide: 'right' },
+  { testId: 'pronationSupination', evaluatedSide: 'left' },
+  { testId: 'pronationSupination', evaluatedSide: 'right' },
+  { testId: 'handMovements', evaluatedSide: 'left' },
+  { testId: 'handMovements', evaluatedSide: 'right' },
+  { testId: 'toeTapping', evaluatedSide: 'left' },
+  { testId: 'toeTapping', evaluatedSide: 'right' },
+  { testId: 'legAgility', evaluatedSide: 'left' },
+  { testId: 'legAgility', evaluatedSide: 'right' },
+  { testId: 'arisingFromChair' },
+  { testId: 'gait' },
 ];
 
 export function getTest(id: string | undefined): TestConfig | undefined {

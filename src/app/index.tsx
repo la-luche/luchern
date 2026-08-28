@@ -8,7 +8,7 @@ import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
 import { startSession } from '../lib/session';
-import { TESTS } from '../lib/tests';
+import { FULL_TEST_FLOW } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 
 /** Decluttered top-level menu: all movements, one movement, guests, history. */
@@ -18,8 +18,8 @@ export default function MenuScreen() {
   const { user } = useUser();
 
   const startFullCheck = () => {
-    startSession(TESTS.map((test) => test.id));
-    router.push({ pathname: '/test/[id]', params: { id: TESTS[0].id } });
+    startSession(FULL_TEST_FLOW);
+    router.push({ pathname: '/prepare', params: { mode: 'full' } });
   };
 
   return (
