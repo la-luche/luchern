@@ -23,7 +23,11 @@ jest.mock('../faceBlur', () => ({
 jest.mock('../faceBlurSettings', () => ({
   getPrivacyBlurSettings: jest.fn().mockResolvedValue({ face: false, background: false }),
 }));
+jest.mock('../../../modules/face-blur', () => ({
+  excludeFromBackupAsync: jest.fn().mockResolvedValue(undefined),
+}));
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
 
 jest.mock('../cloud', () => ({
@@ -40,22 +44,37 @@ jest.mock('../cloud', () => ({
   deleteRemoteRecording: jest.fn(),
   deleteRemoteUpload: jest.fn(),
   pollResult: jest.fn(),
+  pollResultOnce: jest.fn(),
 }));
-import { AnalysisNeedsRetryError, createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
+import {
+  AnalysisNeedsRetryError,
+  createAnalysisTrial,
+  pollResult,
+  pollResultOnce,
+  uploadRecording,
+} from '../cloud';
 import { __testing } from '../storage';
 
-const { driveOnce, recoverInterruptedPrivacyWork } = __testing;
+const {
+  driveOnce,
+  recoverInterruptedPrivacyWork,
+  serializeCacheMutation,
+  readRecordingSnapshot,
+  writeRecordingSnapshot,
+  chunkStoragePrefix,
+} = __testing;
 
 const baseRec = () => ({
   id: 'r1',
   testId: 'gait' as const,
   createdAt: 0,
-  videoUri: 'file:///clip.mp4',
+  videoUri: 'file:///clip.privacy-blurred.mp4',
   status: 'uploading' as const,
+  privacyBlurState: 'completed' as const,
 });
 
 describe('recoverInterruptedPrivacyWork', () => {
-  it('turns interrupted local privacy work into an explicit retry state', () => {
+  it('boots with interrupted privacy work paused for an explicit retry', () => {
     const interrupted = {
       ...baseRec(),
       status: 'preparing' as const,
@@ -72,9 +91,23 @@ describe('recoverInterruptedPrivacyWork', () => {
       status: 'blur_failed',
       privacyBlurState: 'failed',
       permanent: false,
-      resumable: false,
+      resumable: true,
     });
     expect(result.recordings[0]?.privacyBlurProgress).toBeUndefined();
+  });
+
+  it('keeps queued privacy work pending across a cold launch', () => {
+    const queued = {
+      ...baseRec(),
+      status: 'preparing' as const,
+      privacyBlurState: 'pending' as const,
+      privacyBlurProgress: 0,
+    };
+
+    expect(recoverInterruptedPrivacyWork([queued])).toEqual({
+      recordings: [queued],
+      recoveredIds: [],
+    });
   });
 
   it('leaves uploads, completed privacy work, and ordinary failures unchanged', () => {
@@ -96,11 +129,99 @@ describe('recoverInterruptedPrivacyWork', () => {
   });
 });
 
+describe('recording snapshot durability', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('round-trips 1,200 metadata-heavy recordings below the single-row limit', async () => {
+    const recordings = Array.from({ length: 1200 }, (_, index) => ({
+      ...baseRec(),
+      id: `recording-${index}`,
+      createdAt: index,
+      failReason: 'x'.repeat(2000),
+    }));
+    await writeRecordingSnapshot('account-large', recordings);
+    const prefix = chunkStoragePrefix('account-large');
+    const chunkKeys = (await AsyncStorage.getAllKeys()).filter((key) =>
+      key.startsWith(`${prefix}chunk.`),
+    );
+    expect(chunkKeys.length).toBeGreaterThan(1);
+    for (const [, value] of await AsyncStorage.multiGet(chunkKeys)) {
+      expect(value?.length ?? 0).toBeLessThan(512 * 1024);
+    }
+    await expect(readRecordingSnapshot('account-large')).resolves.toHaveLength(1200);
+  });
+
+  it('falls back to the previous complete recording snapshot after a torn chunk', async () => {
+    await writeRecordingSnapshot('account-torn', [baseRec()]);
+    await writeRecordingSnapshot('account-torn', [baseRec(), { ...baseRec(), id: 'r2' }]);
+    await AsyncStorage.removeItem(`${chunkStoragePrefix('account-torn')}chunk.2.0`);
+
+    await expect(readRecordingSnapshot('account-torn')).resolves.toHaveLength(1);
+  });
+});
+
+describe('durable recording metadata', () => {
+  it('serializes concurrent boundaries so upload IDs cannot overwrite each other', async () => {
+    let state = { first: '', second: '' };
+    const update = (field: 'first' | 'second', value: string, delayMs: number) =>
+      serializeCacheMutation(async () => {
+        const snapshot = state;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        state = { ...snapshot, [field]: value };
+      });
+
+    await Promise.all([
+      update('first', 'upload-1', 10),
+      update('second', 'upload-2', 0),
+    ]);
+
+    expect(state).toEqual({ first: 'upload-1', second: 'upload-2' });
+  });
+});
+
 describe('driveOnce', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('carries the originating account through upload, submit, and polling', async () => {
+    (uploadRecording as jest.Mock).mockResolvedValue({ uploadId: 'up-account' });
+    (createAnalysisTrial as jest.Mock).mockResolvedValue({ jobId: 'job-account' });
+    (pollResultOnce as jest.Mock).mockResolvedValue({ score: 0.2, label: 'Slight' });
+
+    await driveOnce(baseRec(), {
+      maxBackoffs: 0,
+      singlePoll: true,
+      expectedAccountId: 'user-a',
+    });
+
+    expect(uploadRecording).toHaveBeenCalledWith(
+      baseRec().videoUri,
+      'gait',
+      undefined,
+      undefined,
+      'user-a',
+    );
+    expect(createAnalysisTrial).toHaveBeenCalledWith(
+      'up-account',
+      'gait',
+      'r1',
+      0,
+      undefined,
+      undefined,
+      undefined,
+      'user-a',
+    );
+    expect(pollResultOnce).toHaveBeenCalledWith(
+      'job-account',
+      'gait',
+      undefined,
+      'user-a',
+    );
   });
 
   it('retryable upload error → failed + resumable', async () => {
@@ -111,6 +232,39 @@ describe('driveOnce', () => {
     expect(patch.resumable).toBe(true);
     expect(patch.permanent).toBe(false);
     expect(patch.failReason).toContain('403');
+  });
+
+  it('refuses to upload any artifact that has not completed de-identification', async () => {
+    const patch = await driveOnce(
+      { ...baseRec(), privacyBlurState: 'pending' as const },
+      { maxBackoffs: 0 },
+    );
+
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(patch).toMatchObject({ status: 'failed', resumable: true });
+    expect(patch.failReason).toContain('de-identified recording is not ready');
+  });
+
+  it('refuses a raw filename even when corrupt metadata claims privacy completed', async () => {
+    const patch = await driveOnce(
+      { ...baseRec(), videoUri: 'file:///recordings/raw-camera.mov' },
+      { maxBackoffs: 0 },
+    );
+
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(patch.failReason).toContain('not a verified de-identified artifact');
+  });
+
+  it('keeps a transient one-shot poll failure scheduled instead of failing the record', async () => {
+    (pollResultOnce as jest.Mock).mockRejectedValue(new Error('network unavailable'));
+    const patch = await driveOnce(
+      { ...baseRec(), status: 'processing' as const, jobId: '99' },
+      { maxBackoffs: 0, singlePoll: true },
+    );
+
+    expect(patch.status).toBe('processing');
+    expect(patch.jobId).toBe('99');
+    expect(patch.nextPollAt).toBeGreaterThan(Date.now());
   });
 
   it('permanent upload error → failed, not resumable, not permanent-retryable', async () => {
@@ -171,7 +325,7 @@ describe('driveOnce', () => {
     const rec = { ...baseRec(), status: 'processing' as const, jobId: '99' };
     const patch = await driveOnce(rec, { maxBackoffs: 0 });
     expect(uploadRecording).not.toHaveBeenCalled();
-    expect(pollResult).toHaveBeenCalledWith('99', 'gait');
+    expect(pollResult).toHaveBeenCalledWith('99', 'gait', undefined, undefined);
     expect(patch.status).toBe('done');
   });
 
@@ -202,6 +356,8 @@ describe('driveOnce', () => {
       0,
       undefined,
       undefined,
+      undefined,
+      undefined,
     );
     expect(patch.status).toBe('done');
   });
@@ -226,6 +382,8 @@ describe('driveOnce', () => {
       0,
       'left',
       undefined,
+      undefined,
+      undefined,
     );
     expect(patch).toMatchObject({ status: 'done', result: { updrsGrade: 1.5 } });
   });
@@ -249,6 +407,8 @@ describe('driveOnce', () => {
       0,
       undefined,
       'guest-201',
+      undefined,
+      undefined,
     );
   });
 

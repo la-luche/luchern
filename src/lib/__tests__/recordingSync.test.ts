@@ -72,9 +72,14 @@ describe('mergeOwnedTrials', () => {
     expect(merged.localUrisToDelete).toEqual([]);
   });
 
-  it('evicts an uploaded clip once its three-day retention has elapsed', () => {
+  it('evicts a classified sanitized clip once its three-day retention has elapsed', () => {
     const recordedAt = now - LOCAL_VIDEO_RETENTION_MS - 1;
-    const existing = local({ createdAt: recordedAt });
+    const existing = local({
+      createdAt: recordedAt,
+      videoUri: 'file:///documents/recordings/local-42.privacy-blurred.mp4',
+      originalVideoUri: 'file:///documents/recordings/local-42.mov',
+      privacyBlurState: 'completed',
+    });
     const merged = mergeOwnedTrials(
       [existing],
       [trial({ recorded_at: new Date(recordedAt).toISOString() })],
@@ -82,6 +87,38 @@ describe('mergeOwnedTrials', () => {
     );
 
     expect(merged.recordings[0].videoUri).toBeUndefined();
+    expect(merged.localUrisToDelete).toEqual([existing.videoUri]);
+  });
+
+  it('never auto-deletes an unclassified legacy upload that may be the original', () => {
+    const recordedAt = now - LOCAL_VIDEO_RETENTION_MS - 1;
+    const existing = local({ createdAt: recordedAt, privacyBlurState: undefined });
+    const merged = mergeOwnedTrials(
+      [existing],
+      [trial({ recorded_at: new Date(recordedAt).toISOString() })],
+      now,
+    );
+
+    expect(merged.recordings[0].originalVideoUri).toBe(existing.videoUri);
+    expect(merged.localUrisToDelete).toEqual([]);
+  });
+
+  it('never auto-evicts the never-uploaded original after de-identification', () => {
+    const recordedAt = now - LOCAL_VIDEO_RETENTION_MS - 1;
+    const existing = local({
+      createdAt: recordedAt,
+      videoUri: 'file:///documents/recordings/local-42.privacy-blurred.mp4',
+      originalVideoUri: 'file:///documents/recordings/local-42.mov',
+      privacyBlurState: 'completed',
+    });
+    const merged = mergeOwnedTrials(
+      [existing],
+      [trial({ recorded_at: new Date(recordedAt).toISOString() })],
+      now,
+    );
+
+    expect(merged.recordings[0].videoUri).toBeUndefined();
+    expect(merged.recordings[0].originalVideoUri).toBe(existing.originalVideoUri);
     expect(merged.localUrisToDelete).toEqual([existing.videoUri]);
   });
 
@@ -99,12 +136,37 @@ describe('mergeOwnedTrials', () => {
     expect(merged.localUrisToDelete).toEqual([]);
   });
 
-  it('removes server-backed history deleted on another device', () => {
-    const existing = local();
+  it('retains every local video in a 100-recording offline queue', () => {
+    const pending = Array.from({ length: 100 }, (_, index) =>
+      local({
+        id: `pending-${index}`,
+        jobId: undefined,
+        uploadId: index % 2 === 0 ? `upload-${index}` : undefined,
+        status: 'failed',
+        resumable: true,
+        createdAt: now - 10 * LOCAL_VIDEO_RETENTION_MS,
+        videoUri: `file:///documents/recordings/pending-${index}.mp4`,
+      }),
+    );
+
+    const merged = mergeOwnedTrials(pending, [], now);
+
+    expect(merged.recordings).toHaveLength(100);
+    expect(merged.recordings.map((recording) => recording.videoUri)).toEqual(
+      expect.arrayContaining(pending.map((recording) => recording.videoUri)),
+    );
+    expect(merged.localUrisToDelete).toEqual([]);
+  });
+
+  it('never treats absence from a list response as permission to delete local files', () => {
+    const existing = local({
+      videoUri: 'file:///documents/recordings/local-42.privacy-blurred.mp4',
+      originalVideoUri: 'file:///documents/recordings/local-42.mov',
+    });
     const merged = mergeOwnedTrials([existing], [], now);
 
-    expect(merged.recordings).toEqual([]);
-    expect(merged.localUrisToDelete).toEqual([existing.videoUri]);
+    expect(merged.recordings).toEqual([existing]);
+    expect(merged.localUrisToDelete).toEqual([]);
   });
 });
 

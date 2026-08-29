@@ -1,6 +1,9 @@
 jest.mock('expo-file-system/legacy', () => ({
   getInfoAsync: jest.fn(),
   deleteAsync: jest.fn().mockResolvedValue(undefined),
+  getFreeDiskStorageAsync: jest.fn().mockResolvedValue(10 * 1024 * 1024 * 1024),
+  readAsStringAsync: jest.fn().mockRejectedValue(new Error('no completion marker')),
+  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../../../modules/face-blur', () => ({
@@ -13,6 +16,7 @@ jest.mock('../recordingFiles', () => ({
   privacyBlurFileUris: jest.fn(() => ({
     pendingUri: 'file:///recordings/r1.pending.mp4',
     finalUri: 'file:///recordings/r1.privacy-blurred.mp4',
+    completionUri: 'file:///recordings/r1.privacy-blurred.complete.json',
   })),
   promotePrivacyBlurredFile: jest.fn().mockResolvedValue('file:///recordings/r1.privacy-blurred.mp4'),
 }));
@@ -39,9 +43,8 @@ describe('privacy blur preparation', () => {
     (FileSystem.getInfoAsync as jest.Mock).mockReset();
     (blurVideoAsync as jest.Mock).mockReset();
     (addProgressListener as jest.Mock).mockReturnValue({ remove });
-    (FileSystem.getInfoAsync as jest.Mock)
-      .mockResolvedValueOnce({ exists: false })
-      .mockResolvedValueOnce({ exists: true, size: 100 });
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: true, size: 100 });
+    (FileSystem.readAsStringAsync as jest.Mock).mockRejectedValue(new Error('no completion marker'));
     (blurVideoAsync as jest.Mock).mockResolvedValue({
       outputUri: 'file:///recordings/r1.pending.mp4',
       framesProcessed: 20,
@@ -54,7 +57,7 @@ describe('privacy blur preparation', () => {
     });
   });
 
-  it('promotes the native output and leaves original deletion to storage', async () => {
+  it('promotes the native output without deleting the original', async () => {
     const progress: number[] = [];
     const result = await prepareFaceBlurredVideo(
       'r1',
@@ -84,10 +87,11 @@ describe('privacy blur preparation', () => {
 
   it('recovers a promoted sanitized file without running the encoder again', async () => {
     (FileSystem.getInfoAsync as jest.Mock).mockReset();
-    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValueOnce({
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({
       exists: true,
       size: 100,
     });
+    (FileSystem.readAsStringAsync as jest.Mock).mockResolvedValue(JSON.stringify({ size: 100 }));
     const progress: number[] = [];
 
     const result = await prepareFaceBlurredVideo(
@@ -104,6 +108,21 @@ describe('privacy blur preparation', () => {
       recovered: true,
     });
     expect(progress).toEqual([1]);
+  });
+
+  it('regenerates a nonempty final whose completion marker does not match', async () => {
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: true, size: 100 });
+    (FileSystem.readAsStringAsync as jest.Mock).mockResolvedValue(JSON.stringify({ size: 99 }));
+
+    const result = await prepareFaceBlurredVideo(
+      'r1',
+      'file:///recordings/r1.original.mov',
+      options,
+      () => {},
+    );
+
+    expect(blurVideoAsync).toHaveBeenCalled();
+    expect(result.recovered).toBe(false);
   });
 
   it('fails closed when on-device pose estimation finds no person', async () => {

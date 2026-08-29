@@ -8,8 +8,8 @@ The public account-deletion instructions and request path are at
 
 - Account identifiers required for sign-in and account ownership.
 - Movement-test videos recorded without audio.
-- Temporary on-device pose, face, and person bounding boxes when an optional
-  video-privacy blur is enabled.
+- Temporary on-device pose, face, and person bounding boxes used for mandatory
+  video de-identification before upload.
 - Pose keypoints derived from uploaded videos.
 - Automated experimental movement metrics and analysis status.
 - A bounded on-device diagnostics log containing timestamps, technical state
@@ -20,12 +20,16 @@ The public account-deletion instructions and request path are at
 
 ## Storage and processing
 
-The local recording is moved into the app's documents directory after capture.
-**Depersonalise videos before upload** is optional and off by default. When it
-is enabled, Luche applies both face and background protection. Bundled
+The local recording and an account-scoped recovery manifest are moved into the
+app's documents directory before the review screen appears. Luche always
+applies both face and background protection before any upload. Bundled
 RTMDet-nano and RTMPose-t models estimate pose on every decoded frame. Luche
-writes a sanitized copy, durably switches the recording to that copy, and
-permanently deletes the original before upload starts. Video frames, pose
+writes a sanitized copy and durably switches upload/playback to that copy. The
+original remains local-only on the recording device and is never uploaded. It
+can be viewed or explicitly exported, and is removed only when the user deletes
+the recording, logs out, or deletes the account. Luche excludes the recording
+directory from iCloud backup and disables Android app backup, so these local
+originals are not copied into a device backup. Video frames, pose
 coordinates, and blur regions are not transmitted or saved during this step.
 Face regions receive coarse pixelation followed by strong blur. For background
 privacy, the single largest person region stays clear while everything outside
@@ -33,13 +37,13 @@ it is coarsely pixelated and blurred; Luche does not identify or select a
 patient among several people. The models run locally through ONNX Runtime on
 iOS and Android without an SDK key, network license check, or model download.
 If a frame has no usable person region, Luche redacts the full frame rather than
-reusing an old box. If preprocessing fails, nothing uploads until the user
-retries or explicitly chooses to send the original without the selected
-blurring.
+reusing an old box. If preprocessing fails or is interrupted, nothing uploads
+until the user explicitly retries it. There is no send-original upload path.
 
-The app uploads the selected video directly to Cloudflare R2 using a short-lived
-signed URL. Uploaded clips remain on the recording device for three days, then
-the local copy is deleted. Opening an older recording requests a fresh
+The app uploads only the completed de-identified video directly to Cloudflare
+R2 using a short-lived signed URL. The local de-identified copy remains on the
+recording device for three days; the never-uploaded original remains until
+explicit deletion. Opening an older recording requests a fresh
 short-lived cloud URL instead of restoring a permanent local copy. The analysis
 service reads the video and writes derived keypoints to R2. Account/trial
 metadata and results are stored in the Luche database and synchronize to other

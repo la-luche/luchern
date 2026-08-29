@@ -706,6 +706,13 @@ public final class FaceBlurModule: Module {
       processor?.cancel()
     }
 
+    AsyncFunction("excludeFromBackupAsync") { (inputURL: URL) in
+      var url = inputURL
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      try url.setResourceValues(values)
+    }
+
     AsyncFunction("renderPoseOverlayVideoAsync") {
       (inputURL: URL, outputURL: URL, operationId: String, promise: Promise) in
       self.operationsLock.lock()

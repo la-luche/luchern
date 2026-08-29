@@ -606,6 +606,10 @@ class FaceBlurModule : Module() {
       }
     }
 
+    // Android cloud backup is disabled at the application manifest level.
+    // Keep the cross-platform native contract available to JavaScript.
+    AsyncFunction("excludeFromBackupAsync") { _uri: String -> Unit }
+
     AsyncFunction("diagnoseImageAsync") {
         inputUri: String,
         outputDirectoryUri: String,

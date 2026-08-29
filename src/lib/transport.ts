@@ -82,7 +82,7 @@ export async function fetchWithTransport(
   path: string,
   reqId: string,
   init: RequestInit,
-): Promise<{ response: Response; endpoint: string }> {
+): Promise<{ response: Response; endpoint: string; release: () => void }> {
   const method = (init.method ?? 'GET').toUpperCase();
   const endpoints = attemptOrder(method);
   let lastError: ApiNetworkError | ApiTimeoutError | undefined;
@@ -97,6 +97,11 @@ export async function fetchWithTransport(
       timedOut = true;
       controller.abort();
     }, REQUEST_TIMEOUT_MS);
+    let handedOff = false;
+    const release = () => {
+      clearTimeout(timer);
+      init.signal?.removeEventListener('abort', abortFromCaller);
+    };
 
     try {
       const response = await fetch(`${endpoint}${path}`, { ...init, signal: controller.signal });
@@ -106,7 +111,8 @@ export async function fetchWithTransport(
         // with 403/451/5xx on one route while the other is healthy — an
         // HTTP error must never mark the route preferred.
         preferApiBase(endpoint);
-        return { response, endpoint };
+        handedOff = true;
+        return { response, endpoint, release };
       }
       // 401 is an auth semantic (token refresh upstream), identical on both
       // bases; everything else on a safe read gets the next attempt so a
@@ -114,9 +120,14 @@ export async function fetchWithTransport(
       // attempt's response is surfaced so real app errors still reach callers.
       if (response.status !== 401 && hasNextAttempt && SAFE_REPEAT_METHODS.has(method)) {
         preferApiBase(endpoints[index + 1]);
+        // No caller will consume this response body. Abort the native request
+        // before trying the other route so a stalled/error body cannot retain
+        // a socket for every queued recording.
+        controller.abort();
         continue;
       }
-      return { response, endpoint };
+      handedOff = true;
+      return { response, endpoint, release };
     } catch (error) {
       if (init.signal?.aborted) throw error;
       const wrapped = timedOut
@@ -145,8 +156,7 @@ export async function fetchWithTransport(
       });
       if (!hasNextAttempt) throw wrapped;
     } finally {
-      clearTimeout(timer);
-      init.signal?.removeEventListener('abort', abortFromCaller);
+      if (!handedOff) release();
     }
   }
 

@@ -45,6 +45,7 @@ declare class FaceBlurNativeModule extends NativeModule<FaceBlurEvents> {
     blurBackground: boolean,
   ): Promise<FaceBlurResult>;
   cancelAsync(operationId: string): Promise<void>;
+  excludeFromBackupAsync(uri: string): Promise<void>;
   renderPoseOverlayVideoAsync(
     inputUri: string,
     outputUri: string,
@@ -83,6 +84,10 @@ export function blurVideoAsync(
 
 export function cancelAsync(operationId: string): Promise<void> {
   return nativeModule.cancelAsync(operationId);
+}
+
+export function excludeFromBackupAsync(uri: string): Promise<void> {
+  return nativeModule.excludeFromBackupAsync(uri);
 }
 
 export function renderPoseOverlayVideoAsync(

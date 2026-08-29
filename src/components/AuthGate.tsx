@@ -23,6 +23,7 @@ import {
 } from '../lib/connectivity';
 import { diagnosticErrorData, exportDiagnostics, recordDiagnostic } from '../lib/diagnostics';
 import { useT } from '../lib/i18n';
+import { suspendRecordingAccessForAuthLoss } from '../lib/storage';
 import { Button } from './Button';
 import { ConnectionProblem } from './ConnectionProblem';
 
@@ -353,7 +354,7 @@ export function AuthGate({
   onDirectBootstrapFailure: () => boolean;
   onDirectAuthFailure: (email: string) => boolean;
 }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const net = useNetworkState();
   const t = useT();
   const onboarded = useRef(false);
@@ -392,13 +393,17 @@ export function AuthGate({
   }, [isLoaded, offline, onDirectBootstrapFailure, retryIfStillStuck, slow, t]);
 
   useEffect(() => {
+    if (isLoaded && !isSignedIn) suspendRecordingAccessForAuthLoss();
+  }, [isLoaded, isSignedIn]);
+
+  useEffect(() => {
     if (isSignedIn && !onboarded.current) {
       onboarded.current = true;
-      ensurePatientOnboarded().catch(() => {
+      ensurePatientOnboarded(userId ?? undefined).catch(() => {
         onboarded.current = false; // let a later render retry
       });
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, userId]);
 
   if (!isLoaded) {
     if (offline || slow) {

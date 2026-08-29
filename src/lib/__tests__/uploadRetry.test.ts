@@ -4,6 +4,8 @@ import {
   cancellableDelay,
   classifyUploadError,
   UPLOAD_BACKOFFS_MS,
+  createConcurrencyQueue,
+  selectPipelineBatch,
   createSerialQueue,
   uploadingCount,
 } from '../uploadRetry';
@@ -76,6 +78,97 @@ describe('createSerialQueue', () => {
     const e = new PollTimeoutError();
     expect(e).toBeInstanceOf(Error);
     expect(e.name).toBe('PollTimeoutError');
+  });
+});
+
+describe('createConcurrencyQueue', () => {
+  it('never runs more than the configured number of tasks', async () => {
+    const enqueue = createConcurrencyQueue(3);
+    let active = 0;
+    let peak = 0;
+    const task = () => enqueue(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+    });
+
+    await Promise.all(Array.from({ length: 100 }, task));
+
+    expect(peak).toBe(3);
+  });
+});
+
+describe('selectPipelineBatch', () => {
+  it('admits a bounded active set from a 1,200-recording reconnect backlog', () => {
+    const now = Date.now();
+    const records = Array.from({ length: 1200 }, (_, index) => ({
+      id: `r-${index}`,
+      status: index < 600 ? 'uploading' : 'processing',
+      createdAt: index,
+      privacyBlurState: 'completed',
+      ...(index >= 600 ? { jobId: `job-${index}`, nextPollAt: 0 } : {}),
+    }));
+
+    const selected = selectPipelineBatch(records, {
+      activeIds: new Set(),
+      ingestSlots: 2,
+      pollSlots: 4,
+      now,
+      privacyAllowed: true,
+    });
+
+    expect(selected.ingestIds).toHaveLength(2);
+    expect(selected.pollIds).toHaveLength(4);
+    expect(new Set([...selected.ingestIds, ...selected.pollIds]).size).toBe(6);
+  });
+
+  it('does not start privacy processing while the camera is active', () => {
+    const selected = selectPipelineBatch(
+      [{
+        id: 'privacy-1',
+        status: 'preparing',
+        createdAt: 1,
+        privacyBlurState: 'pending',
+      }],
+      {
+        activeIds: new Set(),
+        ingestSlots: 2,
+        pollSlots: 4,
+        now: Date.now(),
+        privacyAllowed: false,
+      },
+    );
+
+    expect(selected).toEqual({ ingestIds: [], pollIds: [] });
+  });
+
+  it('gives every large-backlog job a first poll before recycling older jobs', () => {
+    const records = Array.from({ length: 1200 }, (_, index) => ({
+      id: `r-${index}`,
+      status: 'processing',
+      createdAt: index,
+      jobId: `job-${index}`,
+      nextPollAt: 0,
+    }));
+    const seen = new Set<string>();
+    let now = 1;
+    for (let cycle = 0; cycle < 300; cycle += 1) {
+      const selected = selectPipelineBatch(records, {
+        activeIds: new Set(),
+        ingestSlots: 0,
+        pollSlots: 4,
+        now,
+        privacyAllowed: true,
+      });
+      for (const id of selected.pollIds) {
+        seen.add(id);
+        const record = records.find((item) => item.id === id)!;
+        record.nextPollAt = now + 5000;
+      }
+      now += 100;
+    }
+    expect(seen.size).toBe(1200);
   });
 });
 

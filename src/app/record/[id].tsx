@@ -1,18 +1,25 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import * as FileSystem from 'expo-file-system/legacy';
+import { useUser } from '@clerk/clerk-expo';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, Text, View } from 'react-native';
+import { Alert, AppState, Linking, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { FramingGuide, ReviewPanel } from '../../components/Capture';
 import { Screen } from '../../components/Screen';
 import { cues } from '../../lib/cues';
+import { setCaptureActive } from '../../lib/captureActivity';
+import {
+  attachCaptureOutput,
+  beginCaptureIntent,
+  clearCaptureIntent,
+} from '../../lib/captureRecovery';
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
+import { ensureFreeRecordingSpace } from '../../lib/recordingFiles';
 import { advanceSession, endSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
@@ -41,14 +48,20 @@ export default function RecordScreen() {
     side?: string;
   }>();
   const router = useRouter();
+  const { user } = useUser();
   const test = getTest(id);
   const t = useT();
 
   const [camPerm, requestCam] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const { addRecording } = useRecordings();
+  const { stageRecording, finalizeRecording, remove } = useRecordings();
   const session = useSession();
   useKeepAwake(); // keep the screen on while filming a test
+
+  useEffect(() => {
+    setCaptureActive(true);
+    return () => setCaptureActive(false);
+  }, []);
 
   const [phase, setPhase] = useState<Phase>('framing');
   const [submitting, setSubmitting] = useState(false);
@@ -59,15 +72,10 @@ export default function RecordScreen() {
   const [zoom, setZoom] = useState(0);
   const [selectedLens, setSelectedLens] = useState<string | undefined>();
 
-  // Pending clip awaiting review. Refs mirror it so the unmount cleanup can
-  // delete an un-submitted temp file without capturing stale state.
+  // The clip is durably staged before review. Retake is the only path that
+  // deletes it; navigation, jetsam, or a dead battery leave it recoverable.
   const [tempUri, setTempUri] = useState<string | null>(null);
-  const tempUriRef = useRef<string | null>(null);
-  const submittedRef = useRef(false);
-  const setTemp = (uri: string | null) => {
-    tempUriRef.current = uri;
-    setTempUri(uri);
-  };
+  const [stagedRecordingId, setStagedRecordingId] = useState<string | null>(null);
 
   // Recording timer.
   useEffect(() => {
@@ -79,15 +87,18 @@ export default function RecordScreen() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  // Best-effort cleanup: if we leave with an un-submitted clip, delete it.
-  useEffect(
-    () => () => {
-      if (tempUriRef.current && !submittedRef.current) {
-        FileSystem.deleteAsync(tempUriRef.current, { idempotent: true }).catch(() => {});
-      }
-    },
-    [],
-  );
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' && phase === 'recording') cameraRef.current?.stopRecording();
+    });
+    const memorySubscription = AppState.addEventListener('memoryWarning', () => {
+      if (phase === 'recording') cameraRef.current?.stopRecording();
+    });
+    return () => {
+      subscription.remove();
+      memorySubscription.remove();
+    };
+  }, [phase]);
 
   if (!test) return <Redirect href="/" />;
 
@@ -106,16 +117,30 @@ export default function RecordScreen() {
       setPhase('framing');
       return;
     }
-    setPhase('recording');
-    cues.start(t.tests[test.id].cueStart);
+    let outputReceived = false;
     try {
+      await ensureFreeRecordingSpace();
+      if (!user?.id) throw new Error('recording account unavailable');
+      await beginCaptureIntent(user.id, { testId: test.id, evaluatedSide, guestId });
+      setPhase('recording');
+      cues.start(t.tests[test.id].cueStart);
       // recordAsync resolves only once stopRecording() is called.
       // codec must be set on iOS for the videoBitrate cap (below) to apply.
-      const video = await cameraRef.current.recordAsync({ codec: 'hvc1' });
+      const video = await cameraRef.current.recordAsync({
+        codec: 'hvc1',
+        maxDuration: 120,
+        maxFileSize: 64 * 1024 * 1024,
+      });
       if (!video?.uri) throw new Error('camera returned no recording');
-      setTemp(video.uri);
+      outputReceived = true;
+      await attachCaptureOutput(user.id, video.uri);
+      const staged = await stageRecording(test.id, video.uri, evaluatedSide, guestId);
+      if (!staged.videoUri) throw new Error('saved recording is unavailable');
+      setStagedRecordingId(staged.id);
+      setTempUri(staged.videoUri);
       setPhase('review');
     } catch (error) {
+      if (!outputReceived && user?.id) await clearCaptureIntent(user.id).catch(() => {});
       setPhase('framing');
       recordDiagnostic('recording_failed', { testId: test.id, ...diagnosticErrorData(error) });
       Alert.alert(t.record.recordingFailedTitle, t.record.recordingFailedBody);
@@ -128,11 +153,10 @@ export default function RecordScreen() {
   };
 
   const submitClip = async () => {
-    if (!tempUri || submitting) return;
+    if (!stagedRecordingId || submitting) return;
     setSubmitting(true);
     try {
-      const rec = await addRecording(test.id, tempUri, evaluatedSide, guestId);
-      submittedRef.current = true; // storage now owns the file — don't clean it up
+      const rec = await finalizeRecording(stagedRecordingId);
       cues.saved();
       showToast(t.toast.saved);
       if (session.active) {
@@ -165,10 +189,10 @@ export default function RecordScreen() {
     }
   };
 
-  const retakeClip = () => {
-    const uri = tempUriRef.current;
-    if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
-    setTemp(null);
+  const retakeClip = async () => {
+    if (stagedRecordingId) await remove(stagedRecordingId);
+    setStagedRecordingId(null);
+    setTempUri(null);
     setZoom(0);
     setPhase('framing');
   };
@@ -230,6 +254,7 @@ export default function RecordScreen() {
             ref={cameraRef}
             style={{ flex: 1 }}
             mode="video"
+            active={phase !== 'review'}
             facing={facing}
             zoom={zoom}
             selectedLens={facing === 'back' ? selectedLens : undefined}

@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
-import { fetchGuests, type Guest } from '../../lib/guests';
+import { useGuests } from '../../lib/guestStorage';
+import type { Guest } from '../../lib/guests';
 import { useT } from '../../lib/i18n';
 import { useRecordings } from '../../lib/storage';
 import { COLORS } from '../../lib/theme';
@@ -20,23 +21,21 @@ export default function GuestsScreen() {
   const router = useRouter();
   const t = useT();
   const { recordings } = useRecordings({ includeGuests: true });
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { guests, loading, refresh } = useGuests();
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const load = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
+  const load = useCallback(async (showRefresh = false) => {
+    if (showRefresh) setRefreshing(true);
     try {
-      setGuests(await fetchGuests());
+      await refresh();
       setFailed(false);
     } catch {
       setFailed(true);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [refresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,15 +70,23 @@ export default function GuestsScreen() {
   return (
     <Screen>
       <Header title={t.guests.title} />
-      <ScrollView
+      <FlatList
+        data={loading ? [] : items}
+        keyExtractor={(guest) => guest.id}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
         contentContainerClassName="px-6 pb-10 pt-3"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />
         }
-      >
-        <Button title={t.guests.addGuest} onPress={() => router.push('/guests/new')} />
-
-        {loading ? (
+        ListHeaderComponent={
+          <View className="mb-6">
+            <Button title={t.guests.addGuest} onPress={() => router.push('/guests/new')} />
+          </View>
+        }
+        ListEmptyComponent={loading ? (
           <View className="items-center py-16">
             <ActivityIndicator color={COLORS.ink} />
           </View>
@@ -105,40 +112,36 @@ export default function GuestsScreen() {
               {t.guests.emptyBody}
             </Text>
           </View>
-        ) : (
-          <View className="mt-6 overflow-hidden rounded-2xl border border-ink-faint bg-white">
-            {items.map((guest, index) => (
-              <Pressable
-                key={guest.id}
-                onPress={() =>
-                  router.push({ pathname: '/guests/[id]', params: { id: guest.id } })
-                }
-                accessibilityRole="button"
-                accessibilityLabel={t.guests.openGuestA11y(
-                  guest.name,
-                  guest.effectiveTestCount,
-                )}
-                className={`min-h-[72px] flex-row items-center px-4 py-3 active:bg-ink-faint ${
-                  index < items.length - 1 ? 'border-b border-ink-faint' : ''
-                }`}
-              >
-                <View className="h-11 w-11 items-center justify-center rounded-full bg-ink-faint">
-                  <Ionicons name="person-outline" size={22} color={COLORS.ink} />
-                </View>
-                <View className="ml-3 flex-1">
-                  <Text numberOfLines={1} className="text-[17px] font-semibold text-ink">
-                    {guest.name}
-                  </Text>
-                  <Text className="mt-0.5 text-[14px] text-ink-muted">
-                    {t.guests.testCount(guest.effectiveTestCount)}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.inkMuted} />
-              </Pressable>
-            ))}
-          </View>
+        ) : null}
+        renderItem={({ item: guest, index }) => (
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/guests/[id]', params: { id: guest.id } })
+            }
+            accessibilityRole="button"
+            accessibilityLabel={t.guests.openGuestA11y(
+              guest.name,
+              guest.effectiveTestCount,
+            )}
+            className={`min-h-[72px] flex-row items-center border-x border-t border-ink-faint bg-white px-4 py-3 active:bg-ink-faint ${
+              index === 0 ? 'rounded-t-2xl' : ''
+            } ${index === items.length - 1 ? 'rounded-b-2xl border-b' : ''}`}
+          >
+            <View className="h-11 w-11 items-center justify-center rounded-full bg-ink-faint">
+              <Ionicons name="person-outline" size={22} color={COLORS.ink} />
+            </View>
+            <View className="ml-3 flex-1">
+              <Text numberOfLines={1} className="text-[17px] font-semibold text-ink">
+                {guest.name}
+              </Text>
+              <Text className="mt-0.5 text-[14px] text-ink-muted">
+                {t.guests.testCount(guest.effectiveTestCount)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.inkMuted} />
+          </Pressable>
         )}
-      </ScrollView>
+      />
     </Screen>
   );
 }

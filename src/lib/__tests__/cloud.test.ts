@@ -35,7 +35,7 @@ describe('createAnalysisTrial', () => {
         client_trial_id: 'local-1',
         analyze: true,
       }),
-    });
+    }, undefined);
   });
 
   it('sends an owner-private guest id when the recording belongs to a guest', async () => {
@@ -61,7 +61,7 @@ describe('createAnalysisTrial', () => {
         guest_id: 'guest-201',
         analyze: true,
       }),
-    });
+    }, undefined);
   });
 });
 

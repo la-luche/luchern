@@ -12,6 +12,7 @@ const STYLE: Record<
   RecordingStatus,
   { bg: string; fg: string; spin: boolean; icon?: IconName; iconColor?: string }
 > = {
+  draft: { bg: 'bg-slate-100', fg: 'text-slate-700', spin: false, icon: 'save-outline', iconColor: '#334155' },
   preparing: { bg: 'bg-violet-100', fg: 'text-violet-700', spin: true },
   blur_failed: { bg: 'bg-red-100', fg: 'text-red-700', spin: false, icon: 'shield-outline', iconColor: '#b91c1c' },
   uploading: { bg: 'bg-blue-100', fg: 'text-blue-700', spin: true },

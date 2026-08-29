@@ -77,6 +77,90 @@ export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
+/** Bounded work queue for long-lived result pollers. Unlike byte uploads,
+ * polling benefits from modest concurrency, but one loop per queued video can
+ * create a request storm after a large offline event reconnects. */
+export function createConcurrencyQueue(
+  limit: number,
+): <T>(task: () => Promise<T>) => Promise<T> {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error('queue limit must be positive');
+  let active = 0;
+  const waiting: (() => void)[] = [];
+
+  const release = () => {
+    active -= 1;
+    waiting.shift()?.();
+  };
+
+  return function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<void>((resolve) => {
+      const start = () => {
+        active += 1;
+        resolve();
+      };
+      if (active < limit) start();
+      else waiting.push(start);
+    }).then(task).finally(release);
+  };
+}
+
+export function selectPipelineBatch(
+  recordings: Array<{
+    id: string;
+    status: string;
+    createdAt: number;
+    jobId?: string;
+    nextPollAt?: number;
+    privacyBlurState?: string;
+  }>,
+  options: {
+    activeIds: ReadonlySet<string>;
+    ingestSlots: number;
+    pollSlots: number;
+    now: number;
+    privacyAllowed: boolean;
+  },
+): { ingestIds: string[]; pollIds: string[] } {
+  let ingestSlots = Math.max(0, options.ingestSlots);
+  let pollSlots = Math.max(0, options.pollSlots);
+  const ingestIds: string[] = [];
+  const pollIds: string[] = [];
+  const inactive = recordings.filter((recording) => !options.activeIds.has(recording.id));
+  for (const recording of [...inactive].sort((a, b) => a.createdAt - b.createdAt)) {
+    const isIngest =
+      recording.status === 'preparing' ||
+      recording.status === 'uploading' ||
+      (recording.status === 'processing' && !recording.jobId);
+    const isPrivacy =
+      recording.status === 'preparing' && recording.privacyBlurState !== 'completed';
+    if (isIngest && (!isPrivacy || options.privacyAllowed) && ingestSlots > 0) {
+      ingestIds.push(recording.id);
+      ingestSlots -= 1;
+    }
+  }
+  // Poll the least-recently-served job first. New jobs use zero and therefore
+  // receive one status request before an older job's next scheduled retry.
+  const eligiblePolls = inactive
+    .filter(
+      (recording) =>
+        recording.status === 'processing' &&
+        Boolean(recording.jobId) &&
+        (recording.nextPollAt ?? 0) <= options.now,
+    )
+    .sort(
+      (a, b) =>
+        (a.nextPollAt ?? 0) - (b.nextPollAt ?? 0) ||
+        a.createdAt - b.createdAt,
+    );
+  for (const recording of eligiblePolls) {
+    if (pollSlots > 0) {
+      pollIds.push(recording.id);
+      pollSlots -= 1;
+    }
+  }
+  return { ingestIds, pollIds };
+}
+
 /** How many recordings are actively in the byte-upload phase (drives the
  *  banner count). */
 export function uploadingCount(recordings: { status: string }[]): number {

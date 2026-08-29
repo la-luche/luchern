@@ -25,9 +25,14 @@ interface OwnedTrialsResponse {
   trials: OwnedTrialSummary[];
 }
 
-export function fetchOwnedTrials(guestId?: string): Promise<OwnedTrialsResponse> {
+export function fetchOwnedTrials(
+  guestId?: string,
+  expectedAccountId?: string,
+): Promise<OwnedTrialsResponse> {
   return apiFetch<OwnedTrialsResponse>(
     guestId ? `/guests/${encodeURIComponent(guestId)}/trials` : '/me/trials',
+    {},
+    expectedAccountId,
   );
 }
 
@@ -84,7 +89,14 @@ function remoteRecording(
     evaluatedSide: evaluatedSide(trial.evaluated_side) ?? local?.evaluatedSide,
     createdAt,
     videoUri: keepLocalVideo ? local?.videoUri : undefined,
-    privacyBlurOriginalUri: keepLocalVideo ? local?.privacyBlurOriginalUri : undefined,
+    // Originals are never uploaded, so they have no cloud fallback and must
+    // not be evicted by the three-day sanitized-video cache policy.
+    originalVideoUri: local?.originalVideoUri ?? (
+      local?.videoUri && local.privacyBlurState !== 'completed'
+        ? local.videoUri
+        : undefined
+    ),
+    privacyBlurOriginalUri: local?.privacyBlurOriginalUri,
     status,
     faceBlurRequested: local?.faceBlurRequested,
     backgroundBlurRequested: local?.backgroundBlurRequested,
@@ -93,6 +105,7 @@ function remoteRecording(
     privacyBlurFramesWithFaces: local?.privacyBlurFramesWithFaces,
     privacyBlurFramesWithBackground: local?.privacyBlurFramesWithBackground,
     privacyBlurPoseSamples: local?.privacyBlurPoseSamples,
+    localRevision: local?.localRevision,
     jobId: String(trial.trial_id),
     result: resultFor(trial),
     failReason: status === 'failed' ? trial.analysis_error ?? 'analysis failed' : undefined,
@@ -139,16 +152,23 @@ export function mergeOwnedTrials(
     if (local) matchedLocalIds.add(local.id);
     const merged = remoteRecording(trial, local, now, guestId);
     if (!merged) continue;
-    if (local?.videoUri && !merged.videoUri) localUrisToDelete.add(local.videoUri);
+    if (
+      local?.videoUri &&
+      local.originalVideoUri &&
+      !merged.videoUri &&
+      local.videoUri !== local.originalVideoUri &&
+      local.videoUri !== local.privacyBlurOriginalUri
+    ) {
+      localUrisToDelete.add(local.videoUri);
+    }
     recordings.push(merged);
   }
 
   for (const local of localRecordings) {
     if (matchedLocalIds.has(local.id)) continue;
-    if (local.jobId) {
-      if (local.videoUri) localUrisToDelete.add(local.videoUri);
-      continue;
-    }
+    // Absence from a list response is never a deletion signal. A partial,
+    // paginated, or stale 200 must not erase the only local original. Explicit
+    // deletion is handled by removeById after the server confirms it.
     recordings.push(local);
   }
 

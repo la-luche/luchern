@@ -27,7 +27,7 @@ describe('guest API', () => {
         testCount: 3,
       }),
     ]);
-    expect(apiFetch).toHaveBeenCalledWith('/guests');
+    expect(apiFetch).toHaveBeenCalledWith('/guests', {}, undefined);
   });
 
   it('uses owner-private guest endpoints for create, read, and inline edit', async () => {
@@ -37,10 +37,20 @@ describe('guest API', () => {
     expect(apiFetch).toHaveBeenLastCalledWith('/guests', {
       method: 'POST',
       body: JSON.stringify({ name: 'Maria', notes: 'Uses a walking aid' }),
-    });
+    }, undefined);
+
+    await createGuest('Maria', 'Uses a walking aid', '0198f04d-58ad-7c08-b1ac-67a40b046be7');
+    expect(apiFetch).toHaveBeenLastCalledWith('/guests', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Maria',
+        notes: 'Uses a walking aid',
+        guest_id: '0198f04d-58ad-7c08-b1ac-67a40b046be7',
+      }),
+    }, undefined);
 
     await fetchGuest('guest-1');
-    expect(apiFetch).toHaveBeenLastCalledWith('/guests/guest-1');
+    expect(apiFetch).toHaveBeenLastCalledWith('/guests/guest-1', {}, undefined);
 
     await updateGuest('guest-1', { name: 'Maria S.', notes: 'Updated' });
     expect(apiFetch).toHaveBeenLastCalledWith('/guests/guest-1', {

@@ -13,13 +13,14 @@ import {
 import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
-import { createGuest } from '../../lib/guests';
+import { useGuests } from '../../lib/guestStorage';
 import { useT } from '../../lib/i18n';
 import { COLORS } from '../../lib/theme';
 
 export default function NewGuestScreen() {
   const router = useRouter();
   const t = useT();
+  const { create } = useGuests();
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [creating, setCreating] = useState(false);
@@ -33,7 +34,9 @@ export default function NewGuestScreen() {
     }
     setCreating(true);
     try {
-      const guest = await createGuest(trimmedName, notes);
+      // The profile is committed on-device before any network attempt, so an
+      // event can continue in airplane mode and sync this UUID later.
+      const guest = await create(trimmedName, notes);
       router.replace({ pathname: '/guests/[id]', params: { id: guest.id } });
     } catch {
       setCreating(false);

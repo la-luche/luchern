@@ -7,6 +7,7 @@ import type { EvaluatedSide, TestId } from './tests';
  * Mirrors the status pill shown on each results card.
  */
 export type RecordingStatus =
+  | 'draft'
   | 'preparing'
   | 'blur_failed'
   | 'uploading'
@@ -19,8 +20,7 @@ export type PrivacyBlurState =
   | 'pending'
   | 'processing'
   | 'completed'
-  | 'failed'
-  | 'bypassed';
+  | 'failed';
 
 /** Analysis result from the cloud keypoint→MDS-UPDRS pipeline (see cloud.ts). */
 export interface CloudResult {
@@ -52,11 +52,22 @@ export interface Recording {
   evaluatedSide?: EvaluatedSide;
   /** Epoch millis. */
   createdAt: number;
+  /** Monotonic local revision used to choose the newest crash-recovery copy. */
+  localRevision?: number;
   /** Durable local file URI while the captured video is retained on-device. */
   videoUri?: string;
   /**
-   * Original URI retained only across the crash-safe sanitized-file commit.
-   * Upload cannot start while this field exists.
+   * Never-uploaded original retained on-device after privacy processing.
+   * Removed only with an explicit recording/account deletion.
+   */
+  originalVideoUri?: string;
+  /** Temporary camera-cache source used only to recover an interrupted handoff. */
+  stagingSourceUri?: string;
+  /** Expected source bytes, used to reject a torn fallback copy after power loss. */
+  stagingSourceSize?: number;
+  /**
+   * Legacy crash-boundary field from builds that deleted originals after
+   * privacy processing. New writes use originalVideoUri instead.
    */
   privacyBlurOriginalUri?: string;
   status: RecordingStatus;
@@ -85,6 +96,8 @@ export interface Recording {
   uploadRetrying?: boolean;
   /** Server trial/analysis id, persisted before result polling starts. */
   jobId?: string;
+  /** Fair single-request polling schedule; avoids one long poll loop per job. */
+  nextPollAt?: number;
   /** Populated when status === 'done'. */
   result?: CloudResult;
   /** Set when status === 'failed': the raw error message, for display/debug. */

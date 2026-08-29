@@ -42,21 +42,30 @@ function guest(payload: GuestPayload): Guest {
   };
 }
 
-export async function fetchGuests(): Promise<Guest[]> {
-  const response = await apiFetch<GuestsResponse>('/guests');
+export async function fetchGuests(expectedAccountId?: string): Promise<Guest[]> {
+  const response = await apiFetch<GuestsResponse>('/guests', {}, expectedAccountId);
   return response.guests.map(guest);
 }
 
-export async function fetchGuest(guestId: string): Promise<Guest> {
-  const response = await apiFetch<GuestPayload>(`/guests/${encodeURIComponent(guestId)}`);
+export async function fetchGuest(guestId: string, expectedAccountId?: string): Promise<Guest> {
+  const response = await apiFetch<GuestPayload>(
+    `/guests/${encodeURIComponent(guestId)}`,
+    {},
+    expectedAccountId,
+  );
   return guest(response);
 }
 
-export async function createGuest(name: string, notes: string): Promise<Guest> {
+export async function createGuest(
+  name: string,
+  notes: string,
+  guestId?: string,
+  expectedAccountId?: string,
+): Promise<Guest> {
   const response = await apiFetch<GuestPayload>('/guests', {
     method: 'POST',
-    body: JSON.stringify({ name, notes }),
-  });
+    body: JSON.stringify({ name, notes, ...(guestId ? { guest_id: guestId } : {}) }),
+  }, expectedAccountId);
   return guest(response);
 }
 

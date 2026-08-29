@@ -1,10 +1,10 @@
 import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -14,7 +14,7 @@ import { Button } from '../../components/Button';
 import { Header } from '../../components/Header';
 import { RecordingCard } from '../../components/RecordingCard';
 import { Screen } from '../../components/Screen';
-import { fetchGuest, type Guest, updateGuest } from '../../lib/guests';
+import { useGuests } from '../../lib/guestStorage';
 import { useT } from '../../lib/i18n';
 import { startSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
@@ -27,37 +27,42 @@ export default function GuestProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const t = useT();
-  const [guest, setGuest] = useState<Guest | null>(null);
+  const { guests, loading: loadingGuest, refresh: refreshGuests, update } = useGuests();
+  const guest = guests.find((item) => item.id === id) ?? null;
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [loadingGuest, setLoadingGuest] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const lastSaved = useRef('');
   const latestQueued = useRef('');
   const saveTail = useRef<Promise<void>>(Promise.resolve());
-  const { recordings, loading: recordingsLoading, refresh } = useRecordings({ guestId: id });
+  const initializedGuestId = useRef<string | null>(null);
+  const {
+    recordings,
+    loading: recordingsLoading,
+    refresh: refreshRecordings,
+  } = useRecordings({ guestId: id });
+
+  useEffect(() => {
+    if (!guest) return;
+    const storedKey = JSON.stringify([guest.name, guest.notes]);
+    const canApplyStoredValue =
+      initializedGuestId.current !== guest.id || latestQueued.current === lastSaved.current;
+    if (canApplyStoredValue) {
+      setName(guest.name);
+      setNotes(guest.notes);
+      latestQueued.current = storedKey;
+      lastSaved.current = storedKey;
+      initializedGuestId.current = guest.id;
+    }
+  }, [guest]);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const loaded = await fetchGuest(id);
-      setGuest(loaded);
-      const serverKey = JSON.stringify([loaded.name, loaded.notes]);
-      if (latestQueued.current === lastSaved.current) {
-        setName(loaded.name);
-        setNotes(loaded.notes);
-        latestQueued.current = serverKey;
-      }
-      lastSaved.current = serverKey;
-      setLoadFailed(false);
-      void refresh().catch(() => {});
-    } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoadingGuest(false);
-    }
-  }, [id, refresh]);
+      await refreshGuests();
+      void refreshRecordings().catch(() => {});
+    } catch {}
+  }, [id, refreshGuests, refreshRecordings]);
 
   useFocusEffect(
     useCallback(() => {
@@ -81,9 +86,8 @@ export default function GuestProfileScreen() {
     saveTail.current = saveTail.current
       .catch(() => undefined)
       .then(async () => {
-        const updated = await updateGuest(id, fields);
+        const updated = await update(id, fields);
         lastSaved.current = key;
-        setGuest(updated);
         if (latestQueued.current === key) {
           setName(updated.name);
           setNotes(updated.notes);
@@ -109,7 +113,7 @@ export default function GuestProfileScreen() {
     );
   }
 
-  if (loadFailed || !guest) {
+  if (!guest) {
     return (
       <Screen>
         <Header title={t.guests.profileTitle} />
@@ -143,10 +147,16 @@ export default function GuestProfileScreen() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <FlatList
+          data={recordingsLoading ? [] : recordings}
+          keyExtractor={(recording) => recording.id}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews
           contentContainerClassName="px-6 pb-10 pt-3"
           keyboardShouldPersistTaps="handled"
-        >
+          ListHeaderComponent={<>
           <Text className="text-[14px] font-semibold text-ink-muted">{t.guests.name}</Text>
           <TextInput
             value={name}
@@ -210,8 +220,8 @@ export default function GuestProfileScreen() {
             <Text className="text-[20px] font-bold text-ink">{t.guests.previousTests}</Text>
             <Text className="text-[14px] text-ink-muted">{t.guests.testCount(testCount)}</Text>
           </View>
-
-          {recordingsLoading ? (
+          </>}
+          ListEmptyComponent={recordingsLoading ? (
             <View className="items-center py-10">
               <ActivityIndicator color={COLORS.ink} />
             </View>
@@ -224,24 +234,22 @@ export default function GuestProfileScreen() {
                 {t.guests.noTestsBody}
               </Text>
             </View>
-          ) : (
-            <View className="gap-3">
-              {recordings.map((recording) => (
-                <RecordingCard
-                  key={recording.id}
-                  recording={recording}
-                  onPress={() => {
-                    queueSave();
-                    router.push({
-                      pathname: '/results/[id]',
-                      params: { id: recording.id, guestId: id },
-                    });
-                  }}
-                />
-              ))}
+          ) : null}
+          renderItem={({ item: recording }) => (
+            <View className="mb-3">
+              <RecordingCard
+                recording={recording}
+                onPress={() => {
+                  queueSave();
+                  router.push({
+                    pathname: '/results/[id]',
+                    params: { id: recording.id, guestId: id },
+                  });
+                }}
+              />
             </View>
           )}
-        </ScrollView>
+        />
       </KeyboardAvoidingView>
     </Screen>
   );

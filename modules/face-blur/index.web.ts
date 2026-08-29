@@ -13,6 +13,8 @@ export async function blurVideoAsync(
 
 export async function cancelAsync(_operationId: string): Promise<void> {}
 
+export async function excludeFromBackupAsync(_uri: string): Promise<void> {}
+
 export function addProgressListener(
   _listener: (event: FaceBlurProgressEvent) => void,
 ): EventSubscription {

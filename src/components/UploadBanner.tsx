@@ -1,7 +1,7 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '../lib/i18n';
@@ -14,7 +14,7 @@ import { uploadingCount } from '../lib/uploadRetry';
  * Participates in the root layout so it never covers navigation or screen UI.
  */
 export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boolean }) {
-  const { recordings, retry } = useRecordings({ includeGuests: true });
+  const { recordings, retry, retryPrivacyBlurring } = useRecordings({ includeGuests: true });
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useT();
@@ -39,15 +39,15 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
 
   const preparing = recordings.filter((recording) => recording.status === 'preparing');
   useEffect(() => {
-    const tag = 'luche-privacy-blur';
-    if (preparing.length > 0) {
+    const tag = 'luche-pending-work';
+    if (preparing.length > 0 || n > 0) {
       void activateKeepAwakeAsync(tag);
       return () => {
         void deactivateKeepAwake(tag);
       };
     }
     return undefined;
-  }, [preparing.length]);
+  }, [n, preparing.length]);
 
   if (preparing.length > 0) {
     const progress = Math.round(
@@ -127,16 +127,32 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
 
   const blurFailed = recordings.filter((recording) => recording.status === 'blur_failed');
   if (blurFailed.length > 0) {
+    const interrupted = blurFailed.filter((recording) => recording.resumable);
     return (
       <Pressable
         onPress={() => openRecordings(blurFailed)}
         accessibilityRole="button"
         style={{ paddingTop: topInset }}
-        className="bg-red-600 active:opacity-80"
+        className="flex-row items-center justify-between bg-red-600 px-4 pb-2 pt-1 active:opacity-80"
       >
-        <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
+        <Text className="flex-1 text-[13px] font-semibold text-white">
           {t.uploadBanner.privacyBlurFailed(blurFailed.length)}
         </Text>
+        {interrupted.length > 0 && (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              interrupted.forEach((recording) => retryPrivacyBlurring(recording.id));
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t.uploadBanner.resumePrivacy}
+            className="ml-3 rounded-full bg-white/25 px-3 py-1 active:opacity-70"
+          >
+            <Text className="text-[13px] font-bold text-white">
+              {t.uploadBanner.resumePrivacy}
+            </Text>
+          </Pressable>
+        )}
       </Pressable>
     );
   }

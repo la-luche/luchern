@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "ai.getferal.luche",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -63,6 +64,7 @@
       "expo-secure-store",
       "expo-localization",
       "./plugins/with-ios26-touch-fix",
+      "./plugins/with-async-storage-capacity",
       [
         "expo-build-properties",
         {

@@ -13,6 +13,7 @@ import {
   ApiNetworkError,
   apiFetch,
 } from '../api';
+import { REQUEST_TIMEOUT_MS } from '../transport';
 import {
   preferApiBase,
   registerClerkTransportFallback,
@@ -47,6 +48,8 @@ describe('mobile API transport', () => {
     });
     globalThis.fetch = jest.fn();
   });
+
+  afterEach(() => jest.useRealTimers());
 
   it('uses the canonical Pi backend', async () => {
     (globalThis.fetch as jest.Mock).mockResolvedValue(response({ json: { patients: [] } }));
@@ -143,6 +146,7 @@ describe('mobile API transport', () => {
     await apiFetch('/patients');
 
     expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getToken.mock.calls).toEqual([[undefined], [{ skipCache: true }]]);
     expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true });
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/patients'),
@@ -184,6 +188,74 @@ describe('mobile API transport', () => {
         headers: expect.objectContaining({ Authorization: 'Bearer fresh-token' }),
       }),
     );
+  });
+
+  it('does not repeat an authenticated write under a different Clerk account', async () => {
+    const sessionA = {
+      user: { id: 'user-a' },
+      getToken: jest.fn().mockResolvedValue('token-a'),
+    };
+    const sessionB = {
+      user: { id: 'user-b' },
+      getToken: jest.fn().mockResolvedValue('token-b'),
+    };
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: sessionA });
+    (globalThis.fetch as jest.Mock).mockImplementationOnce(async () => {
+      (getClerkInstance as jest.Mock).mockReturnValue({ session: sessionB });
+      return response({ ok: false, status: 401 });
+    });
+
+    await expect(apiFetch('/guests', { method: 'POST' })).rejects.toThrow(
+      'signed-in account changed',
+    );
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(sessionB.getToken).not.toHaveBeenCalled();
+  });
+
+  it('aborts the native request when a successful response body stalls', async () => {
+    jest.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    (globalThis.fetch as jest.Mock).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        requestSignal = init.signal ?? undefined;
+        return {
+          ok: true,
+          status: 200,
+          json: () => new Promise((_resolve, reject) => {
+            requestSignal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+          text: jest.fn(),
+        } as unknown as Response;
+      },
+    );
+
+    const pending = apiFetch('/patients');
+    const rejection = expect(pending).rejects.toBeInstanceOf(ApiNetworkError);
+    for (let turn = 0; turn < 10 && !requestSignal; turn += 1) {
+      await Promise.resolve();
+    }
+    expect(requestSignal).toBeDefined();
+    await jest.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1);
+
+    await rejection;
+    expect(requestSignal?.aborted).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it('rejects delayed work whose originating account is no longer signed in', async () => {
+    const sessionB = {
+      user: { id: 'user-b' },
+      getToken: jest.fn().mockResolvedValue('token-b'),
+    };
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: sessionB });
+
+    await expect(
+      apiFetch('/uploads/request-url', { method: 'POST' }, 'user-a'),
+    ).rejects.toThrow('signed-in account changed');
+
+    expect(sessionB.getToken).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('does not repeat an ambiguous POST but sends its retry to the other edge', async () => {

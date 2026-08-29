@@ -17,6 +17,7 @@ import {
   useT,
 } from '../../lib/i18n';
 import { METHODOLOGY_URL } from '../../lib/links';
+import { recordingExportTempUri } from '../../lib/recordingFiles';
 import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
 import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
@@ -32,13 +33,15 @@ export default function ResultDetailScreen() {
     remove,
     retry,
     retryPrivacyBlurring,
-    uploadWithoutPrivacyBlurring,
+    finalizeRecording,
   } = useRecordings({ guestId });
   const recording = recordings.find((r) => r.id === id);
   const t = useT();
   const [remoteVideoUri, setRemoteVideoUri] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [localVideoFailed, setLocalVideoFailed] = useState(false);
+  const [videoVersion, setVideoVersion] = useState<'deidentified' | 'original'>('deidentified');
   const automaticVideoRetry = useRef(0);
 
   const loadRemoteVideo = useCallback(async () => {
@@ -65,17 +68,23 @@ export default function ResultDetailScreen() {
     automaticVideoRetry.current = 0;
     setRemoteVideoUri(null);
     setVideoError(false);
-    if (recording && !recording.videoUri) void loadRemoteVideo();
-  }, [loadRemoteVideo, recording?.id, recording?.videoUri]);
+    setLocalVideoFailed(false);
+    setVideoVersion(recording?.privacyBlurState === 'completed' ? 'deidentified' : 'original');
+    if (
+      recording?.privacyBlurState === 'completed' &&
+      !recording.videoUri
+    ) void loadRemoteVideo();
+  }, [loadRemoteVideo, recording?.id, recording?.privacyBlurState, recording?.videoUri]);
 
   const handlePlaybackError = useCallback(() => {
-    if (!recording?.videoUri && automaticVideoRetry.current < 1) {
+    if (videoVersion === 'deidentified' && recording?.jobId && automaticVideoRetry.current < 1) {
       automaticVideoRetry.current += 1;
+      setLocalVideoFailed(true);
       void loadRemoteVideo();
       return;
     }
     setVideoError(true);
-  }, [loadRemoteVideo, recording?.videoUri]);
+  }, [loadRemoteVideo, recording?.jobId, videoVersion]);
 
   const handlePlaybackReady = useCallback(() => {
     automaticVideoRetry.current = 0;
@@ -112,28 +121,47 @@ export default function ResultDetailScreen() {
   const test = getTest(recording.testId);
   const sideLabel = test ? formatEvaluatedSide(t, test, recording.evaluatedSide) : undefined;
   const privacyPending = Boolean(
-    (recording.faceBlurRequested || recording.backgroundBlurRequested) &&
-      recording.privacyBlurState !== 'completed' &&
-      recording.privacyBlurState !== 'bypassed',
+    recording.privacyBlurState !== 'completed',
   );
+  const originalVideoUri =
+    recording.originalVideoUri ??
+    (recording.privacyBlurState !== 'completed'
+      ? recording.videoUri
+      : undefined);
+  const deidentifiedVideoUri =
+    recording.privacyBlurState === 'completed'
+      ? (!localVideoFailed ? recording.videoUri : undefined) ?? remoteVideoUri
+      : undefined;
+  const hasDeidentifiedAndOriginal = Boolean(
+    deidentifiedVideoUri && originalVideoUri && deidentifiedVideoUri !== originalVideoUri,
+  );
+  const playbackUri =
+    videoVersion === 'original' && originalVideoUri
+      ? originalVideoUri
+      : deidentifiedVideoUri ?? (privacyPending ? originalVideoUri : undefined);
 
-  const shareVideo = async () => {
-    if (privacyPending) return;
+  const shareVideo = async (version: 'deidentified' | 'original') => {
+    if (version === 'deidentified' && privacyPending) return;
     if (!(await Sharing.isAvailableAsync())) {
       Alert.alert(t.result.sharingUnavailableTitle, t.result.sharingUnavailableBody);
       return;
     }
+    let temporaryUri: string | null = null;
     try {
       // Copy to a doctor-friendly filename (test + date) so the shared clip is
       // self-explanatory, then open the share sheet (email, WhatsApp, AirDrop…).
       const baseName = test ? t.tests[test.id].name : t.result.fallbackTitle;
       const name = sideLabel ? `${baseName}_${sideLabel}` : baseName;
       const date = new Date(recording.createdAt).toISOString().slice(0, 10);
-      const safe = `Luche_${name}_${date}`.replace(/[^\w-]+/g, '_');
-      let uri = recording.videoUri ?? remoteVideoUri ?? (await loadRemoteVideo());
+      const suffix = version === 'original' ? '_original' : '_deidentified';
+      const safe = `Luche_${name}_${date}${suffix}`.replace(/[^\w-]+/g, '_');
+      let uri = version === 'original'
+        ? originalVideoUri
+        : deidentifiedVideoUri ?? (await loadRemoteVideo());
       if (!uri) throw new Error(t.resultsList.videoLoadFailed);
-      if (FileSystem.cacheDirectory) {
-        const dest = `${FileSystem.cacheDirectory}${safe}.mp4`;
+      const dest = await recordingExportTempUri(`${safe}.mp4`);
+      if (dest) {
+        temporaryUri = dest;
         try {
           await FileSystem.deleteAsync(dest, { idempotent: true });
           if (uri.startsWith('file://')) {
@@ -149,11 +177,16 @@ export default function ResultDetailScreen() {
       }
       await Sharing.shareAsync(uri, {
         mimeType: 'video/mp4',
-        dialogTitle: t.result.shareWithDoctor,
+        dialogTitle:
+          version === 'original' ? t.result.exportOriginal : t.result.shareWithDoctor,
         UTI: 'public.movie',
       });
     } catch (e) {
       Alert.alert(t.result.couldNotShare, String(e));
+    } finally {
+      if (temporaryUri) {
+        await FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => {});
+      }
     }
   };
 
@@ -173,21 +206,6 @@ export default function ResultDetailScreen() {
         },
       },
     ]);
-  };
-
-  const confirmUnblurredUpload = () => {
-    Alert.alert(
-      t.result.sendWithoutPrivacyBlurConfirmTitle,
-      t.result.sendWithoutPrivacyBlurConfirmBody,
-      [
-        { text: t.common.cancel, style: 'cancel' },
-        {
-          text: t.result.sendWithoutPrivacyBlur,
-          style: 'destructive',
-          onPress: () => uploadWithoutPrivacyBlurring(recording.id),
-        },
-      ],
-    );
   };
 
   return (
@@ -216,10 +234,10 @@ export default function ResultDetailScreen() {
 
         {/* Video playback. */}
         <View className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
-          {recording.videoUri || remoteVideoUri ? (
+          {playbackUri ? (
             <ResilientVideo
-              key={recording.videoUri ?? remoteVideoUri}
-              uri={recording.videoUri ?? remoteVideoUri!}
+              key={playbackUri}
+              uri={playbackUri}
               onError={handlePlaybackError}
               onReady={handlePlaybackReady}
             />
@@ -233,6 +251,39 @@ export default function ResultDetailScreen() {
             </View>
           )}
         </View>
+
+        {hasDeidentifiedAndOriginal && (
+          <View className="mt-3 flex-row rounded-xl bg-ink-faint p-1">
+            {(['deidentified', 'original'] as const).map((version) => {
+              const selected = videoVersion === version;
+              return (
+                <Pressable
+                  key={version}
+                  onPress={() => {
+                    setVideoError(false);
+                    setVideoVersion(version);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={
+                    version === 'original'
+                      ? t.result.showOriginal
+                      : t.result.showDeidentified
+                  }
+                  className={`min-h-11 flex-1 items-center justify-center rounded-lg px-3 ${
+                    selected ? 'bg-white' : ''
+                  }`}
+                >
+                  <Text className="text-[14px] font-semibold text-ink">
+                    {version === 'original'
+                      ? t.result.originalOnDevice
+                      : t.result.deidentified}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         {videoError && (
           <View className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -290,6 +341,16 @@ export default function ResultDetailScreen() {
                 />
               </View>
             </View>
+          ) : recording.status === 'draft' ? (
+            <View className="mt-3 gap-3">
+              <Text className="text-[14px] leading-5 text-ink-muted">
+                {t.result.draftSaved}
+              </Text>
+              <Button
+                title={t.result.useSavedRecording}
+                onPress={() => void finalizeRecording(recording.id)}
+              />
+            </View>
           ) : recording.status === 'needs_retry' ? (
             <View className="mt-3 gap-2">
               <Text className="text-[15px] font-semibold text-red-700">
@@ -318,11 +379,6 @@ export default function ResultDetailScreen() {
               <Button
                 title={t.result.retryPrivacyBlur}
                 onPress={() => retryPrivacyBlurring(recording.id)}
-              />
-              <Button
-                title={t.result.sendWithoutPrivacyBlur}
-                variant="secondary"
-                onPress={confirmUnblurredUpload}
               />
             </View>
           ) : recording.status === 'failed' ? (
@@ -368,11 +424,20 @@ export default function ResultDetailScreen() {
 
         <View className="mt-8">
           <Button
-            title={t.result.shareWithDoctor}
+            title={hasDeidentifiedAndOriginal ? t.result.shareDeidentified : t.result.shareWithDoctor}
             variant="secondary"
-            onPress={shareVideo}
+            onPress={() => void shareVideo('deidentified')}
             disabled={videoLoading || privacyPending}
           />
+          {originalVideoUri && (
+            <View className="mt-3">
+              <Button
+                title={t.result.exportOriginal}
+                variant="secondary"
+                onPress={() => void shareVideo('original')}
+              />
+            </View>
+          )}
           <View className="mt-3">
             <Button
               title={guestId ? t.result.backToGuest : t.result.backToMenu}

@@ -106,6 +106,7 @@ export async function uploadRecording(
   testId: TestId,
   onProgress?: (fraction: number) => void,
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<{ uploadId: string }> {
   throwIfCancelled(signal);
   const info = await FileSystem.getInfoAsync(videoUri);
@@ -118,9 +119,13 @@ export async function uploadRecording(
   const presignStartedAt = Date.now();
   const req = await apiFetch<RequestUrlResp>('/uploads/request-url', {
     method: 'POST',
-    body: JSON.stringify({ test_type_id: testId, size_bytes: sizeBytes }),
+    body: JSON.stringify({
+      test_type_id: testId,
+      size_bytes: sizeBytes,
+      artifact_kind: 'deidentified',
+    }),
     signal,
-  });
+  }, expectedAccountId);
   throwIfCancelled(signal);
   recordDiagnostic('upload_url_ready', {
     uploadId: req.upload_id,
@@ -133,6 +138,7 @@ export async function uploadRecording(
   // failed transfer after foreground/relaunch, while iOS background sessions
   // can perform opaque whole-file retries whose progress jumps backwards.
   let highestProgress = 0;
+  let reportedProgress = 0;
   let firstByteSeen = false;
   let stalled = false;
   let stallTimer: ReturnType<typeof setTimeout> | undefined;
@@ -163,7 +169,13 @@ export async function uploadRecording(
         highestProgress,
         Math.max(0, Math.min(1, totalBytesSent / totalBytesExpectedToSend)),
       );
-      onProgress?.(highestProgress);
+      // A progress event maps the complete recording cache and re-renders the
+      // root banner. Report percentage steps, not every native byte callback,
+      // so a queue with hundreds of records cannot make capture UI janky.
+      if (highestProgress >= 1 || highestProgress - reportedProgress >= 0.01) {
+        reportedProgress = highestProgress;
+        onProgress?.(highestProgress);
+      }
     }
   });
   cancelUpload = () => { void task.cancelAsync().catch(() => {}); };
@@ -220,6 +232,7 @@ export async function createAnalysisTrial(
   evaluatedSide?: EvaluatedSide,
   guestId?: string,
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<{ jobId: string }> {
   throwIfCancelled(signal);
   try {
@@ -235,7 +248,7 @@ export async function createAnalysisTrial(
         analyze: true,
       }),
       signal,
-    });
+    }, expectedAccountId);
 
     return { jobId: String(trial.trial_id) };
   } catch (error) {
@@ -249,9 +262,16 @@ export async function createAnalysisTrial(
 }
 
 /** Delete the owning patient's trial and its server-held video/keypoints. */
-export async function deleteRemoteRecording(jobId: string): Promise<void> {
+export async function deleteRemoteRecording(
+  jobId: string,
+  expectedAccountId?: string,
+): Promise<void> {
   try {
-    await apiFetch<{ status: string }>(`/trials/${jobId}`, { method: 'DELETE' });
+    await apiFetch<{ status: string }>(
+      `/trials/${jobId}`,
+      { method: 'DELETE' },
+      expectedAccountId,
+    );
   } catch (error) {
     // The endpoint intentionally uses a generic 403 for missing/foreign ids.
     // For an id from this local store, missing means a prior delete succeeded.
@@ -261,9 +281,16 @@ export async function deleteRemoteRecording(jobId: string): Promise<void> {
 }
 
 /** Delete bytes that reached R2 but have not yet been converted into a trial. */
-export async function deleteRemoteUpload(uploadId: string): Promise<'deleted' | 'consumed'> {
+export async function deleteRemoteUpload(
+  uploadId: string,
+  expectedAccountId?: string,
+): Promise<'deleted' | 'consumed'> {
   try {
-    await apiFetch<{ status: string }>(`/uploads/${uploadId}`, { method: 'DELETE' });
+    await apiFetch<{ status: string }>(
+      `/uploads/${uploadId}`,
+      { method: 'DELETE' },
+      expectedAccountId,
+    );
     return 'deleted';
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) return 'consumed';
@@ -274,19 +301,49 @@ export async function deleteRemoteUpload(uploadId: string): Promise<'deleted' | 
 
 /** Poll the trial until the analysis worker finishes; resolve with the score or
  * throw a terminal AnalysisNeedsRetryError when capture quality prevented one. */
+export async function pollResultOnce(
+  jobId: string,
+  _testId: TestId,
+  signal?: AbortSignal,
+  expectedAccountId?: string,
+): Promise<CloudResult | null> {
+  throwIfCancelled(signal);
+  const t = await apiFetch<TrialDetail>(`/trials/${jobId}`, { signal }, expectedAccountId);
+  if (t.analysis_status === 'needs_retry' || t.scoreable === false) {
+    throw new AnalysisNeedsRetryError(noScoreReasons(t));
+  }
+  if (t.analysis_status === 'done' && t.score != null) {
+    return {
+      score: t.score,
+      label: t.updrs_label ?? severityLabel(t.score),
+      isDemo: false,
+      isEstimate: t.is_estimate ?? true,
+      updrsGrade: t.updrs_grade ?? undefined,
+      confidence: t.confidence ?? undefined,
+    };
+  }
+  if (t.analysis_status === 'failed') throw new Error('analysis failed');
+  return null;
+}
+
 export async function pollResult(
   jobId: string,
   _testId: TestId,
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<CloudResult> {
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
     throwIfCancelled(signal);
-    let t: TrialDetail;
     try {
-      t = await apiFetch<TrialDetail>(`/trials/${jobId}`, { signal });
+      const result = await pollResultOnce(jobId, _testId, signal, expectedAccountId);
+      if (result) return result;
     } catch (error) {
       throwIfCancelled(signal);
+      if (
+        error instanceof AnalysisNeedsRetryError ||
+        (error instanceof Error && error.message === 'analysis failed')
+      ) throw error;
       // Auth/ownership/not-found failures will not heal by polling. Network,
       // throttling, and 5xx errors remain transient until the real deadline.
       if (
@@ -302,22 +359,6 @@ export async function pollResult(
       // until the real deadline rather than collapsing a blip into a failure.
       await cancellableDelay(POLL_INTERVAL_MS, signal);
       continue;
-    }
-    if (t.analysis_status === 'needs_retry' || t.scoreable === false) {
-      throw new AnalysisNeedsRetryError(noScoreReasons(t));
-    }
-    if (t.analysis_status === 'done' && t.score != null) {
-      return {
-        score: t.score,
-        label: t.updrs_label ?? severityLabel(t.score),
-        isDemo: false,
-        isEstimate: t.is_estimate ?? true,
-        updrsGrade: t.updrs_grade ?? undefined,
-        confidence: t.confidence ?? undefined,
-      };
-    }
-    if (t.analysis_status === 'failed') {
-      throw new Error('analysis failed');
     }
     await cancellableDelay(POLL_INTERVAL_MS, signal);
   }

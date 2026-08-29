@@ -102,15 +102,15 @@ createAnalysisTrial(uploadId, ...) -> Promise<{ jobId }>
 pollResult(jobId, testId)          -> Promise<CloudResult>
 ```
 
-`storage.ts` optionally drives `preparing -> uploading -> processing -> done`, persists the upload ID
+`storage.ts` drives `draft -> preparing -> uploading -> processing -> done`, persists the upload ID
 immediately after the video reaches R2, and persists the job ID before polling.
 This makes relaunch/retry avoid retransmitting a completed upload. It also
 hydrates metadata from `GET /me/trials`, keeps uploaded videos locally for
 three days, and requests a signed cloud URL when an older video is opened.
 
-About contains one off-by-default **Depersonalise videos before upload** option
-that applies both face and background protection. Existing installs migrate to
-the unified option as enabled when either previous privacy option was enabled.
+Every upload requires de-identification with both face and background
+protection. The upload API rejects old clients that do not identify their
+artifact as de-identified.
 The local Expo module runs the bundled 4.33M-parameter RTMDet-nano + RTMPose-t
 exp-0012 stack on every decoded frame. Face boxes use COCO-17 head keypoints,
 shoulder fallback, and a top-of-body fallback; the renderer applies a coarse
@@ -120,21 +120,23 @@ person frame is fully redacted rather than filled with a stale box. Inference
 uses ONNX Runtime on iOS and Android with no SDK key, model download, or network
 license check. Luche does not identify which person is the patient.
 
-The sanitized URI is persisted before the original is permanently deleted. If
-the pose engine cannot find a person or preprocessing otherwise fails, upload
-remains blocked until the user retries or explicitly confirms sending the
-original.
+The sanitized URI and the never-uploaded original URI are persisted separately.
+The original remains on the recording device until explicit recording/account
+deletion and can be viewed or exported. The recording directory is excluded
+from iCloud backup, and Android app backup is disabled. If preprocessing fails, upload remains
+blocked until the user retries; there is no raw-original upload bypass.
 
 ### Data model
 
 One `Recording` per captured test, cached per signed-in account:
 
 ```ts
-{ id, testId, createdAt, videoUri?, status, uploadId?, jobId?, result? }
+{ id, testId, createdAt, videoUri?, originalVideoUri?, status, uploadId?, jobId?, result? }
 ```
 
-`useRecordings()` (in `storage.ts`) exposes the list + `addRecording` + `remove`,
-backed by a single shared in-memory cache so every screen stays in sync.
+`useRecordings()` stages each completed camera file before review, maintains
+two alternating per-record recovery manifests plus the aggregate index, and
+exposes finalize/remove operations through one shared cache.
 
 ## Tailwind v3 pin — do not "upgrade"
 
