@@ -23,6 +23,7 @@ import {
 } from './cloud';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
 import { FaceBlurCancelledError, prepareFaceBlurredVideo } from './faceBlur';
+import { getPrivacyBlurSettings } from './faceBlurSettings';
 import {
   activateGuestAccount,
   clearAllGuestCaches,
@@ -457,6 +458,14 @@ function patchVolatile(id: string, partial: Partial<Recording>, expectedEpoch: n
   emit();
 }
 
+function recordingRequestsPrivacy(rec: Recording): boolean {
+  return Boolean(
+    rec.faceBlurRequested ||
+    rec.backgroundBlurRequested ||
+    (rec.privacyBlurState != null && rec.privacyBlurState !== 'bypassed'),
+  );
+}
+
 async function uploadWithRetry(
   rec: Recording,
   maxBackoffs: number = UPLOAD_BACKOFFS_MS.length,
@@ -467,12 +476,14 @@ async function uploadWithRetry(
   expectedAccountId?: string,
 ): Promise<string> {
   if (!rec.videoUri) throw new Error('recording file missing');
-  if (rec.privacyBlurState !== 'completed') {
+  const privacyRequested = recordingRequestsPrivacy(rec);
+  if (privacyRequested && rec.privacyBlurState !== 'completed') {
     throw new Error('de-identified recording is not ready');
   }
-  if (!rec.videoUri.includes('.privacy-blurred.mp4')) {
+  if (privacyRequested && !rec.videoUri.includes('.privacy-blurred.mp4')) {
     throw new Error('upload source is not a verified de-identified artifact');
   }
+  const artifactKind = privacyRequested ? 'deidentified' as const : 'original' as const;
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxBackoffs; attempt++) {
     throwIfCancelled(signal);
@@ -481,8 +492,8 @@ async function uploadWithRetry(
       onProgress?.(0);
       const response = await serialUpload(() =>
         signal
-          ? uploadRecording(rec.videoUri!, rec.testId, onProgress, signal, expectedAccountId)
-          : uploadRecording(rec.videoUri!, rec.testId, onProgress, undefined, expectedAccountId),
+          ? uploadRecording(rec.videoUri!, rec.testId, onProgress, signal, expectedAccountId, artifactKind)
+          : uploadRecording(rec.videoUri!, rec.testId, onProgress, undefined, expectedAccountId, artifactKind),
       );
       return response.uploadId;
     } catch (error) {
@@ -750,9 +761,11 @@ async function runDrive(
 ) {
   try {
     let uploadRecording = rec;
+    const privacyRequested = recordingRequestsPrivacy(uploadRecording);
     if (
       uploadRecording.uploadId &&
       !uploadRecording.jobId &&
+      privacyRequested &&
       uploadRecording.privacyBlurState !== 'completed'
     ) {
       // A prior app release could mint/upload a raw artifact before privacy
@@ -800,6 +813,7 @@ async function runDrive(
       await patch(rec.id, uploadRecording, epoch);
     }
     if (
+      privacyRequested &&
       uploadRecording.privacyBlurState !== 'completed' &&
       !uploadRecording.uploadId &&
       !uploadRecording.jobId
@@ -1318,6 +1332,8 @@ async function stage(
   const durableUri = recordingFileUri(videoUri, id);
   const sourceSize = await recordingFileSize(videoUri);
   if (!sourceSize || sourceSize <= 0) throw new Error('camera recording is missing or empty');
+  const privacyBlur = await getPrivacyBlurSettings();
+  const privacyRequested = privacyBlur.face || privacyBlur.background;
   const provisional: Recording = {
     id,
     testId,
@@ -1330,9 +1346,9 @@ async function stage(
     stagingSourceUri: videoUri,
     stagingSourceSize: sourceSize,
     status: 'draft',
-    faceBlurRequested: true,
-    backgroundBlurRequested: true,
-    privacyBlurState: 'pending',
+    faceBlurRequested: privacyBlur.face,
+    backgroundBlurRequested: privacyBlur.background,
+    privacyBlurState: privacyRequested ? 'pending' : undefined,
   };
   if (!isCurrent(epoch, expectedAccountId)) throw new Error('recording account changed');
   // Write the recovery descriptor before moving the camera file. A kill after
@@ -1394,11 +1410,15 @@ async function finalizeDraft(id: string): Promise<Recording> {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing) throw new Error('saved recording unavailable');
   if (existing.status !== 'draft') return existing;
+  const privacyRequested = recordingRequestsPrivacy(existing);
   try {
     await patch(id, {
-      status: 'preparing',
-      privacyBlurState: 'pending',
-      privacyBlurProgress: 0,
+      status: privacyRequested ? 'preparing' : 'uploading',
+      privacyBlurState: privacyRequested ? 'pending' : undefined,
+      privacyBlurProgress: privacyRequested ? 0 : undefined,
+      uploadProgress: privacyRequested ? undefined : 0,
+      uploadAttempt: privacyRequested ? undefined : 1,
+      uploadRetrying: privacyRequested ? undefined : false,
       failReason: undefined,
     });
   } catch (error) {
@@ -1522,6 +1542,7 @@ async function resume(id: string) {
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
   if (!existing) return;
   if (
+    recordingRequestsPrivacy(existing) &&
     existing.privacyBlurState !== 'completed'
   ) {
     await retryPrivacyBlur(id);

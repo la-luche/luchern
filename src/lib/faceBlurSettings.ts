@@ -29,9 +29,11 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
       .then(async (entries) => {
         const values = Object.fromEntries(entries);
         const stored = values[DEPERSONALISATION_STORAGE_KEY];
-        const enabled = true;
+        const enabled = stored == null
+          ? values[FACE_STORAGE_KEY] === 'true' || values[BACKGROUND_STORAGE_KEY] === 'true'
+          : stored === 'true';
 
-        cached = { face: true, background: true };
+        cached = { face: enabled, background: enabled };
 
         const hasLegacyPreference =
           values[FACE_STORAGE_KEY] != null || values[BACKGROUND_STORAGE_KEY] != null;
@@ -47,9 +49,7 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
         return cached;
       })
       .catch(() => {
-        // Privacy is mandatory for uploads. A settings read failure must never
-        // turn into permission to upload an original.
-        cached = { face: true, background: true };
+        cached = { face: false, background: false };
         return cached;
       })
       .finally(() => {
@@ -60,19 +60,19 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
 }
 
 export async function setPrivacyBlurEnabled(enabled: boolean): Promise<void> {
-  const serialized = 'true';
+  const serialized = enabled ? 'true' : 'false';
   await AsyncStorage.multiSet([
     [DEPERSONALISATION_STORAGE_KEY, serialized],
     [FACE_STORAGE_KEY, serialized],
     [BACKGROUND_STORAGE_KEY, serialized],
   ]);
-  cached = { face: true, background: true };
+  cached = { face: enabled, background: enabled };
   emit(cached);
 }
 
 export function usePrivacyBlurSettings() {
   const [settings, setSettings] = useState<PrivacyBlurSettings>(
-    cached ?? { face: true, background: true },
+    cached ?? { face: false, background: false },
   );
   const [isLoading, setIsLoading] = useState(cached == null);
 
@@ -93,11 +93,11 @@ export function usePrivacyBlurSettings() {
     };
   }, []);
 
-  const update = useCallback(async (_next: boolean) => {
+  const update = useCallback(async (next: boolean) => {
     const previous = settings;
-    setSettings({ face: true, background: true });
+    setSettings({ face: next, background: next });
     try {
-      await setPrivacyBlurEnabled(true);
+      await setPrivacyBlurEnabled(next);
     } catch (error) {
       setSettings(previous);
       throw error;

@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Linking, Modal, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Modal, ScrollView, Switch, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Header } from '../components/Header';
@@ -15,6 +15,7 @@ import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
+import { usePrivacyBlurSettings } from '../lib/faceBlurSettings';
 import { signOutFromDevice } from '../lib/logout';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
@@ -36,6 +37,7 @@ export default function AboutScreen() {
   const { user } = useUser();
   const { setActive, signOut } = useClerk();
   const { logoutAndPurge, restoreAfterFailedPurge, unuploadedCount } = useRecordings();
+  const privacyBlur = usePrivacyBlurSettings();
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState<number | null>(null);
@@ -165,6 +167,14 @@ export default function AboutScreen() {
   const email = user?.primaryEmailAddress?.emailAddress;
   const displayName = user?.fullName || user?.firstName || email || t.profile.account;
 
+  const updateDepersonalisation = async (enabled: boolean) => {
+    try {
+      await privacyBlur.setEnabled(enabled);
+    } catch {
+      Alert.alert(t.about.privacyBlurSaveFailedTitle, t.about.privacyBlurSaveFailedBody);
+    }
+  };
+
   return (
     <Screen>
       <Header title={t.about.title} />
@@ -251,6 +261,12 @@ export default function AboutScreen() {
                   {t.about.depersonalisationBody}
                 </Text>
               </View>
+              <Switch
+                value={privacyBlur.enabled}
+                disabled={privacyBlur.isLoading}
+                onValueChange={(enabled) => void updateDepersonalisation(enabled)}
+                accessibilityLabel={t.about.depersonalisationA11y}
+              />
             </View>
             <Text className="px-1 text-[13px] leading-5 text-ink-muted">
               {t.about.privacyBlurTechnicalBody}

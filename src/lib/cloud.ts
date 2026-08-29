@@ -107,6 +107,7 @@ export async function uploadRecording(
   onProgress?: (fraction: number) => void,
   signal?: AbortSignal,
   expectedAccountId?: string,
+  artifactKind: 'deidentified' | 'original' = 'deidentified',
 ): Promise<{ uploadId: string }> {
   throwIfCancelled(signal);
   const info = await FileSystem.getInfoAsync(videoUri);
@@ -122,7 +123,7 @@ export async function uploadRecording(
     body: JSON.stringify({
       test_type_id: testId,
       size_bytes: sizeBytes,
-      artifact_kind: 'deidentified',
+      artifact_kind: artifactKind,
     }),
     signal,
   }, expectedAccountId);

@@ -205,6 +205,7 @@ describe('driveOnce', () => {
       undefined,
       undefined,
       'user-a',
+      'deidentified',
     );
     expect(createAnalysisTrial).toHaveBeenCalledWith(
       'up-account',
