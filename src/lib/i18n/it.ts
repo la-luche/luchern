@@ -10,10 +10,10 @@ export const it: Dict = {
     iUnderstand: 'Ho capito',
   },
   menu: {
-    startFullCheck: 'Registra tutti i movimenti',
+    startFullCheck: 'Inizia un test',
     orSingle: 'Oppure scegli un movimento qui sotto',
     recordOne: 'Registra un test',
-    guests: 'Ospiti',
+    guests: 'Testa un ospite',
     chooseTest: 'Scegli un test',
     previousRecordings: 'Registrazioni precedenti',
     aboutA11y: 'Informazioni e privacy',
@@ -88,6 +88,23 @@ export const it: Dict = {
   session: {
     progress: (n: number, total: number) => `Movimento ${n} di ${total}`,
     skip: 'Salta',
+  },
+  batteryReview: {
+    title: 'Controlla il test',
+    intro: 'Controlla tutti i 13 video prima di inviarli. Tocca un’anteprima per guardarla a schermo intero oppure registra di nuovo un movimento che non ti convince.',
+    recorded: 'Registrato',
+    missing: 'Non registrato',
+    closeVideo: 'Chiudi video',
+    rerecord: 'Registra di nuovo',
+    record: 'Registra',
+    warningTitle: 'Registrare di nuovo questo movimento?',
+    warningBody: 'Il video attuale verrà eliminato definitivamente prima della nuova registrazione.',
+    keepVideo: 'Mantieni il video',
+    discardAndRerecord: 'Elimina e registra di nuovo',
+    sendAll: 'Invia tutti i video',
+    sending: 'Invio dei video…',
+    sendFailedTitle: 'Video non inviati',
+    sendFailedBody: 'Le registrazioni sono ancora salvate su questo telefono. Riprova.',
   },
   invite: {
     title: 'Condividi con una persona',
@@ -353,7 +370,7 @@ export const it: Dict = {
   preparation: {
     title: 'Prima di iniziare',
     fullIntro:
-      'Inizia seduto su una sedia. Farai 12 brevi registrazioni: movimenti della mano sinistra e destra, della gamba sinistra e destra, alzarsi dalla sedia e infine camminare.',
+      'Inizia seduto su una sedia. Farai 13 brevi registrazioni: movimenti della mano sinistra e destra, un controllo del tremore, movimenti della gamba sinistra e destra, alzarti dalla sedia e infine camminare.',
     singleIntro: 'Un rapido controllo prima di registrare il movimento.',
     frameTitle: 'Tieni tutto il movimento nell’inquadratura',
     frameBody:

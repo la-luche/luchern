@@ -11,7 +11,7 @@ import { startSession } from '../lib/session';
 import { FULL_TEST_FLOW } from '../lib/tests';
 import { COLORS } from '../lib/theme';
 
-/** Decluttered top-level menu: all movements, one movement, guests, history. */
+/** Decluttered top-level menu: full test, individual test, guests, and history. */
 export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
@@ -55,7 +55,7 @@ export default function MenuScreen() {
           <Text className="text-[28px] font-bold text-ink">{t.common.appName}</Text>
         </View>
 
-        {/* The three recording entry points deliberately share one treatment. */}
+        {/* Recording entry points deliberately share one treatment. */}
         <View className="mt-6 gap-3">
           <Button title={t.menu.startFullCheck} onPress={startFullCheck} />
           <Button title={t.menu.recordOne} onPress={() => router.push('/tests')} />

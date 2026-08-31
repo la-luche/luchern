@@ -13,10 +13,10 @@ export const en = {
     iUnderstand: 'I understand',
   },
   menu: {
-    startFullCheck: 'Record all movements',
+    startFullCheck: 'Start a test',
     orSingle: 'Or choose one movement below',
     recordOne: 'Record a test',
-    guests: 'Guests',
+    guests: 'Test a guest',
     chooseTest: 'Choose a test',
     previousRecordings: 'Previous recordings',
     aboutA11y: 'About Luche and privacy',
@@ -90,6 +90,23 @@ export const en = {
   session: {
     progress: (n: number, total: number) => `Movement ${n} of ${total}`,
     skip: 'Skip',
+  },
+  batteryReview: {
+    title: 'Review your test',
+    intro: 'Check all 13 videos before sending. Tap a preview to watch it full screen, or rerecord any movement that doesn’t look right.',
+    recorded: 'Recorded',
+    missing: 'Not recorded',
+    closeVideo: 'Close video',
+    rerecord: 'Rerecord',
+    record: 'Record',
+    warningTitle: 'Rerecord this movement?',
+    warningBody: 'The current video will be permanently discarded before you record it again.',
+    keepVideo: 'Keep video',
+    discardAndRerecord: 'Discard and rerecord',
+    sendAll: 'Send all videos',
+    sending: 'Sending videos…',
+    sendFailedTitle: 'Videos not sent',
+    sendFailedBody: 'Your recordings are still saved on this phone. Please try again.',
   },
   invite: {
     title: 'Share with someone you trust',
@@ -358,7 +375,7 @@ export const en = {
   preparation: {
     title: 'Before you start',
     fullIntro:
-      'Start seated on a chair. You’ll make 12 short recordings: left and right hand movements, left and right leg movements, standing up, then walking.',
+      'Start seated on a chair. You’ll make 13 short recordings: left and right hand movements, a tremor check, left and right leg movements, standing up, then walking.',
     singleIntro: 'A quick check before you record the movement.',
     frameTitle: 'Keep the movement fully in frame',
     frameBody:

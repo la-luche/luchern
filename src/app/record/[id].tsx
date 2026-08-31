@@ -20,7 +20,7 @@ import {
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { ensureFreeRecordingSpace } from '../../lib/recordingFiles';
-import { advanceSession, endSession, useSession } from '../../lib/session';
+import { advanceSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
 import { getTest, type EvaluatedSide } from '../../lib/tests';
@@ -42,10 +42,11 @@ function formatElapsed(seconds: number): string {
  * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
-  const { id, guestId, side } = useLocalSearchParams<{
+  const { id, guestId, side, batteryReview } = useLocalSearchParams<{
     id: string;
     guestId?: string;
     side?: string;
+    batteryReview?: string;
   }>();
   const router = useRouter();
   const { user } = useUser();
@@ -121,7 +122,8 @@ export default function RecordScreen() {
     try {
       await ensureFreeRecordingSpace();
       if (!user?.id) throw new Error('recording account unavailable');
-      await beginCaptureIntent(user.id, { testId: test.id, evaluatedSide, guestId });
+      const evaluationRun = session.active ? session.run ?? undefined : undefined;
+      await beginCaptureIntent(user.id, { testId: test.id, evaluatedSide, guestId, evaluationRun });
       setPhase('recording');
       cues.start(t.tests[test.id].cueStart);
       // recordAsync resolves only once stopRecording() is called.
@@ -134,7 +136,13 @@ export default function RecordScreen() {
       if (!video?.uri) throw new Error('camera returned no recording');
       outputReceived = true;
       await attachCaptureOutput(user.id, video.uri);
-      const staged = await stageRecording(test.id, video.uri, evaluatedSide, guestId);
+      const staged = await stageRecording(
+        test.id,
+        video.uri,
+        evaluatedSide,
+        guestId,
+        evaluationRun,
+      );
       if (!staged.videoUri) throw new Error('saved recording is unavailable');
       setStagedRecordingId(staged.id);
       setTempUri(staged.videoUri);
@@ -156,12 +164,17 @@ export default function RecordScreen() {
     if (!stagedRecordingId || submitting) return;
     setSubmitting(true);
     try {
-      const rec = await finalizeRecording(stagedRecordingId);
       cues.saved();
       showToast(t.toast.saved);
       if (session.active) {
-        // Guided session: advance to the next test (or finish). A failed upload
-        // doesn't block — the clip is saved and retries in the background.
+        // Guided batteries stay as local drafts until the final review screen.
+        if (batteryReview === '1') {
+          router.dismissTo({
+            pathname: '/battery-review',
+            params: { ...(guestId ? { guestId } : {}) },
+          });
+          return;
+        }
         const next = advanceSession();
         if (next) {
           router.replace({
@@ -169,14 +182,13 @@ export default function RecordScreen() {
             params: { id: next.testId, ...(guestId ? { guestId } : {}) },
           });
         } else {
-          endSession();
-          if (guestId) {
-            router.replace({ pathname: '/guests/[id]', params: { id: guestId } });
-          } else {
-            router.replace('/results');
-          }
+          router.replace({
+            pathname: '/battery-review',
+            params: { ...(guestId ? { guestId } : {}) },
+          });
         }
       } else {
+        const rec = await finalizeRecording(stagedRecordingId);
         router.replace({
           pathname: '/results/[id]',
           params: { id: rec.id, ...(guestId ? { guestId } : {}) },

@@ -4,7 +4,7 @@ import { FULL_TEST_FLOW } from '../tests';
 describe('guided full test', () => {
   afterEach(() => endSession());
 
-  it('matches the bilateral bot flow', () => {
+  it('matches the complete ordered flow', () => {
     expect(FULL_TEST_FLOW).toEqual([
       { testId: 'fingerTapping', evaluatedSide: 'left' },
       { testId: 'fingerTapping', evaluatedSide: 'right' },
@@ -12,6 +12,7 @@ describe('guided full test', () => {
       { testId: 'pronationSupination', evaluatedSide: 'right' },
       { testId: 'handMovements', evaluatedSide: 'left' },
       { testId: 'handMovements', evaluatedSide: 'right' },
+      { testId: 'restTremor' },
       { testId: 'toeTapping', evaluatedSide: 'left' },
       { testId: 'toeTapping', evaluatedSide: 'right' },
       { testId: 'legAgility', evaluatedSide: 'left' },

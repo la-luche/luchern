@@ -47,7 +47,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#000C27",
-          "image": "./assets/images/luche-app-icon.png",
+          "image": "./assets/images/luche-splash-logo.png",
           "imageWidth": 220,
           "resizeMode": "contain"
         }

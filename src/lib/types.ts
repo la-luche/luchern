@@ -38,6 +38,13 @@ export interface CloudResult {
   confidence?: string;
 }
 
+/** One offline-safe guided test battery shared by all recordings in the flow. */
+export interface EvaluationRunRef {
+  id: string;
+  startedAt: number;
+  expectedSteps: number;
+}
+
 /**
  * One recorded test. Metadata is persisted in an account-scoped cache.
  * `videoUri` exists while a local clip is retained; cloud-backed history can
@@ -50,6 +57,8 @@ export interface Recording {
   guestId?: string;
   /** Anatomical side selected before a unilateral hand/foot/leg capture. */
   evaluatedSide?: EvaluatedSide;
+  /** Guided full-flow bundle; absent for an individual test. */
+  evaluationRun?: EvaluationRunRef;
   /** Epoch millis. */
   createdAt: number;
   /** Monotonic local revision used to choose the newest crash-recovery copy. */

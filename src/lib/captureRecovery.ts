@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import type { EvaluatedSide, TestId } from './tests';
+import type { EvaluationRunRef } from './types';
 
 const KEY_PREFIX = 'luche.capture-intent.v1.';
 
@@ -9,6 +10,7 @@ export type CaptureIntent = {
   testId: TestId;
   guestId?: string;
   evaluatedSide?: EvaluatedSide;
+  evaluationRun?: EvaluationRunRef;
   startedAt: number;
   outputUri?: string;
 };

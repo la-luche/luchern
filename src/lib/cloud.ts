@@ -8,7 +8,7 @@ import {
   preferApiBase,
 } from './edge';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
-import type { CloudResult } from './types';
+import type { CloudResult, EvaluationRunRef } from './types';
 import type { EvaluatedSide, TestId } from './tests';
 import {
   OperationCancelledError,
@@ -232,6 +232,7 @@ export async function createAnalysisTrial(
   recordedAtMs: number,
   evaluatedSide?: EvaluatedSide,
   guestId?: string,
+  evaluationRun?: EvaluationRunRef,
   signal?: AbortSignal,
   expectedAccountId?: string,
 ): Promise<{ jobId: string }> {
@@ -246,6 +247,11 @@ export async function createAnalysisTrial(
         metadata: evaluatedSide ? { evaluated_side: evaluatedSide } : {},
         client_trial_id: clientTrialId,
         ...(guestId ? { guest_id: guestId } : {}),
+        ...(evaluationRun ? {
+          evaluation_run_id: evaluationRun.id,
+          evaluation_run_started_at: new Date(evaluationRun.startedAt).toISOString(),
+          evaluation_run_expected_steps: evaluationRun.expectedSteps,
+        } : {}),
         analyze: true,
       }),
       signal,

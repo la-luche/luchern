@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
+import { randomUUID } from 'expo-crypto';
 
 import type { FullTestStep } from './tests';
+import type { EvaluationRunRef } from './types';
 
 /**
  * Guided "run all" session: walk the patient through an ordered list of tests
@@ -12,9 +14,10 @@ type SessionState = {
   active: boolean;
   steps: readonly FullTestStep[];
   index: number;
+  run: EvaluationRunRef | null;
 };
 
-let state: SessionState = { active: false, steps: [], index: 0 };
+let state: SessionState = { active: false, steps: [], index: 0, run: null };
 const listeners = new Set<() => void>();
 
 function set(next: SessionState) {
@@ -24,12 +27,17 @@ function set(next: SessionState) {
 
 /** Begin a session over the given ordered test/side steps, starting at the first. */
 export function startSession(steps: readonly FullTestStep[]) {
-  set({ active: true, steps, index: 0 });
+  set({
+    active: true,
+    steps,
+    index: 0,
+    run: { id: randomUUID(), startedAt: Date.now(), expectedSteps: steps.length },
+  });
 }
 
 export function endSession() {
   if (!state.active) return;
-  set({ active: false, steps: [], index: 0 });
+  set({ active: false, steps: [], index: 0, run: null });
 }
 
 /**

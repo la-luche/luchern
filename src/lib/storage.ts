@@ -46,7 +46,7 @@ import {
 } from './recordingFiles';
 import { fetchOwnedTrials, mergeTrialScope } from './recordingSync';
 import type { EvaluatedSide, TestId } from './tests';
-import type { Recording } from './types';
+import type { EvaluationRunRef, Recording } from './types';
 import {
   OperationCancelledError,
   PollTimeoutError,
@@ -462,7 +462,7 @@ function recordingRequestsPrivacy(rec: Recording): boolean {
   return Boolean(
     rec.faceBlurRequested ||
     rec.backgroundBlurRequested ||
-    (rec.privacyBlurState != null && rec.privacyBlurState !== 'bypassed'),
+    rec.privacyBlurState != null,
   );
 }
 
@@ -543,6 +543,7 @@ async function createTrialWithRetry(
             rec.createdAt,
             rec.evaluatedSide,
             rec.guestId,
+            rec.evaluationRun,
             signal,
             expectedAccountId,
           )
@@ -553,6 +554,7 @@ async function createTrialWithRetry(
             rec.createdAt,
             rec.evaluatedSide,
             rec.guestId,
+            rec.evaluationRun,
             undefined,
             expectedAccountId,
           );
@@ -782,6 +784,7 @@ async function runDrive(
           uploadRecording.createdAt,
           uploadRecording.evaluatedSide,
           uploadRecording.guestId,
+          uploadRecording.evaluationRun,
           signal,
           accountId,
         );
@@ -1284,6 +1287,7 @@ async function activateAccount(accountId: string): Promise<void> {
           interruptedCapture.sourceUri,
           interruptedCapture.evaluatedSide,
           interruptedCapture.guestId,
+          interruptedCapture.evaluationRun,
           accountId,
         );
         await clearCaptureIntent(accountId);
@@ -1316,6 +1320,7 @@ async function stage(
   videoUri: string,
   evaluatedSide?: EvaluatedSide,
   guestId?: string,
+  evaluationRun?: EvaluationRunRef,
   expectedAccountId?: string,
 ): Promise<Recording> {
   if (
@@ -1339,6 +1344,7 @@ async function stage(
     testId,
     guestId,
     evaluatedSide,
+    evaluationRun,
     createdAt: Date.now(),
     localRevision: 1,
     videoUri: durableUri,
@@ -1438,9 +1444,17 @@ async function add(
   videoUri: string,
   evaluatedSide?: EvaluatedSide,
   guestId?: string,
+  evaluationRun?: EvaluationRunRef,
   expectedAccountId?: string,
 ): Promise<Recording> {
-  const staged = await stage(testId, videoUri, evaluatedSide, guestId, expectedAccountId);
+  const staged = await stage(
+    testId,
+    videoUri,
+    evaluatedSide,
+    guestId,
+    evaluationRun,
+    expectedAccountId,
+  );
   return finalizeDraft(staged.id);
 }
 
@@ -1471,6 +1485,7 @@ async function removeById(id: string) {
         recording.createdAt,
         recording.evaluatedSide,
         recording.guestId,
+        recording.evaluationRun,
         undefined,
         accountId,
       );
@@ -1689,16 +1704,28 @@ export function useRecordings(
   }, [accountId, network.isConnected, network.isInternetReachable, network.type]);
 
   const addRecording = useCallback(
-    (testId: TestId, videoUri: string, evaluatedSide?: EvaluatedSide, guestId?: string) => {
+    (
+      testId: TestId,
+      videoUri: string,
+      evaluatedSide?: EvaluatedSide,
+      guestId?: string,
+      evaluationRun?: EvaluationRunRef,
+    ) => {
       if (!accountId) return Promise.reject(new Error('recording account unavailable'));
-      return add(testId, videoUri, evaluatedSide, guestId, accountId);
+      return add(testId, videoUri, evaluatedSide, guestId, evaluationRun, accountId);
     },
     [accountId],
   );
   const stageRecording = useCallback(
-    (testId: TestId, videoUri: string, evaluatedSide?: EvaluatedSide, guestId?: string) => {
+    (
+      testId: TestId,
+      videoUri: string,
+      evaluatedSide?: EvaluatedSide,
+      guestId?: string,
+      evaluationRun?: EvaluationRunRef,
+    ) => {
       if (!accountId) return Promise.reject(new Error('recording account unavailable'));
-      return stage(testId, videoUri, evaluatedSide, guestId, accountId);
+      return stage(testId, videoUri, evaluatedSide, guestId, evaluationRun, accountId);
     },
     [accountId],
   );

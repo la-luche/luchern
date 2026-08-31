@@ -63,6 +63,39 @@ describe('createAnalysisTrial', () => {
       }),
     }, undefined);
   });
+
+  it('links every guided recording to its offline-created evaluation run', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({ trial_id: 313 });
+
+    await createAnalysisTrial(
+      'upload-battery',
+      'restTremor',
+      'local-battery',
+      1_787_828_400_000,
+      undefined,
+      undefined,
+      {
+        id: '76387c90-1234-4a7f-8dee-908a1f238c88',
+        startedAt: 1_787_828_100_000,
+        expectedSteps: 13,
+      },
+    );
+
+    expect(apiFetch).toHaveBeenCalledWith('/trials', {
+      method: 'POST',
+      body: JSON.stringify({
+        upload_id: 'upload-battery',
+        test_type_id: 'restTremor',
+        recorded_at: '2026-08-27T11:00:00.000Z',
+        metadata: {},
+        client_trial_id: 'local-battery',
+        evaluation_run_id: '76387c90-1234-4a7f-8dee-908a1f238c88',
+        evaluation_run_started_at: '2026-08-27T10:55:00.000Z',
+        evaluation_run_expected_steps: 13,
+        analyze: true,
+      }),
+    }, undefined);
+  });
 });
 
 describe('pollResult', () => {

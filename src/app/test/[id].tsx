@@ -8,7 +8,7 @@ import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'reac
 
 import { DemoVideo } from '../../components/Instruction';
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
-import { advanceSession, endSession, useSession } from '../../lib/session';
+import { advanceSession, useSession } from '../../lib/session';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
@@ -107,7 +107,12 @@ function OverlaySteps({ steps }: { steps: readonly string[] }) {
  * During a guided session it also shows "Test N of M" + a Skip control.
  */
 export default function InstructionScreen() {
-  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
+  const { id, guestId, side, batteryReview } = useLocalSearchParams<{
+    id: string;
+    guestId?: string;
+    side?: string;
+    batteryReview?: string;
+  }>();
   const router = useRouter();
   const test = getTest(id);
   const t = useT();
@@ -118,8 +123,9 @@ export default function InstructionScreen() {
   if (!test) return <Redirect href="/" />;
 
   const tt = t.tests[test.id];
-  const inSession = session.active && session.current?.testId === test.id;
-  const evaluatedSide = inSession ? session.current?.evaluatedSide : undefined;
+  const inSession = session.active && batteryReview !== '1' && session.current?.testId === test.id;
+  const routeSide = side === 'left' || side === 'right' ? side : undefined;
+  const evaluatedSide = inSession ? session.current?.evaluatedSide : routeSide;
   const sideLabel = formatEvaluatedSide(t, test, evaluatedSide);
 
   const skip = () => {
@@ -130,12 +136,10 @@ export default function InstructionScreen() {
         params: { id: next.testId, ...(guestId ? { guestId } : {}) },
       });
     } else {
-      endSession();
-      if (guestId) {
-        router.replace({ pathname: '/guests/[id]', params: { id: guestId } });
-      } else {
-        router.replace('/results');
-      }
+      router.replace({
+        pathname: '/battery-review',
+        params: { ...(guestId ? { guestId } : {}) },
+      });
     }
   };
 
@@ -227,6 +231,7 @@ export default function InstructionScreen() {
                       id: test.id,
                       ...(evaluatedSide ? { side: evaluatedSide } : {}),
                       ...(guestId ? { guestId } : {}),
+                      ...(batteryReview === '1' ? { batteryReview: '1' } : {}),
                     },
                   })
                 }

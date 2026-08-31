@@ -19,6 +19,9 @@ export interface OwnedTrialSummary {
   confidence: string | null;
   evaluated_side: string | null;
   quality_failures: string[];
+  evaluation_run_id?: string | null;
+  evaluation_run_started_at?: string | null;
+  evaluation_run_expected_steps?: number | null;
 }
 
 interface OwnedTrialsResponse {
@@ -87,6 +90,11 @@ function remoteRecording(
     testId: validTestId,
     guestId,
     evaluatedSide: evaluatedSide(trial.evaluated_side) ?? local?.evaluatedSide,
+    evaluationRun: trial.evaluation_run_id ? {
+      id: trial.evaluation_run_id,
+      startedAt: Date.parse(trial.evaluation_run_started_at ?? '') || local?.evaluationRun?.startedAt || createdAt,
+      expectedSteps: trial.evaluation_run_expected_steps ?? local?.evaluationRun?.expectedSteps ?? 1,
+    } : local?.evaluationRun,
     createdAt,
     videoUri: keepLocalVideo ? local?.videoUri : undefined,
     // Originals are never uploaded, so they have no cloud fallback and must

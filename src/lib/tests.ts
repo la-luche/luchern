@@ -127,9 +127,8 @@ export interface FullTestStep {
 }
 
 /**
- * Guided full check, kept in lockstep with feral-api/telegram_tests.py.
- * Unilateral movements are recorded left then right before advancing; rest
- * tremor remains available as an individual recording but is not in this flow.
+ * Guided full check. Unilateral movements are recorded left then right before
+ * advancing; the non-lateralized tremor check follows the hand tests.
  */
 export const FULL_TEST_FLOW: readonly FullTestStep[] = [
   { testId: 'fingerTapping', evaluatedSide: 'left' },
@@ -138,6 +137,7 @@ export const FULL_TEST_FLOW: readonly FullTestStep[] = [
   { testId: 'pronationSupination', evaluatedSide: 'right' },
   { testId: 'handMovements', evaluatedSide: 'left' },
   { testId: 'handMovements', evaluatedSide: 'right' },
+  { testId: 'restTremor' },
   { testId: 'toeTapping', evaluatedSide: 'left' },
   { testId: 'toeTapping', evaluatedSide: 'right' },
   { testId: 'legAgility', evaluatedSide: 'left' },
