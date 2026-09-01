@@ -131,24 +131,9 @@ export default function AboutScreen() {
     }
   };
 
-  const showFinalDeleteConfirmation = () => {
-    Alert.alert(t.profile.deleteFinalTitle, t.profile.deleteFinalBody, [
-      { text: t.profile.keepAccount, style: 'cancel' },
-      {
-        text: t.profile.deleteEverything,
-        style: 'destructive',
-        onPress: () => void finishAccountDeletion(),
-      },
-    ]);
-  };
-
   useEffect(() => {
     if (deleteCountdown == null) return;
-    if (deleteCountdown <= 0) {
-      setDeleteCountdown(null);
-      const finalPrompt = setTimeout(showFinalDeleteConfirmation, 250);
-      return () => clearTimeout(finalPrompt);
-    }
+    if (deleteCountdown <= 0) return;
     const timer = setTimeout(() => setDeleteCountdown((seconds) => (seconds ?? 1) - 1), 1000);
     return () => clearTimeout(timer);
   }, [deleteCountdown]);
@@ -308,20 +293,40 @@ export default function AboutScreen() {
         <View className="flex-1 items-center justify-center bg-black/50 px-7">
           <View className="w-full max-w-sm rounded-3xl bg-white p-6">
             <Text className="text-center text-[22px] font-bold text-ink">
-              {t.profile.deleteCountdownTitle}
+              {deleteCountdown === 0
+                ? t.profile.deleteFinalTitle
+                : t.profile.deleteCountdownTitle}
             </Text>
             <Text className="mt-3 text-center text-[15px] leading-6 text-ink-muted">
-              {t.profile.deleteCountdownBody(deleteCountdown ?? 0)}
+              {deleteCountdown === 0
+                ? t.profile.deleteFinalBody
+                : t.profile.deleteCountdownBody(deleteCountdown ?? 0)}
             </Text>
-            <Text className="mt-5 text-center text-[48px] font-bold text-red-600">
-              {deleteCountdown}
-            </Text>
+            {deleteCountdown !== 0 && (
+              <Text className="mt-5 text-center text-[48px] font-bold text-red-600">
+                {deleteCountdown}
+              </Text>
+            )}
             <View className="mt-5">
-              <Button
-                title={t.profile.keepAccount}
-                variant="secondary"
-                onPress={() => setDeleteCountdown(null)}
-              />
+              {deleteCountdown === 0 && (
+                <Button
+                  title={deletingAccount ? t.profile.deletingAccount : t.profile.deleteEverything}
+                  variant="destructive"
+                  disabled={deletingAccount}
+                  onPress={() => {
+                    setDeleteCountdown(null);
+                    void finishAccountDeletion();
+                  }}
+                />
+              )}
+              <View className={deleteCountdown === 0 ? 'mt-3' : ''}>
+                <Button
+                  title={t.profile.keepAccount}
+                  variant="secondary"
+                  onPress={() => setDeleteCountdown(null)}
+                  disabled={deletingAccount}
+                />
+              </View>
             </View>
           </View>
         </View>
