@@ -23,7 +23,7 @@ export function Header({
   const router = useRouter();
   const t = useT();
   return (
-    <View className="h-[68px] flex-row items-center justify-between px-5 pt-3">
+    <View className="min-h-[76px] flex-row items-center gap-3 px-5 py-3">
       <View className="w-12">
         <Pressable
           onPress={onBack ?? (() => router.back())}
@@ -36,9 +36,15 @@ export function Header({
       </View>
 
       {title ? (
-        <Text className="text-[17px] font-semibold text-ink">{title}</Text>
+        <Text
+          numberOfLines={2}
+          style={{ textAlign: 'center' }}
+          className="flex-1 text-[17px] font-semibold leading-[21px] text-ink"
+        >
+          {title}
+        </Text>
       ) : (
-        <View />
+        <View className="flex-1" />
       )}
 
       <View className="w-12 items-end">{right}</View>

@@ -206,7 +206,7 @@ export default function AboutScreen() {
               {t.profile.syncDescription}
             </Text>
           </View>
-          <View className="mt-3 flex-row gap-3">
+          <View className="mt-3 flex-row items-stretch gap-3">
             <Button
               title={loggingOut ? t.profile.loggingOut : t.profile.logout}
               variant="secondary"

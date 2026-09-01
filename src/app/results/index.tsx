@@ -240,7 +240,7 @@ export default function ResultsScreen() {
 
   return (
     <Screen>
-      <Header title={t.resultsList.title} />
+      <Header title={t.resultsList.title} onBack={() => router.dismissTo('/')} />
 
       <SectionList<ResultItem, ResultSection>
         sections={sections}

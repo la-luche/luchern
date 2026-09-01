@@ -91,7 +91,7 @@ export default function PreparationScreen() {
         <PreparationItem
           icon="refresh-outline"
           title={t.preparation.reviewTitle}
-          body={t.preparation.reviewBody}
+          body={isFullCheck ? t.preparation.fullReviewBody : t.preparation.reviewBody}
         />
       </ScrollView>
 

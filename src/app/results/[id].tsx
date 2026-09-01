@@ -25,7 +25,11 @@ import { COLORS } from '../../lib/theme';
 
 /** Detail for one recording: retained local playback or cloud playback on demand. */
 export default function ResultDetailScreen() {
-  const { id, guestId } = useLocalSearchParams<{ id: string; guestId?: string }>();
+  const { id, guestId, singleTestComplete } = useLocalSearchParams<{
+    id: string;
+    guestId?: string;
+    singleTestComplete?: string;
+  }>();
   const router = useRouter();
   const {
     recordings,
@@ -114,7 +118,7 @@ export default function ResultDetailScreen() {
     if (guestId) {
       router.dismissTo({ pathname: '/guests/[id]', params: { id: guestId } });
     } else {
-      router.navigate('/');
+      router.dismissTo('/');
     }
   };
 
@@ -212,7 +216,7 @@ export default function ResultDetailScreen() {
     <Screen>
       <Header
         title={test ? t.tests[test.id].name : t.result.fallbackTitle}
-        onBack={guestId ? leaveResult : undefined}
+        onBack={guestId || singleTestComplete === '1' ? leaveResult : undefined}
         right={
           <Pressable
             onPress={confirmDelete}

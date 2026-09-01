@@ -191,7 +191,11 @@ export default function RecordScreen() {
         const rec = await finalizeRecording(stagedRecordingId);
         router.replace({
           pathname: '/results/[id]',
-          params: { id: rec.id, ...(guestId ? { guestId } : {}) },
+          params: {
+            id: rec.id,
+            singleTestComplete: '1',
+            ...(guestId ? { guestId } : {}),
+          },
         });
       }
     } catch (error) {
