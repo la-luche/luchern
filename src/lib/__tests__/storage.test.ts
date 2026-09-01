@@ -215,6 +215,7 @@ describe('driveOnce', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       'user-a',
     );
     expect(pollResultOnce).toHaveBeenCalledWith(
@@ -359,6 +360,7 @@ describe('driveOnce', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     expect(patch.status).toBe('done');
   });
@@ -385,6 +387,7 @@ describe('driveOnce', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     expect(patch).toMatchObject({ status: 'done', result: { updrsGrade: 1.5 } });
   });
@@ -408,6 +411,7 @@ describe('driveOnce', () => {
       0,
       undefined,
       'guest-201',
+      undefined,
       undefined,
       undefined,
     );
