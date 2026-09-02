@@ -4,12 +4,13 @@ import { useUser } from '@clerk/clerk-expo';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Pressable, Text, View } from 'react-native';
+import { Alert, AppState, Linking, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { FramingGuide, ReviewPanel } from '../../components/Capture';
 import { Screen } from '../../components/Screen';
+import { preferredRearCameraLens } from '../../lib/cameraLens';
 import { cues } from '../../lib/cues';
 import { setCaptureActive } from '../../lib/captureActivity';
 import {
@@ -71,7 +72,6 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
-  const [selectedLens, setSelectedLens] = useState<string | undefined>();
 
   // The clip is durably staged before review. Retake is the only path that
   // deletes it; navigation, jetsam, or a dead battery leave it recoverable.
@@ -216,16 +216,6 @@ export default function RecordScreen() {
   const flip = () => {
     setFacing((f) => (f === 'back' ? 'front' : 'back'));
     setTorch(false); // torch is a back-camera feature; reset on flip
-    setSelectedLens(undefined);
-  };
-
-  const selectPreferredLens = ({ lenses }: { lenses: string[] }) => {
-    if (test.id !== 'gait' || facing !== 'back') return;
-    setSelectedLens(
-      lenses.includes('builtInUltraWideAngleCamera')
-        ? 'builtInUltraWideAngleCamera'
-        : undefined,
-    );
   };
 
   const stepZoom = (delta: number) =>
@@ -273,13 +263,16 @@ export default function RecordScreen() {
             active={phase !== 'review'}
             facing={facing}
             zoom={zoom}
-            selectedLens={facing === 'back' ? selectedLens : undefined}
+            selectedLens={
+              Platform.OS === 'ios' && facing === 'back'
+                ? preferredRearCameraLens(test.id)
+                : undefined
+            }
             enableTorch={torch && facing === 'back'}
             mute
             videoQuality="720p"
             videoBitrate={3000000}
             onCameraReady={() => setCameraReady(true)}
-            onAvailableLensesChanged={selectPreferredLens}
             onMountError={({ message }) => {
               setCameraReady(false);
               recordDiagnostic('camera_mount_failed', { testId: test.id, message });

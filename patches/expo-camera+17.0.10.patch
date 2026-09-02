@@ -1,0 +1,23 @@
+diff --git a/node_modules/expo-camera/ios/Current/CameraSessionManager.swift b/node_modules/expo-camera/ios/Current/CameraSessionManager.swift
+--- a/node_modules/expo-camera/ios/Current/CameraSessionManager.swift
++++ b/node_modules/expo-camera/ios/Current/CameraSessionManager.swift
+@@ -80,3 +80,17 @@ class CameraSessionManager: NSObject {
+-    let selectedDevice = lenses.first {
+-      $0.localizedName == delegate.selectedLens
++    let selectedDevice = delegate.selectedLens.flatMap { selectedLens in
++      // Expo documents selectedLens as an AVCaptureDevice type identifier,
++      // but SDK 54 only compared it with localizedName. Accept stable type
++      // identifiers (short and raw forms) while preserving the old behavior.
++      let canonicalLens = selectedLens == "builtInUltraWideAngleCamera"
++      ? "builtInUltraWideCamera"
++      : selectedLens
++      let rawDeviceType = canonicalLens.hasPrefix("AVCaptureDeviceType")
++      ? canonicalLens
++      : "AVCaptureDeviceType\(canonicalLens.prefix(1).uppercased())\(canonicalLens.dropFirst())"
++
++      return lenses.first {
++        $0.localizedName == selectedLens ||
++        $0.uniqueID == selectedLens ||
++        $0.deviceType.rawValue == rawDeviceType
++      }
+     }
