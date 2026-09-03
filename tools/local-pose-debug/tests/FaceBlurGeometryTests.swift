@@ -36,6 +36,11 @@ private struct FaceBlurGeometryTests {
       equals: CGRect(x: 72, y: 512, width: 216, height: 512)
     )
 
+    let extended = normalized.extendedUpward(by: 0.20)
+    precondition(abs(extended.top - 0.12) < 0.001)
+    precondition(abs(extended.bottom - normalized.bottom) < 0.001)
+    precondition(abs(extended.height - normalized.height * 1.20) < 0.001)
+
     print("FaceBlurGeometryTests passed")
   }
 }

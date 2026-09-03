@@ -74,6 +74,16 @@ class BoxSample:
     face_source: str | None
 
 
+@dataclass(frozen=True)
+class ReliabilityWindow:
+    index: int
+    start_seconds: float
+    end_seconds: float
+    median_visible_joints: float
+    residual_jump_p90: float | None
+    bad: bool
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -444,6 +454,15 @@ def _scaled_height(rect: Rect, scale: float) -> Rect:
     return Rect(rect.left, clamp(rect.top - padding), rect.right, clamp(rect.bottom + padding))
 
 
+def _extended_upward(rect: Rect, fraction: float) -> Rect:
+    return Rect(
+        rect.left,
+        clamp(rect.top - rect.height * max(0.0, fraction)),
+        rect.right,
+        rect.bottom,
+    )
+
+
 def face_rect(
     landmarks: list[dict[str, float]],
     body: Rect,
@@ -467,7 +486,7 @@ def face_rect(
             clamp(bounds.right + width * face["pad_right"]),
             clamp(bounds.bottom + height * face["pad_bottom"]),
         )
-        return _scaled_height(rect, face["height_scale"]), "landmarks"
+        return _extended_upward(_scaled_height(rect, face["height_scale"]), 0.20), "landmarks"
 
     if face["shoulder_fallback"]:
         shoulder_indices = SHOULDER_INDICES.get(
@@ -507,7 +526,117 @@ def face_rect(
     raise ValueError("face unavailable")
 
 
-def build_boxes(landmark_payload: dict[str, Any], settings: dict[str, Any]) -> list[BoxSample]:
+def _effective_confidence(landmark: dict[str, Any]) -> float:
+    confidence = float(landmark.get("visibility", 1.0))
+    if landmark.get("presence_set", False):
+        confidence = min(confidence, float(landmark.get("presence", 1.0)))
+    return confidence
+
+
+def _torso_scale(points: np.ndarray, keypoint_schema: str) -> float:
+    if keypoint_schema == "coco17":
+        left_shoulder, right_shoulder, left_hip, right_hip = 5, 6, 11, 12
+    else:
+        left_shoulder, right_shoulder, left_hip, right_hip = 11, 12, 23, 24
+    required = max(left_shoulder, right_shoulder, left_hip, right_hip)
+    if len(points) <= required:
+        return 0.05
+    shoulder_width = np.linalg.norm(points[left_shoulder] - points[right_shoulder])
+    hip_width = np.linalg.norm(points[left_hip] - points[right_hip])
+    shoulder_mid = (points[left_shoulder] + points[right_shoulder]) / 2
+    hip_mid = (points[left_hip] + points[right_hip]) / 2
+    torso_height = np.linalg.norm(shoulder_mid - hip_mid)
+    candidates = [0.05, shoulder_width, hip_width, torso_height]
+    return float(max(value for value in candidates if math.isfinite(float(value))))
+
+
+def classify_reliability_windows(
+    landmark_payload: dict[str, Any], settings: dict[str, Any]
+) -> list[ReliabilityWindow]:
+    gate = settings["boxes"]["reliability_gate"]
+    window_seconds = gate["window_seconds"]
+    keypoint_schema = landmark_payload.get("keypoint_schema", "blazepose33")
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for sample in landmark_payload["samples"]:
+        index = int(math.floor((float(sample["seconds"]) + 1e-9) / window_seconds))
+        grouped.setdefault(index, []).append(sample)
+
+    windows: list[ReliabilityWindow] = []
+    for index, samples in sorted(grouped.items()):
+        visible_counts = []
+        residual_jumps: list[float] = []
+        for sample in samples:
+            landmarks = sample.get("landmarks") or []
+            visible_counts.append(
+                sum(
+                    _effective_confidence(landmark) >= gate["visible_confidence"]
+                    for landmark in landmarks
+                )
+            )
+
+        for previous, current in zip(samples[:-1], samples[1:]):
+            previous_landmarks = previous.get("landmarks") or []
+            current_landmarks = current.get("landmarks") or []
+            if not previous_landmarks or len(previous_landmarks) != len(current_landmarks):
+                continue
+            previous_points = np.asarray(
+                [[landmark["x"], landmark["y"]] for landmark in previous_landmarks],
+                dtype=float,
+            )
+            current_points = np.asarray(
+                [[landmark["x"], landmark["y"]] for landmark in current_landmarks],
+                dtype=float,
+            )
+            previous_confidence = np.asarray(
+                [_effective_confidence(landmark) for landmark in previous_landmarks]
+            )
+            current_confidence = np.asarray(
+                [_effective_confidence(landmark) for landmark in current_landmarks]
+            )
+            valid = (
+                (previous_confidence >= gate["jump_confidence"])
+                & (current_confidence >= gate["jump_confidence"])
+                & np.all(np.isfinite(previous_points), axis=1)
+                & np.all(np.isfinite(current_points), axis=1)
+            )
+            if np.count_nonzero(valid) < 2:
+                continue
+            displacement = current_points[valid] - previous_points[valid]
+            global_displacement = np.median(displacement, axis=0)
+            residual = np.linalg.norm(displacement - global_displacement, axis=1)
+            scale = max(
+                _torso_scale(previous_points, keypoint_schema),
+                _torso_scale(current_points, keypoint_schema),
+            )
+            residual_jumps.extend((residual / scale).tolist())
+
+        median_visible = float(np.median(visible_counts))
+        residual_p90 = (
+            float(np.percentile(residual_jumps, 90)) if residual_jumps else None
+        )
+        bad = (
+            median_visible < gate["minimum_median_visible_joints"]
+            and residual_p90 is not None
+            and residual_p90 > gate["maximum_residual_jump_p90"]
+        )
+        windows.append(
+            ReliabilityWindow(
+                index=index,
+                start_seconds=index * window_seconds,
+                end_seconds=(index + 1) * window_seconds,
+                median_visible_joints=median_visible,
+                residual_jump_p90=residual_p90,
+                bad=bad,
+            )
+        )
+    return windows
+
+
+def build_boxes(
+    landmark_payload: dict[str, Any],
+    settings: dict[str, Any],
+    reliability_windows: list[ReliabilityWindow] | None = None,
+) -> list[BoxSample]:
     box_settings = settings["boxes"]
     source = landmark_payload["source"]
     keypoint_schema = landmark_payload.get("keypoint_schema", "blazepose33")
@@ -551,6 +680,26 @@ def build_boxes(landmark_payload: dict[str, Any], settings: dict[str, Any]) -> l
                 landmarks=sample.landmarks,
                 face_source=None,
             )
+            for sample in samples
+        ]
+    gate = box_settings["reliability_gate"]
+    if gate["enabled"]:
+        windows = reliability_windows or classify_reliability_windows(
+            landmark_payload, settings
+        )
+        bad_indices = {window.index for window in windows if window.bad}
+        window_seconds = gate["window_seconds"]
+        samples = [
+            BoxSample(
+                frame_index=sample.frame_index,
+                seconds=sample.seconds,
+                body=None,
+                face=None,
+                landmarks=sample.landmarks,
+                face_source=None,
+            )
+            if int(math.floor((sample.seconds + 1e-9) / window_seconds)) in bad_indices
+            else sample
             for sample in samples
         ]
     return samples
@@ -744,7 +893,14 @@ def render_overlay(
     settings: dict[str, Any],
     progress: Progress,
 ) -> dict[str, Any]:
-    samples = build_boxes(landmark_payload, settings)
+    gate = settings["boxes"]["reliability_gate"]
+    reliability_windows = (
+        classify_reliability_windows(landmark_payload, settings)
+        if gate["enabled"]
+        else []
+    )
+    samples = build_boxes(landmark_payload, settings, reliability_windows)
+    reliability_by_index = {window.index: window for window in reliability_windows}
     keypoint_schema = landmark_payload.get("keypoint_schema", "blazepose33")
     capture, _ = open_video(video)
     fps = float(capture.get(cv2.CAP_PROP_FPS))
@@ -812,6 +968,23 @@ def render_overlay(
                 _draw_raw_landmarks(
                     rendered, nearest, rendered_seconds, settings, keypoint_schema
                 )
+            if gate["enabled"]:
+                window_index = int(
+                    math.floor((frame_index / fps + 1e-9) / gate["window_seconds"])
+                )
+                reliability = reliability_by_index.get(window_index)
+                if reliability is not None and reliability.bad:
+                    cv2.rectangle(rendered, (0, 0), (width, 38), (25, 25, 210), -1)
+                    cv2.putText(
+                        rendered,
+                        "BAD 0.5s WINDOW - BODY + FACE BOXES OFF",
+                        (10, 26),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.58,
+                        (255, 255, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
             if render["show_missing"] and body is None:
                 cv2.putText(rendered, "NO BODY BOX", (18, height - 58), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (40, 40, 255), 2, cv2.LINE_AA)
             process.stdin.write(rendered.tobytes())
@@ -853,6 +1026,12 @@ def render_overlay(
         "render_width": width,
         "render_height": height,
         "elapsed_seconds": round(time.monotonic() - started, 3),
+        "reliability_gate": {
+            "enabled": gate["enabled"],
+            "window_count": len(reliability_windows),
+            "bad_window_count": sum(window.bad for window in reliability_windows),
+            "windows": [asdict(window) for window in reliability_windows],
+        },
     }
 
 

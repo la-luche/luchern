@@ -18,19 +18,23 @@ Runtime contract:
 - The body region requires six visible COCO-17 keypoints and the exact
   exp-0012 size checks and padding. Boxes below 25% of the clip's median body
   area are rejected as transient outliers.
-- The face region uses COCO keypoints 0-4 with the exp-0012 asymmetric padding
-  and 2x height expansion. It falls back to shoulders 5-6, then to the top of
-  the body region for clipped or turned-away heads.
+- The video is partitioned into fixed, non-overlapping 0.5-second windows. A
+  window is unreliable only when its median count of joints at confidence 0.5
+  is below five and its translation-corrected, torso-normalized residual-jump
+  p90 exceeds 0.25. Unreliable windows pass through without any blur.
+- The face region uses only COCO keypoints 0-4 at confidence 0.15 with the
+  exp-0012 asymmetric padding and 2x height expansion, followed by a 20%
+  upward-only extension. The bottom edge does not move. There are no shoulder
+  or body-top fallbacks.
 - Face redaction reduces the region to about four blocks across and then
   applies a strong Gaussian blur.
 - Background redaction first removes fine detail with a coarse pixel grid,
   then adds Gaussian blur. The expanded person box is restored over this
   background with a feathered boundary.
-- Missing/rejected body detections redact the complete frame. Face-only mode
-  also redacts the complete frame when no face fallback can be formed.
-- If no person is detected anywhere in the clip, preprocessing fails closed;
-  the app does not upload the sanitized path until the user retries or
-  explicitly elects to send the original.
+- A reliable window with a usable body region receives background redaction.
+  Its face is redacted only when at least three face keypoints pass the
+  confidence threshold. If the window is unreliable or has no usable body
+  region, the frame is left unchanged: no background blur and no face blur.
 
 The native result reports decoded-frame, body, face, and total dense-sample
 counts. No landmarks or video frames are persisted by the privacy module.

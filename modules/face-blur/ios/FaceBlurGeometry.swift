@@ -30,6 +30,16 @@ struct NormalizedRect {
     )
   }
 
+  /** Increase height by moving only the top edge; keep the bottom fixed. */
+  func extendedUpward(by fraction: CGFloat) -> NormalizedRect {
+    NormalizedRect(
+      left: left,
+      top: max(0, top - height * max(0, fraction)),
+      right: right,
+      bottom: bottom
+    )
+  }
+
   /**
    Maps a display-oriented, normalized top-left box into the Core Image frame.
 

@@ -7,9 +7,12 @@ from pose_debug.pipeline import (
     BoxSample,
     Rect,
     _confidence_color,
+    _extended_upward,
     _serialise_landmark,
     body_rect,
+    build_boxes,
     boxes_at,
+    classify_reliability_windows,
     face_rect,
 )
 
@@ -60,6 +63,13 @@ class GeometryTests(unittest.TestCase):
         self.assertAlmostEqual(rect.top, 0.068)
         self.assertAlmostEqual(rect.bottom, 0.908)
 
+    def test_face_extension_moves_only_top_edge(self) -> None:
+        rect = Rect(0.2, 0.3, 0.6, 0.7)
+        extended = _extended_upward(rect, 0.20)
+        self.assertAlmostEqual(extended.top, 0.22)
+        self.assertEqual(extended.bottom, rect.bottom)
+        self.assertAlmostEqual(extended.height, rect.height * 1.20)
+
     def test_coco17_face_uses_coco_head_indices(self) -> None:
         points = [landmark(0.5, 0.5, 0.1) for _ in range(17)]
         for index, (x, y) in enumerate(
@@ -84,6 +94,49 @@ class GeometryTests(unittest.TestCase):
         self.assertIsNone(body)
         body, _ = boxes_at([first, second], 0.04, "nearest")
         self.assertIsNotNone(body)
+
+    def test_reliability_gate_uses_nonoverlapping_half_second_windows(self) -> None:
+        settings = normalize_settings(
+            {
+                "boxes": {
+                    "landmark_confidence": 0.15,
+                    "reliability_gate": {"enabled": True},
+                }
+            }
+        )
+
+        def pose(frame: int, jumping: bool) -> list[dict[str, float]]:
+            points = [landmark(0.3 + (index % 5) * 0.08, 0.2 + (index // 5) * 0.18, 0.2) for index in range(17)]
+            if jumping and frame % 2:
+                for index, point in enumerate(points):
+                    if index not in {5, 6, 11, 12}:
+                        point["x"] += 0.15 if index % 2 else -0.15
+            return points
+
+        samples = []
+        for frame in range(10):
+            samples.append(
+                {
+                    "frame_index": frame,
+                    "seconds": frame / 10,
+                    "landmarks": pose(frame, jumping=frame >= 5),
+                }
+            )
+        payload = {
+            "keypoint_schema": "coco17",
+            "source": {"display_width": 720, "display_height": 1280},
+            "samples": samples,
+        }
+
+        windows = classify_reliability_windows(payload, settings)
+        self.assertEqual(len(windows), 2)
+        self.assertFalse(windows[0].bad)
+        self.assertTrue(windows[1].bad)
+
+        boxes = build_boxes(payload, settings, windows)
+        self.assertTrue(all(sample.body is not None for sample in boxes[:5]))
+        self.assertTrue(all(sample.body is None and sample.face is None for sample in boxes[5:]))
+        self.assertTrue(all(sample.landmarks is not None for sample in boxes[5:]))
 
 
 if __name__ == "__main__":

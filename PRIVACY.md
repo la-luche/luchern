@@ -21,12 +21,14 @@ The public account-deletion instructions and request path are at
 ## Storage and processing
 
 The local recording and an account-scoped recovery manifest are moved into the
-app's documents directory before the review screen appears. Luche always
-applies both face and background protection before any upload. Bundled
+app's documents directory before the review screen appears. Luche runs an
+on-device face/background processing pass before any upload. Bundled
 RTMDet-nano and RTMPose-t models estimate pose on every decoded frame. Luche
 writes a sanitized copy and durably switches upload/playback to that copy. The
-original remains local-only on the recording device and is never uploaded. It
-can be viewed or explicitly exported, and is removed only when the user deletes
+original source file remains local-only on the recording device and is never
+uploaded as that file. Frames that the reliability gate rejects can pass
+through unchanged in the processed upload. The local original can be viewed or
+explicitly exported, and is removed only when the user deletes
 the recording, logs out, or deletes the account. Luche excludes the recording
 directory from iCloud backup and disables Android app backup, so these local
 originals are not copied into a device backup. Video frames, pose
@@ -36,9 +38,11 @@ privacy, the single largest person region stays clear while everything outside
 it is coarsely pixelated and blurred; Luche does not identify or select a
 patient among several people. The models run locally through ONNX Runtime on
 iOS and Android without an SDK key, network license check, or model download.
-If a frame has no usable person region, Luche redacts the full frame rather than
-reusing an old box. If preprocessing fails or is interrupted, nothing uploads
-until the user explicitly retries it. There is no send-original upload path.
+Processing uses independent, non-overlapping 0.5-second windows. A window with
+low joint confidence and large residual joint jumps, or without a usable body
+region, is left unchanged. Reliable windows receive background blur, and face
+blur is added only when at least three face keypoints pass confidence. If
+preprocessing fails or is interrupted, nothing uploads until the user retries.
 
 The app uploads only the completed de-identified video directly to Cloudflare
 R2 using a short-lived signed URL. The local de-identified copy remains on the

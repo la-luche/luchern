@@ -34,7 +34,9 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -69,6 +71,11 @@ private data class PrivacyRect(
     )
   }
 
+  /** Increase height by moving only the top edge; keep the bottom fixed. */
+  fun extendedUpward(fraction: Float): PrivacyRect = copy(
+    top = (top - height * max(0f, fraction)).coerceAtLeast(0f),
+  )
+
   fun toGlRect() = GlPrivacyRect(left, 1f - bottom, right, 1f - top)
 }
 
@@ -83,11 +90,84 @@ private data class PoseKeyframe(
   val presentationTimeUs: Long,
   val person: PrivacyRect?,
   val face: PrivacyRect?,
+  val landmarks: List<RTMPosePoint>?,
 )
 
 private data class PrivacyRects(val person: PrivacyRect?, val face: PrivacyRect?)
 
 private class PoseTimeline(val keyframes: List<PoseKeyframe>) {
+  companion object {
+    private const val RELIABILITY_WINDOW_US = 500_000L
+    private const val VISIBLE_CONFIDENCE = 0.5f
+    private const val MINIMUM_MEDIAN_VISIBLE_JOINTS = 5f
+    private const val JUMP_CONFIDENCE = 0.15f
+    private const val MAXIMUM_RESIDUAL_JUMP_P90 = 0.25f
+
+    private fun percentile(values: List<Float>, quantile: Float): Float? {
+      if (values.isEmpty()) return null
+      val sorted = values.sorted()
+      val position = (sorted.lastIndex * quantile.coerceIn(0f, 1f))
+      val lower = floor(position).toInt()
+      val upper = ceil(position).toInt()
+      if (lower == upper) return sorted[lower]
+      return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower.toFloat())
+    }
+
+    private fun torsoScale(points: List<RTMPosePoint>): Float {
+      if (points.size <= 12) return 0.05f
+      fun distance(first: Int, second: Int): Float = hypot(
+        points[first].x - points[second].x,
+        points[first].y - points[second].y,
+      )
+      val shoulderMidX = (points[5].x + points[6].x) / 2f
+      val shoulderMidY = (points[5].y + points[6].y) / 2f
+      val hipMidX = (points[11].x + points[12].x) / 2f
+      val hipMidY = (points[11].y + points[12].y) / 2f
+      return listOf(
+        0.05f,
+        distance(5, 6),
+        distance(11, 12),
+        hypot(shoulderMidX - hipMidX, shoulderMidY - hipMidY),
+      ).filter { it.isFinite() }.maxOrNull() ?: 0.05f
+    }
+
+    private fun residualJumpP90(frames: List<PoseKeyframe>): Float? {
+      val residuals = mutableListOf<Float>()
+      frames.zipWithNext().forEach { (previous, current) ->
+        val before = previous.landmarks ?: return@forEach
+        val after = current.landmarks ?: return@forEach
+        if (before.size != after.size) return@forEach
+        val displacements = before.indices.mapNotNull { index ->
+          val first = before[index]
+          val second = after[index]
+          if (
+            first.confidence < JUMP_CONFIDENCE || second.confidence < JUMP_CONFIDENCE ||
+            !first.x.isFinite() || !first.y.isFinite() ||
+            !second.x.isFinite() || !second.y.isFinite()
+          ) null else Pair(second.x - first.x, second.y - first.y)
+        }
+        if (displacements.size < 2) return@forEach
+        val globalX = percentile(displacements.map { it.first }, 0.5f) ?: return@forEach
+        val globalY = percentile(displacements.map { it.second }, 0.5f) ?: return@forEach
+        val scale = max(torsoScale(before), torsoScale(after))
+        residuals += displacements.map { (dx, dy) ->
+          hypot(dx - globalX, dy - globalY) / scale
+        }
+      }
+      return percentile(residuals, 0.9f)
+    }
+
+    private fun isUnreliable(frames: List<PoseKeyframe>): Boolean {
+      val visibleCounts = frames.map { frame ->
+        (frame.landmarks?.count { it.confidence >= VISIBLE_CONFIDENCE } ?: 0).toFloat()
+      }
+      val medianVisible = percentile(visibleCounts, 0.5f) ?: return false
+      if (medianVisible >= MINIMUM_MEDIAN_VISIBLE_JOINTS) return false
+      val residualJumpP90 = residualJumpP90(frames) ?: return false
+      return residualJumpP90 > MAXIMUM_RESIDUAL_JUMP_P90
+    }
+  }
+
   val poseSamples: Int get() = keyframes.count { it.person != null }
   val faceSamples: Int get() = keyframes.count { it.face != null }
 
@@ -103,6 +183,18 @@ private class PoseTimeline(val keyframes: List<PoseKeyframe>) {
       } else {
         frame
       }
+    })
+  }
+
+  /** Suppress every privacy box inside independently classified 0.5 s windows. */
+  fun filteredForUnreliableWindows(): PoseTimeline {
+    val badWindows = keyframes
+      .groupBy { it.presentationTimeUs.coerceAtLeast(0L) / RELIABILITY_WINDOW_US }
+      .filterValues(::isUnreliable)
+      .keys
+    return PoseTimeline(keyframes.map { frame ->
+      val window = frame.presentationTimeUs.coerceAtLeast(0L) / RELIABILITY_WINDOW_US
+      if (window in badWindows) frame.copy(person = null, face = null) else frame
     })
   }
 
@@ -180,9 +272,8 @@ private class RTMPoseVideoScanner(
                 person = person,
                 face = if (landmarks == null || person == null) null else faceRect(
                   landmarks,
-                  person,
-                  bitmap.width.toFloat() / max(1, bitmap.height).toFloat(),
                 ),
+                landmarks = landmarks,
               )
             } finally {
               bitmap.recycle()
@@ -194,7 +285,8 @@ private class RTMPoseVideoScanner(
       require(keyframes.isNotEmpty()) { "No video frames could be decoded for pose estimation." }
       return Result(
         timeline = PoseTimeline(keyframes.sortedBy { it.presentationTimeUs })
-          .filteredForBodyOutliers(),
+          .filteredForBodyOutliers()
+          .filteredForUnreliableWindows(),
         durationUs = durationUs,
       )
     } finally {
@@ -229,11 +321,7 @@ private class RTMPoseVideoScanner(
     )
   }
 
-  private fun faceRect(
-    landmarks: List<RTMPosePoint>,
-    person: PrivacyRect,
-    frameAspect: Float,
-  ): PrivacyRect {
+  private fun faceRect(landmarks: List<RTMPosePoint>): PrivacyRect? {
     val facePoints = landmarks.take(5).mapNotNull { normalizedPoint(it) }
     if (facePoints.size >= 3) {
       val bounds = bounds(facePoints)
@@ -244,38 +332,9 @@ private class RTMPoseVideoScanner(
         top = (bounds.top - height * 0.85f).coerceIn(0f, 1f),
         right = (bounds.right + width * 0.40f).coerceIn(0f, 1f),
         bottom = (bounds.bottom + height * 0.60f).coerceIn(0f, 1f),
-      ).scaledHeight(2f)
+      ).scaledHeight(2f).extendedUpward(0.20f)
     }
-
-    if (landmarks.size > 6) {
-      val leftShoulder = normalizedPoint(landmarks[5], 0.10f)
-      val rightShoulder = normalizedPoint(landmarks[6], 0.10f)
-      if (leftShoulder != null && rightShoulder != null) {
-        val shoulderWidth = max(0.04f, abs(rightShoulder.first - leftShoulder.first))
-        val headWidth = min(0.45f, max(0.08f, shoulderWidth * 0.68f))
-        val headHeight = min(0.42f, max(0.08f, headWidth * max(0.25f, frameAspect) * 1.35f))
-        val centerX = (leftShoulder.first + rightShoulder.first) / 2f
-        val shoulderY = (leftShoulder.second + rightShoulder.second) / 2f
-        val bottom = min(1f, shoulderY + headHeight * 0.12f)
-        return PrivacyRect(
-          left = (centerX - headWidth * 0.60f).coerceIn(0f, 1f),
-          top = (bottom - headHeight * 1.25f).coerceIn(0f, 1f),
-          right = (centerX + headWidth * 0.60f).coerceIn(0f, 1f),
-          bottom = bottom,
-        ).scaledHeight(2f)
-      }
-    }
-
-    val aspect = max(0.25f, frameAspect)
-    val headHeight = min(person.height * 0.34f, max(0.08f, person.width * aspect * 0.55f))
-    val headWidth = min(person.width * 0.65f, max(0.08f, headHeight / aspect))
-    val centerX = (person.left + person.right) / 2f
-    return PrivacyRect(
-      left = (centerX - headWidth / 2f).coerceIn(0f, 1f),
-      top = person.top,
-      right = (centerX + headWidth / 2f).coerceIn(0f, 1f),
-      bottom = min(person.bottom, person.top + headHeight),
-    ).scaledHeight(2f)
+    return null
   }
 
   private fun normalizedPoint(
@@ -352,7 +411,7 @@ private class PrivacyBlurGlProcessor(
       ?: throw IllegalStateException("No dense pose result was available for a video frame.")
     framesProcessed.incrementAndGet()
     if (blurFaces && rects.face != null) framesWithFaces.incrementAndGet()
-    if (blurBackground) framesWithBackgroundBlur.incrementAndGet()
+    if (blurBackground && rects.person != null) framesWithBackgroundBlur.incrementAndGet()
     if (lastProgressTimestampUs == Long.MIN_VALUE || presentationTimeUs - lastProgressTimestampUs >= 250_000) {
       lastProgressTimestampUs = presentationTimeUs
       val fraction = if (durationUs > 0) {
@@ -492,20 +551,16 @@ private class PrivacyBlurGlProcessor(
       void main() {
         vec4 original = texture2D(uTexSampler, vTexCoord);
         vec4 color = original;
-        if (uBlurBackground == 1) {
-          float personMask = uHasPerson == 1
-            ? rectMask(vTexCoord, uPersonRect, 0.015)
-            : 0.0;
+        if (uBlurBackground == 1 && uHasPerson == 1) {
+          float personMask = rectMask(vTexCoord, uPersonRect, 0.015);
           color = mix(backgroundRedaction(vTexCoord), original, personMask);
         }
-        if (uBlurFaces == 1 && uHasFace == 1) {
+        if (uBlurFaces == 1 && uHasPerson == 1 && uHasFace == 1) {
           float faceMask = rectMask(vTexCoord, uFaceRect, 0.0005);
           vec2 block = max((uFaceRect.zw - uFaceRect.xy) / 4.0, 1.0 / uResolution);
           vec2 sampleCoord = uFaceRect.xy +
             (floor((vTexCoord - uFaceRect.xy) / block) + 0.5) * block;
           color = mix(color, faceRedaction(sampleCoord), faceMask);
-        } else if (uBlurFaces == 1 && uBlurBackground == 0) {
-          color = backgroundRedaction(vTexCoord);
         }
         gl_FragColor = color;
       }

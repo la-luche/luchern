@@ -27,6 +27,12 @@ private struct PrivacyRects {
 private struct PoseTimeline {
   let keyframes: [PoseKeyframe]
 
+  private static let reliabilityWindowSeconds = 0.5
+  private static let visibleConfidence: Float = 0.5
+  private static let minimumMedianVisibleJoints = 5.0
+  private static let jumpConfidence: Float = 0.15
+  private static let maximumResidualJumpP90 = 0.25
+
   var poseSamples: Int { keyframes.filter { $0.person != nil }.count }
   var faceSamples: Int { keyframes.filter { $0.face != nil }.count }
 
@@ -50,6 +56,96 @@ private struct PoseTimeline {
       }
       return keyframe
     })
+  }
+
+  /** Suppress every privacy box inside independently classified 0.5 s windows. */
+  func filteredForUnreliableWindows() -> PoseTimeline {
+    let grouped = Dictionary(grouping: keyframes) { keyframe in
+      Int(floor((keyframe.seconds + 1e-9) / Self.reliabilityWindowSeconds))
+    }
+    let badWindows = Set(grouped.compactMap { index, frames in
+      Self.isUnreliable(frames) ? index : nil
+    })
+    return PoseTimeline(keyframes: keyframes.map { keyframe in
+      let index = Int(floor((keyframe.seconds + 1e-9) / Self.reliabilityWindowSeconds))
+      guard badWindows.contains(index) else { return keyframe }
+      return PoseKeyframe(
+        seconds: keyframe.seconds,
+        person: nil,
+        face: nil,
+        landmarks: keyframe.landmarks
+      )
+    })
+  }
+
+  private static func isUnreliable(_ frames: [PoseKeyframe]) -> Bool {
+    let visibleCounts = frames.map { frame in
+      Double(frame.landmarks?.filter { $0.confidence >= visibleConfidence }.count ?? 0)
+    }
+    guard let medianVisible = percentile(visibleCounts, quantile: 0.5),
+          medianVisible < minimumMedianVisibleJoints,
+          let residualJumpP90 = residualJumpP90(frames) else { return false }
+    return residualJumpP90 > maximumResidualJumpP90
+  }
+
+  private static func residualJumpP90(_ frames: [PoseKeyframe]) -> Double? {
+    var residuals: [Double] = []
+    for (previous, current) in zip(frames, frames.dropFirst()) {
+      guard let before = previous.landmarks, let after = current.landmarks,
+            before.count == after.count else { continue }
+      var displacements: [(dx: Double, dy: Double)] = []
+      for index in before.indices {
+        let first = before[index]
+        let second = after[index]
+        guard first.confidence >= jumpConfidence,
+              second.confidence >= jumpConfidence,
+              first.x.isFinite, first.y.isFinite,
+              second.x.isFinite, second.y.isFinite else { continue }
+        displacements.append((
+          dx: Double(second.x - first.x),
+          dy: Double(second.y - first.y)
+        ))
+      }
+      guard displacements.count >= 2,
+            let globalX = percentile(displacements.map { $0.dx }, quantile: 0.5),
+            let globalY = percentile(displacements.map { $0.dy }, quantile: 0.5) else { continue }
+      let scale = max(torsoScale(before), torsoScale(after))
+      residuals.append(contentsOf: displacements.map { displacement in
+        hypot(displacement.dx - globalX, displacement.dy - globalY) / scale
+      })
+    }
+    return percentile(residuals, quantile: 0.9)
+  }
+
+  private static func torsoScale(_ points: [RTMPosePoint]) -> Double {
+    guard points.count > 12 else { return 0.05 }
+    func distance(_ first: Int, _ second: Int) -> Double {
+      hypot(
+        Double(points[first].x - points[second].x),
+        Double(points[first].y - points[second].y)
+      )
+    }
+    let shoulderMidX = Double(points[5].x + points[6].x) / 2
+    let shoulderMidY = Double(points[5].y + points[6].y) / 2
+    let hipMidX = Double(points[11].x + points[12].x) / 2
+    let hipMidY = Double(points[11].y + points[12].y) / 2
+    let values = [
+      0.05,
+      distance(5, 6),
+      distance(11, 12),
+      hypot(shoulderMidX - hipMidX, shoulderMidY - hipMidY),
+    ].filter { $0.isFinite }
+    return values.max() ?? 0.05
+  }
+
+  private static func percentile(_ values: [Double], quantile: Double) -> Double? {
+    guard !values.isEmpty else { return nil }
+    let sorted = values.sorted()
+    let position = Double(sorted.count - 1) * min(1, max(0, quantile))
+    let lower = Int(floor(position))
+    let upper = Int(ceil(position))
+    if lower == upper { return sorted[lower] }
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - Double(lower))
   }
 
   func nearestKeyframe(at seconds: Double) -> PoseKeyframe? {
@@ -105,19 +201,16 @@ private final class RTMPoseVideoScanner {
   private let asset: AVURLAsset
   private let progress: (Double) -> Void
   private let isCancelled: () -> Bool
-  private let includeLandmarks: Bool
   private let ciContext = CIContext(options: [.cacheIntermediates: false])
 
   init(
     asset: AVURLAsset,
     progress: @escaping (Double) -> Void,
-    isCancelled: @escaping () -> Bool,
-    includeLandmarks: Bool = false
+    isCancelled: @escaping () -> Bool
   ) {
     self.asset = asset
     self.progress = progress
     self.isCancelled = isCancelled
-    self.includeLandmarks = includeLandmarks
   }
 
   func scan() throws -> PoseTimeline {
@@ -161,14 +254,14 @@ private final class RTMPoseVideoScanner {
         let landmarks = try engine.analyze(image)
         let seconds = max(0, CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample)))
         let person = landmarks.flatMap(personRect)
-        let frameAspect = CGFloat(image.width) / CGFloat(max(1, image.height))
         return PoseKeyframe(
           seconds: seconds,
           person: person,
           face: landmarks.flatMap { points in
-            person.flatMap { faceRect(from: points, person: $0, frameAspect: frameAspect) }
+            person.flatMap { _ in faceRect(from: points) }
           },
-          landmarks: includeLandmarks ? landmarks : nil
+          // Reliability gating needs the raw points even when diagnostics are hidden.
+          landmarks: landmarks
         )
       }
       keyframes.append(keyframe)
@@ -221,11 +314,7 @@ private final class RTMPoseVideoScanner {
     )
   }
 
-  private func faceRect(
-    from landmarks: [RTMPosePoint],
-    person: NormalizedRect,
-    frameAspect: CGFloat
-  ) -> NormalizedRect? {
+  private func faceRect(from landmarks: [RTMPosePoint]) -> NormalizedRect? {
     let facePoints = (0..<min(5, landmarks.count)).compactMap {
       normalizedPoint(landmarks[$0])
     }
@@ -238,36 +327,9 @@ private final class RTMPoseVideoScanner {
         top: max(0, bounds.top - height * 0.85),
         right: min(1, bounds.right + width * 0.40),
         bottom: min(1, bounds.bottom + height * 0.60)
-      ).scaledHeight(2)
+      ).scaledHeight(2).extendedUpward(by: 0.20)
     }
-
-    if landmarks.count > 6,
-       let leftShoulder = normalizedPoint(landmarks[5], confidence: 0.10),
-       let rightShoulder = normalizedPoint(landmarks[6], confidence: 0.10) {
-      let shoulderWidth = max(0.04, abs(rightShoulder.x - leftShoulder.x))
-      let headWidth = min(0.45, max(0.08, shoulderWidth * 0.68))
-      let headHeight = min(0.42, max(0.08, headWidth * max(0.25, frameAspect) * 1.35))
-      let centerX = (leftShoulder.x + rightShoulder.x) / 2
-      let shoulderY = (leftShoulder.y + rightShoulder.y) / 2
-      let bottom = min(1, shoulderY + headHeight * 0.12)
-      return NormalizedRect(
-        left: max(0, centerX - headWidth * 0.60),
-        top: max(0, bottom - headHeight * 1.25),
-        right: min(1, centerX + headWidth * 0.60),
-        bottom: bottom
-      ).scaledHeight(2)
-    }
-
-    let aspect = max(0.25, frameAspect)
-    let headHeight = min(person.height * 0.34, max(0.08, person.width * aspect * 0.55))
-    let headWidth = min(person.width * 0.65, max(0.08, headHeight / aspect))
-    let centerX = (person.left + person.right) / 2
-    return NormalizedRect(
-      left: max(0, centerX - headWidth / 2),
-      top: person.top,
-      right: min(1, centerX + headWidth / 2),
-      bottom: min(person.bottom, person.top + headHeight)
-    ).scaledHeight(2)
+    return nil
   }
 
   private func normalizedPoint(
@@ -365,10 +427,11 @@ private final class FaceBlurProcessor {
         let detected = try RTMPoseVideoScanner(
           asset: asset,
           progress: self.progress,
-          isCancelled: { [weak self] in self?.isCancelled ?? true },
-          includeLandmarks: self.showPoseOverlay
+          isCancelled: { [weak self] in self?.isCancelled ?? true }
         ).scan()
-        let timeline = detected.filteredForBodyOutliers()
+        let timeline = detected
+          .filteredForBodyOutliers()
+          .filteredForUnreliableWindows()
         if self.isCancelled { throw Self.cancelledError() }
         self.stateLock.lock()
         self.timeline = timeline
@@ -434,57 +497,54 @@ private final class FaceBlurProcessor {
         throw Self.error(5, "No dense pose result was available for a video frame.")
       }
 
-      let backgroundMosaicScale = max(24, min(extent.width, extent.height) / 24)
-      let backgroundBlurRadius = Self.openCVGaussianSigma(
-        forRequestedKernel: min(extent.width, extent.height) * 0.055
-      )
-      let hardenedBackground = source
-        .clampedToExtent()
-        .applyingFilter(
-          "CIPixellate",
-          parameters: [
-            kCIInputScaleKey: backgroundMosaicScale,
-            kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY)
-          ]
-        )
-        .applyingFilter(
-          "CIGaussianBlur",
-          parameters: [kCIInputRadiusKey: backgroundBlurRadius]
-        )
-        .cropped(to: extent)
-
       var output = source
-      if blurBackground {
-        // Missing/rejected detections intentionally redact the entire frame.
-        output = hardenedBackground
-        if let normalizedPerson = rects.person {
-          let person = normalizedPerson.videoCompositionRect(in: extent)
-          guard !person.isEmpty else {
-            throw Self.error(6, "The RTMPose person region was empty while blurring the background.")
-          }
-          let mask = CIImage(color: .white).cropped(to: person)
-            .composited(over: CIImage(color: .black).cropped(to: extent))
-            .applyingFilter(
-              "CIGaussianBlur",
-              parameters: [
-                kCIInputRadiusKey: Self.openCVGaussianSigma(
-                  forRequestedKernel: min(extent.width, extent.height) * 0.025
-                )
-              ]
-            )
-            .cropped(to: extent)
-          output = source.applyingFilter(
-            "CIBlendWithMask",
+      var backgroundWasBlurred = false
+      if blurBackground, let normalizedPerson = rects.person {
+        let person = normalizedPerson.videoCompositionRect(in: extent)
+        guard !person.isEmpty else {
+          throw Self.error(6, "The RTMPose person region was empty while blurring the background.")
+        }
+        let backgroundMosaicScale = max(24, min(extent.width, extent.height) / 24)
+        let backgroundBlurRadius = Self.openCVGaussianSigma(
+          forRequestedKernel: min(extent.width, extent.height) * 0.055
+        )
+        let hardenedBackground = source
+          .clampedToExtent()
+          .applyingFilter(
+            "CIPixellate",
             parameters: [
-              kCIInputBackgroundImageKey: hardenedBackground,
-              kCIInputMaskImageKey: mask
+              kCIInputScaleKey: backgroundMosaicScale,
+              kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY)
             ]
           )
-        }
+          .applyingFilter(
+            "CIGaussianBlur",
+            parameters: [kCIInputRadiusKey: backgroundBlurRadius]
+          )
+          .cropped(to: extent)
+        let mask = CIImage(color: .white).cropped(to: person)
+          .composited(over: CIImage(color: .black).cropped(to: extent))
+          .applyingFilter(
+            "CIGaussianBlur",
+            parameters: [
+              kCIInputRadiusKey: Self.openCVGaussianSigma(
+                forRequestedKernel: min(extent.width, extent.height) * 0.025
+              )
+            ]
+          )
+          .cropped(to: extent)
+        output = source.applyingFilter(
+          "CIBlendWithMask",
+          parameters: [
+            kCIInputBackgroundImageKey: hardenedBackground,
+            kCIInputMaskImageKey: mask
+          ]
+        )
+        backgroundWasBlurred = true
       }
 
       var faceWasDetected = false
-      if blurFaces {
+      if blurFaces, rects.person != nil {
         if let normalizedFace = rects.face {
           let face = normalizedFace.videoCompositionRect(in: extent)
           if !face.isEmpty {
@@ -509,9 +569,6 @@ private final class FaceBlurProcessor {
             output = redacted.composited(over: output)
             faceWasDetected = true
           }
-        } else if !blurBackground {
-          // Face-only mode must fail closed on a missed pose frame.
-          output = hardenedBackground
         }
       }
 
@@ -525,7 +582,7 @@ private final class FaceBlurProcessor {
       stateLock.lock()
       stats.framesProcessed += 1
       if faceWasDetected { stats.framesWithFaces += 1 }
-      if blurBackground { stats.framesWithBackgroundBlur += 1 }
+      if backgroundWasBlurred { stats.framesWithBackgroundBlur += 1 }
       stateLock.unlock()
       request.finish(with: output.cropped(to: extent), context: ciContext)
     } catch {
@@ -802,9 +859,10 @@ public final class FaceBlurModule: Module {
           let timeline = try RTMPoseVideoScanner(
             asset: AVURLAsset(url: inputURL),
             progress: { _ in },
-            isCancelled: { false },
-            includeLandmarks: true
-          ).scan().filteredForBodyOutliers()
+            isCancelled: { false }
+          ).scan()
+            .filteredForBodyOutliers()
+            .filteredForUnreliableWindows()
           let frames: [[String: Any]] = timeline.keyframes.enumerated().map { index, keyframe in
             func values(_ rect: NormalizedRect?) -> [Double]? {
               guard let rect else { return nil }
