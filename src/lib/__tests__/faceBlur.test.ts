@@ -125,7 +125,7 @@ describe('privacy blur preparation', () => {
     expect(result.recovered).toBe(false);
   });
 
-  it('fails closed when on-device pose estimation finds no person', async () => {
+  it('promotes unchanged output when every pose window is rejected', async () => {
     (blurVideoAsync as jest.Mock).mockResolvedValueOnce({
       outputUri: 'file:///recordings/r1.pending.mp4',
       framesProcessed: 48,
@@ -136,13 +136,15 @@ describe('privacy blur preparation', () => {
 
     await expect(
       prepareFaceBlurredVideo('r1', 'file:///recordings/r1.original.mov', options, () => {}),
-    ).rejects.toThrow('no person pose could be detected');
+    ).resolves.toMatchObject({
+      framesProcessed: 48,
+      framesWithFaces: 0,
+      framesWithBackgroundBlur: 0,
+      poseSamples: 0,
+      recovered: false,
+    });
 
-    expect(promotePrivacyBlurredFile).not.toHaveBeenCalled();
-    expect(FileSystem.deleteAsync).toHaveBeenCalledWith(
-      'file:///recordings/r1.pending.mp4',
-      { idempotent: true },
-    );
+    expect(promotePrivacyBlurredFile).toHaveBeenCalled();
   });
 
   it('does not require a face region when only background blur was selected', async () => {

@@ -123,15 +123,6 @@ export async function prepareFaceBlurredVideo(
     if (result.framesProcessed <= 0) {
       throw new Error('no video frames could be scanned for faces');
     }
-    if (result.poseSamples <= 0) {
-      throw new Error('no person pose could be detected in this video');
-    }
-    if (options.blurFaces && result.framesWithFaces <= 0) {
-      throw new Error('no face could be located from the detected pose');
-    }
-    if (options.blurBackground && result.framesWithBackgroundBlur <= 0) {
-      throw new Error('the person could not be isolated from the background');
-    }
     if (!(await hasUsableFile(pendingUri))) {
       throw new Error('face-blurred video is empty');
     }
