@@ -4,7 +4,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
@@ -54,7 +54,9 @@ export default function RecordScreen() {
   const test = getTest(id);
   const t = useT();
 
-  const [camPerm, requestCam] = useCameraPermissions();
+  const [camPerm, requestCam, refreshCam] = useCameraPermissions();
+  const requestedCamera = useRef(false);
+  const [cameraPermissionError, setCameraPermissionError] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const { stageRecording, finalizeRecording, remove } = useRecordings();
   const session = useSession();
@@ -72,6 +74,27 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
+
+  // Opening the recording feature leads directly to the system permission
+  // dialog. Never show a custom consent screen or automatically retry a denial.
+  useEffect(() => {
+    if (
+      !test || camPerm?.status !== 'undetermined' || !camPerm.canAskAgain || requestedCamera.current
+    ) return;
+    requestedCamera.current = true;
+    void requestCam().catch(() => setCameraPermissionError(true));
+  }, [camPerm, requestCam, test]);
+
+  // Pick up changes made in Settings without requiring the user to reopen
+  // the recording screen. Reading permission never opens another prompt.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        void refreshCam().catch(() => setCameraPermissionError(true));
+      }
+    });
+    return () => subscription.remove();
+  }, [refreshCam]);
 
   // The clip is durably staged before review. Retake is the only path that
   // deletes it; navigation, jetsam, or a dead battery leave it recoverable.
@@ -222,24 +245,36 @@ export default function RecordScreen() {
     setZoom((z) => Math.min(1, Math.max(0, Math.round((z + delta) * 100) / 100)));
 
   // --- Permission gate ---------------------------------------------------------
-  if (!permissionsGranted) {
-    const permanentlyDenied = camPerm && !camPerm.granted && !camPerm.canAskAgain;
+  if (
+    !cameraPermissionError &&
+    (!camPerm || (camPerm.status === 'undetermined' && camPerm.canAskAgain))
+  ) {
+    return (
+      <Screen>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={COLORS.ink} accessibilityLabel={t.record.preparing} />
+        </View>
+      </Screen>
+    );
+  }
 
+  if (!permissionsGranted) {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center px-8">
           <MaterialCommunityIcons name="camera-off-outline" size={56} color={COLORS.ink} />
           <Text className="mt-5 text-center text-[22px] font-bold text-ink">
-            {t.record.cameraAccessNeeded}
+            {cameraPermissionError ? t.record.cameraFailedTitle : t.record.cameraAccessNeeded}
           </Text>
           <Text className="mt-2 text-center text-[15px] leading-6 text-ink/60">
-            {t.record.cameraAccessBody(t.tests[test.id].name)}
+            {cameraPermissionError
+              ? t.record.cameraFailedBody
+              : t.record.cameraAccessBody(t.tests[test.id].name)}
           </Text>
           <View className="mt-8 w-full gap-3">
-            <Button
-              title={permanentlyDenied ? t.record.openSettings : t.record.grantAccess}
-              onPress={permanentlyDenied ? () => Linking.openSettings() : requestCam}
-            />
+            {!cameraPermissionError && (
+              <Button title={t.record.openSettings} onPress={() => Linking.openSettings()} />
+            )}
             <Button title={t.common.back} variant="secondary" onPress={() => router.back()} />
           </View>
         </View>

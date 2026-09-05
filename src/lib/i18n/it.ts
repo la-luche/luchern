@@ -181,11 +181,10 @@ export const it: Dict = {
       'Ogni risultato è una stima sperimentale della prestazione motoria, non una valutazione MDS-UPDRS ufficiale. Rivolgiti sempre a un professionista sanitario qualificato e non usare Luche per prendere decisioni mediche o terapeutiche.',
   },
   record: {
-    cameraAccessNeeded: 'Serve l’accesso alla fotocamera',
+    cameraAccessNeeded: 'Accesso alla fotocamera disattivato',
     cameraAccessBody: (name: string) =>
-      `Luche usa la fotocamera per registrare un breve video di “${name}” e creare il tuo risultato. Il video viene registrato senza audio.`,
+      `Per registrare “${name}” serve l’accesso alla fotocamera. Luche registra un breve video senza audio per creare il tuo risultato. Puoi modificare l’accesso alla fotocamera nelle Impostazioni oppure tornare indietro.`,
     openSettings: 'Apri Impostazioni',
-    grantAccess: 'Consenti l’accesso alla fotocamera',
     saving: 'Salvataggio…',
     tapToStart: 'Tocca per iniziare',
     tapToEnd: 'Tocca per finire',

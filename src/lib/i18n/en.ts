@@ -183,11 +183,10 @@ export const en = {
       'Every result is an experimental motor-task estimate, not an official MDS-UPDRS rating. Always consult a qualified clinician, and do not use Luche to make medical or treatment decisions.',
   },
   record: {
-    cameraAccessNeeded: 'Luche needs camera access',
+    cameraAccessNeeded: 'Camera access is off',
     cameraAccessBody: (name: string) =>
-      `Luche needs the camera for “${name}” and records a short video without sound. The video is used to create your result.`,
+      `Recording “${name}” requires camera access. Luche records a short video without sound to create your result. You can change camera access in Settings or go back.`,
     openSettings: 'Open Settings',
-    grantAccess: 'Grant camera access',
     saving: 'Saving…',
     tapToStart: 'Tap to start',
     tapToEnd: 'Tap to stop',
