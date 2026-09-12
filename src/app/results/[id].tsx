@@ -73,10 +73,10 @@ export default function ResultDetailScreen() {
     setRemoteVideoUri(null);
     setVideoError(false);
     setLocalVideoFailed(false);
-    setVideoVersion(recording?.privacyBlurState === 'completed' ? 'deidentified' : 'original');
+    setVideoVersion(recording?.jobId || recording?.privacyBlurState === 'completed' ? 'deidentified' : 'original');
     if (
-      recording?.privacyBlurState === 'completed' &&
-      !recording.videoUri
+      recording?.jobId &&
+      (recording.privacyBlurState !== 'completed' || !recording.videoUri)
     ) void loadRemoteVideo();
   }, [loadRemoteVideo, recording?.id, recording?.privacyBlurState, recording?.videoUri]);
 
@@ -124,8 +124,10 @@ export default function ResultDetailScreen() {
 
   const test = getTest(recording.testId);
   const sideLabel = test ? formatEvaluatedSide(t, test, recording.evaluatedSide) : undefined;
+  // Synced trials have a server video but may have no device-local blur metadata.
+  // A job ID confirms upload; only local, not-yet-uploaded clips need this gate.
   const privacyPending = Boolean(
-    recording.privacyBlurState !== 'completed',
+    !recording.jobId && recording.privacyBlurState !== 'completed',
   );
   const originalVideoUri =
     recording.originalVideoUri ??
@@ -135,7 +137,7 @@ export default function ResultDetailScreen() {
   const deidentifiedVideoUri =
     recording.privacyBlurState === 'completed'
       ? (!localVideoFailed ? recording.videoUri : undefined) ?? remoteVideoUri
-      : undefined;
+      : remoteVideoUri;
   const hasDeidentifiedAndOriginal = Boolean(
     deidentifiedVideoUri && originalVideoUri && deidentifiedVideoUri !== originalVideoUri,
   );
@@ -337,13 +339,6 @@ export default function ResultDetailScreen() {
                   </Text>
                 </View>
               )}
-              <View className="mt-4 w-full">
-                <Button
-                  title={t.result.howScoreCalculated}
-                  variant="secondary"
-                  onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-                />
-              </View>
             </View>
           ) : recording.status === 'draft' ? (
             <View className="mt-3 gap-3">
@@ -424,6 +419,13 @@ export default function ResultDetailScreen() {
               </View>
             </View>
           )}
+          <View className="mt-4 w-full">
+            <Button
+              title={t.profile.scienceMethodology}
+              variant="secondary"
+              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
+            />
+          </View>
         </View>
 
         <View className="mt-8">
