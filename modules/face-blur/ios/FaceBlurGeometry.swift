@@ -1,5 +1,18 @@
 import CoreGraphics
 
+/** Convert a track's top-left transform to Core Image's bottom-left space. */
+func privacyDisplayTransform(
+  _ trackTransform: CGAffineTransform,
+  sourceExtent: CGRect
+) -> CGAffineTransform {
+  // Flip into track coordinates, apply the track transform, then flip back.
+  // Normalize the resulting extent separately after applying this transform.
+  CGAffineTransform(translationX: 0, y: sourceExtent.height)
+    .scaledBy(x: 1, y: -1)
+    .concatenating(trackTransform)
+    .concatenating(CGAffineTransform(scaleX: 1, y: -1))
+}
+
 /** Normalized top-left coordinates in the display-oriented video frame. */
 struct NormalizedRect {
   let left: CGFloat

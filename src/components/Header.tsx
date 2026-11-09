@@ -15,10 +15,12 @@ export function Header({
   title,
   right,
   onBack,
+  rightWidth = 48,
 }: {
   title?: string;
   right?: ReactNode;
   onBack?: () => void;
+  rightWidth?: number;
 }) {
   const router = useRouter();
   const t = useT();
@@ -47,7 +49,7 @@ export function Header({
         <View className="flex-1" />
       )}
 
-      <View className="w-12 items-end">{right}</View>
+      <View style={{ width: rightWidth }} className="items-end">{right}</View>
     </View>
   );
 }

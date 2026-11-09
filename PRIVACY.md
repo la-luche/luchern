@@ -53,6 +53,26 @@ service reads the video and writes derived keypoints to R2. Account/trial
 metadata and results are stored in the Luche database and synchronize to other
 devices signed in with the same account.
 
+## Connection recovery
+
+After a failed connection, Luche may temporarily use Google Public DNS over
+HTTPS to resolve service hostnames. This operates inside Luche and does not
+install a VPN/DNS profile or change the phone's system DNS settings. The
+resolver receives the source IP address and queried hostname, not the HTTPS
+request path, authentication token, video or analysis result. On iOS the
+fallback applies to the app's DNS resolution; Android limits it to Luche hosts.
+
+Google's Public DNS policy says temporary IP-address/query logs are subject to
+deletion within 24–48 hours, with longer retention possible for security/abuse
+investigations. Sampled permanent logs replace the IP with city/region
+information and retain domain/technical metadata. Google states that Public
+DNS data is not used for ad targeting. See
+https://developers.google.com/speed/public-dns/privacy .
+
+This native feature is not yet released. Before distribution, reconcile the
+public privacy policy and App Store Connect declarations with this provider
+behavior; the absence of a special DNS warning does not waive disclosure.
+
 ## Deletion
 
 Deleting a completed recording in the app first asks the server to cancel any

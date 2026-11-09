@@ -1,10 +1,13 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useT } from '../lib/i18n';
+import { useLang, useT } from '../lib/i18n';
+import { getBackgroundMode, subscribeBackgroundMode } from '../lib/backgroundRuntime';
+import { processingCopy } from '../lib/processingCopy';
+import { historyPerson, personHistoryHref } from '../lib/personFlow';
 import { useRecordings } from '../lib/storage';
 import { uploadingCount } from '../lib/uploadRetry';
 
@@ -13,27 +16,59 @@ import { uploadingCount } from '../lib/uploadRetry';
  * uploads have failed (and are retryable) it offers a one-tap "Retry all".
  * Participates in the root layout so it never covers navigation or screen UI.
  */
-export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boolean }) {
+export function UploadBanner({
+  includeTopInset = true,
+  hidden = false,
+}: {
+  includeTopInset?: boolean;
+  hidden?: boolean;
+}) {
   const { recordings, retry, retryPrivacyBlurring } = useRecordings({ includeGuests: true });
   const router = useRouter();
+  const route = useSegments().join('/');
+  const params = useGlobalSearchParams<{
+    id?: string;
+    guestId?: string;
+    patientId?: string;
+    mode?: string;
+    section?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const t = useT();
+  const { lang } = useLang();
+  const backgroundMode = useSyncExternalStore(subscribeBackgroundMode, getBackgroundMode, getBackgroundMode);
+  const workHint = backgroundMode === 'continued' ? processingCopy[lang].background : processingCopy[lang].keepOpen;
   const n = uploadingCount(recordings);
   const topInset = includeTopInset ? insets.top : 0;
-  const openRecordings = (items: { id: string }[]) => {
+  const openRecordings = (items: { id: string; guestId?: string }[]) => {
+    if (!items.length) return;
+    const guestId = items[0].guestId ?? '';
     if (items.length === 1) {
-      const recording = recordings.find((item) => item.id === items[0].id);
+      // Preserve the open result and its return context instead of pushing a
+      // second copy of the same screen and replaying its transition.
+      if (
+        route === 'results/[id]' &&
+        params.id === items[0].id &&
+        (params.guestId || '') === guestId
+      ) return;
       router.push({
         pathname: '/results/[id]',
         params: {
           id: items[0].id,
-          ...(recording?.guestId ? { guestId: recording.guestId } : {}),
+          guestId,
         },
       });
-    } else if (items.some((item) => recordings.find((r) => r.id === item.id)?.guestId)) {
-      router.push('/guests');
+    } else if (items.every((item) => (item.guestId ?? '') === guestId)) {
+      if (
+        route === 'results' &&
+        (params.guestId || '') === guestId &&
+        !params.patientId &&
+        params.section !== 'checkups'
+      ) return;
+      router.push(personHistoryHref(historyPerson(guestId)));
     } else {
-      router.push('/results');
+      if (route === 'people' && params.mode === 'history') return;
+      router.push({ pathname: '/people', params: { mode: 'history' } });
     }
   };
 
@@ -49,6 +84,10 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
     return undefined;
   }, [n, preparing.length]);
 
+  // Keep background-work subscriptions and keep-awake active while the camera
+  // screen suppresses the distracting banner itself.
+  if (hidden) return null;
+
   if (preparing.length > 0) {
     const progress = Math.round(
       (preparing.reduce((sum, recording) => sum + (recording.privacyBlurProgress ?? 0), 0) /
@@ -63,7 +102,8 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
         className="bg-violet-600 active:opacity-80"
       >
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
-          {t.uploadBanner.privacyBlurring(preparing.length)} · {progress}%
+          {t.uploadBanner.privacyBlurring(preparing.length)} {progress}%
+          {'\n'}{workHint}
         </Text>
       </Pressable>
     );
@@ -87,9 +127,9 @@ export function UploadBanner({ includeTopInset = true }: { includeTopInset?: boo
         className={`${stateColor} active:opacity-80`}
       >
         <Text className="px-4 pb-2 pt-1 text-center text-[13px] font-semibold text-white">
-          {retrying ? t.uploadBanner.retrying : t.uploadBanner.keepOpen(n)}
-          {attempt > 1 ? ` · ${t.uploadBanner.attempt(attempt)}` : ''}
-          {progress != null ? ` · ${progress}%` : ''}
+          {retrying ? t.uploadBanner.retrying : workHint}
+          {attempt > 1 ? ` (${t.uploadBanner.attempt(attempt)})` : ''}
+          {progress != null ? ` ${progress}%` : ''}
         </Text>
       </Pressable>
     );

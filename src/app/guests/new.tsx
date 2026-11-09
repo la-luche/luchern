@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -15,9 +15,13 @@ import { Header } from '../../components/Header';
 import { Screen } from '../../components/Screen';
 import { useGuests } from '../../lib/guestStorage';
 import { useT } from '../../lib/i18n';
+import { beginPersonTest, personHistoryHref, personPickerMode } from '../../lib/personFlow';
 import { COLORS } from '../../lib/theme';
 
 export default function NewGuestScreen() {
+  const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
+  const selectedMode = personPickerMode(modeParam);
+  const mode = selectedMode === 'single' || selectedMode === 'full' ? selectedMode : null;
   const router = useRouter();
   const t = useT();
   const { create } = useGuests();
@@ -37,16 +41,18 @@ export default function NewGuestScreen() {
       // The profile is committed on-device before any network attempt, so an
       // event can continue in airplane mode and sync this UUID later.
       const guest = await create(trimmedName, notes);
-      router.replace({ pathname: '/guests/[id]', params: { id: guest.id } });
+      router.replace(mode
+        ? beginPersonTest(mode, guest.id)
+        : personHistoryHref({ kind: 'guest', id: guest.id }));
     } catch {
       setCreating(false);
-      Alert.alert(t.guests.createFailed, t.guests.createFailedBody);
+      Alert.alert(t.people.createFailed, t.guests.createFailedBody);
     }
   };
 
   return (
     <Screen>
-      <Header title={t.guests.newTitle} />
+      <Header title={t.people.createUser} />
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -62,7 +68,7 @@ export default function NewGuestScreen() {
               setName(value);
               if (value.trim()) setNameError(false);
             }}
-            placeholder={t.guests.namePlaceholder}
+            placeholder={t.people.namePlaceholder}
             placeholderTextColor={COLORS.inkMuted}
             autoFocus
             autoCapitalize="words"
@@ -91,7 +97,7 @@ export default function NewGuestScreen() {
 
           <View className="mt-8">
             <Button
-              title={creating ? t.guests.creating : t.guests.create}
+              title={creating ? t.guests.creating : t.people.createUser}
               onPress={() => void submit()}
               disabled={creating || !name.trim()}
             />

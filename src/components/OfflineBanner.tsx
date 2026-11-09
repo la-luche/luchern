@@ -1,4 +1,5 @@
 import { useNetworkState } from 'expo-network';
+import { useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +43,7 @@ function OfflineBanner({
  */
 export function TopBanners() {
   const net = useNetworkState();
+  const recordingScreen = useSegments()[0] === 'record';
   const offlineNow = net.isConnected === false || net.isInternetReachable === false;
   // expo-network transiently reports unreachable for a few frames while it
   // re-evaluates; only a sustained offline state should flash the banner.
@@ -56,8 +58,8 @@ export function TopBanners() {
   }, [offlineNow]);
   return (
     <>
-      <OfflineBanner visible={offline} includeTopInset />
-      <UploadBanner includeTopInset={!offline} />
+      <OfflineBanner visible={offline && !recordingScreen} includeTopInset />
+      <UploadBanner includeTopInset={!offline} hidden={recordingScreen} />
     </>
   );
 }

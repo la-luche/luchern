@@ -1,0 +1,62 @@
+diff --git a/node_modules/expo-file-system/android/build.gradle b/node_modules/expo-file-system/android/build.gradle
+index 431ebd5..7d7e05b 100644
+--- a/node_modules/expo-file-system/android/build.gradle
++++ b/node_modules/expo-file-system/android/build.gradle
+@@ -15,6 +15,7 @@ android {
+ }
+ 
+ dependencies {
++  implementation 'com.facebook.react:react-android'
+   api 'commons-codec:commons-codec:1.10'
+   api 'commons-io:commons-io:1.4'
+   api 'com.squareup.okhttp3:okhttp:4.9.2'
+diff --git a/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/FileSystemModule.kt b/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/FileSystemModule.kt
+index 0db6200..e098e82 100644
+--- a/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/FileSystemModule.kt
++++ b/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/FileSystemModule.kt
+@@ -17,6 +17,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
+ import expo.modules.kotlin.typedarray.TypedArray
+ import expo.modules.kotlin.types.Either
+ import okhttp3.OkHttpClient
++import com.facebook.react.modules.network.OkHttpClientProvider
+ import okhttp3.Request
+ import java.io.File
+ import java.io.FileOutputStream
+@@ -67,7 +68,12 @@ class FileSystemModule : Module() {
+       }
+ 
+       val request = requestBuilder.build()
+-      val client = OkHttpClient()
++      val networkClient = OkHttpClientProvider.getOkHttpClient()
++      val client = OkHttpClient.Builder()
++        .dns(networkClient.dns)
++        .connectionPool(networkClient.connectionPool)
++        .eventListenerFactory(networkClient.eventListenerFactory)
++        .build()
+       val response = request.await(client)
+ 
+       if (!response.isSuccessful) {
+diff --git a/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/legacy/FileSystemLegacyModule.kt b/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/legacy/FileSystemLegacyModule.kt
+index 73a8bd5..303e10d 100644
+--- a/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/legacy/FileSystemLegacyModule.kt
++++ b/node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/legacy/FileSystemLegacyModule.kt
+@@ -32,6 +32,7 @@ import okhttp3.MediaType
+ import okhttp3.MediaType.Companion.toMediaTypeOrNull
+ import okhttp3.MultipartBody
+ import okhttp3.OkHttpClient
++import com.facebook.react.modules.network.OkHttpClientProvider
+ import okhttp3.Request
+ import okhttp3.RequestBody
+ import okhttp3.RequestBody.Companion.asRequestBody
+@@ -1004,7 +1005,11 @@ open class FileSystemLegacyModule : Module() {
+   private val okHttpClient: OkHttpClient?
+     get() {
+       if (client == null) {
++        val networkClient = OkHttpClientProvider.getOkHttpClient()
+         val builder = OkHttpClient.Builder()
++          .dns(networkClient.dns)
++          .connectionPool(networkClient.connectionPool)
++          .eventListenerFactory(networkClient.eventListenerFactory)
+           .connectTimeout(60, TimeUnit.SECONDS)
+           .readTimeout(60, TimeUnit.SECONDS)
+           .writeTimeout(60, TimeUnit.SECONDS)

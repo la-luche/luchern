@@ -54,6 +54,7 @@ import {
   uploadRecording,
 } from '../cloud';
 import { __testing } from '../storage';
+import { recordDiagnostic } from '../diagnostics';
 
 const {
   driveOnce,
@@ -71,6 +72,30 @@ const baseRec = () => ({
   videoUri: 'file:///clip.privacy-blurred.mp4',
   status: 'uploading' as const,
   privacyBlurState: 'completed' as const,
+});
+
+describe('pipeline diagnostics', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('keeps repeated processing polls out of the diagnostic ring', () => {
+    const rec = { ...baseRec(), status: 'processing' as const, jobId: 'job-1' };
+    for (let poll = 0; poll < 200; poll += 1) {
+      __testing.recordPipelineTransition(rec, { status: 'processing', jobId: 'job-1' });
+    }
+    expect(recordDiagnostic).not.toHaveBeenCalled();
+    __testing.recordPipelineTransition(rec, { status: 'done' });
+    expect(recordDiagnostic).toHaveBeenCalledTimes(1);
+    expect(recordDiagnostic).toHaveBeenCalledWith('pipeline_state', {
+      recordingId: 'r1', status: 'done', jobId: 'job-1',
+    });
+  });
+
+  it('retains a changed job or failure reason even when status stays the same', () => {
+    const rec = { ...baseRec(), status: 'failed' as const, jobId: 'job-1', failReason: 'offline' };
+    __testing.recordPipelineTransition(rec, { failReason: 'timeout' });
+    __testing.recordPipelineTransition(rec, { jobId: 'job-2' });
+    expect(recordDiagnostic).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('recoverInterruptedPrivacyWork', () => {

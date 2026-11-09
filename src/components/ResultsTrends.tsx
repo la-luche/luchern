@@ -1,136 +1,38 @@
-import { useRouter } from 'expo-router';
-import { Linking, Text, View } from 'react-native';
-
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
 import { useT } from '../lib/i18n';
-import { METHODOLOGY_URL } from '../lib/links';
-import type { SharedRecording } from '../lib/sharedRecordings';
-import { getTest, TESTS } from '../lib/tests';
-import type { Recording } from '../lib/types';
-import { Button } from './Button';
+import { getTest } from '../lib/tests';
+import { COLORS } from '../lib/theme';
 import { TrendChart, type TrendPoint } from './TrendChart';
 
-/**
- * Per-test score-over-time charts, one card per test that has at least one
- * finished recording, in TESTS order. Ported from the luche.ai observer
- * dashboard (TrialChart): x = time, y = 0–1 severity score, tap a point → that
- * recording's video/detail screen. Source is the LOCAL recordings list
- * (useRecordings) — no backend call (see plan's data-source decision).
- */
-export function ResultsTrends({ recordings }: { recordings: Recording[] }) {
-  const router = useRouter();
-  const t = useT();
-
-  // Only finished recordings carry a score to plot.
-  const done = recordings.filter((r) => r.status === 'done' && r.result);
-  if (done.length === 0) return null;
-
-  const sections = TESTS.map((test) => {
-    const points: TrendPoint[] = done
-      .filter((r) => r.testId === test.id)
-      .map((r) => ({ id: r.id, t: r.createdAt, score: r.result!.score }));
-    return { test, points };
-  }).filter((s) => s.points.length > 0);
-
-  if (sections.length === 0) return null;
-
-  return (
-    <View className="gap-3 pb-4">
-      <Text className="text-[16px] font-semibold text-ink">
-        {t.resultsList.trendsTitle}
-      </Text>
-      <Text className="text-[14px] leading-5 text-ink-muted">
-        {t.resultsList.trendsDisclaimer}
-      </Text>
-
-      {sections.map(({ test, points }) => (
-        <View key={test.id} className="rounded-2xl border border-ink-faint bg-white p-4">
-          <View className="mb-1">
-            <Text className="text-[16px] font-semibold text-ink">{t.tests[test.id].name}</Text>
-            <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
-              {t.tests[test.id].descriptor}
-            </Text>
-          </View>
-          <TrendChart
-            points={points}
-            onPointPress={(id) => router.push({ pathname: '/results/[id]', params: { id } })}
-          />
-        </View>
-      ))}
-
-      <Button
-        title={t.profile.scienceMethodology}
-        variant="secondary"
-        onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-      />
-    </View>
-  );
-}
-
-/** The same progress cards for a selected person sharing recordings remotely. */
-export function SharedResultsTrends({
-  recordings,
-  ownerName,
-}: {
-  recordings: SharedRecording[];
-  ownerName: string;
+/** In the overview the whole chart opens its test type; within that type, dots open recordings. */
+export function TestHistoryChart({ testId, fallbackName, points, onPress, onPointPress }: {
+  testId: string;
+  fallbackName?: string;
+  points: TrendPoint[];
+  onPress?: () => void;
+  onPointPress?: (id: string) => void;
 }) {
-  const router = useRouter();
   const t = useT();
-
-  const scored = recordings.filter(
-    (recording): recording is SharedRecording & { score: number } => recording.score != null,
-  );
-  if (scored.length === 0) return null;
-
-  const sections = [...new Set(scored.map((recording) => recording.testId))].map((testId) => {
-    const matching = scored.filter((recording) => recording.testId === testId);
-    const first = matching[0];
-    const localTest = getTest(testId);
-    return {
-      testId,
-      name: localTest ? t.tests[localTest.id].name : first.testName,
-      descriptor: localTest ? t.tests[localTest.id].descriptor : '',
-      points: matching.map((recording) => ({
-        id: String(recording.trialId),
-        t: recording.createdAt,
-        score: recording.score,
-      })),
-    };
-  });
-
-  return (
-    <View className="gap-3 pb-4">
-      <Text className="text-[16px] font-semibold text-ink">
-        {t.resultsList.personProgress(ownerName)}
-      </Text>
-      <Text className="text-[14px] leading-5 text-ink-muted">
-        {t.resultsList.trendsDisclaimer}
-      </Text>
-
-      {sections.map((section) => (
-        <View key={section.testId} className="rounded-2xl border border-ink-faint bg-white p-4">
-          <View className="mb-1">
-            <Text className="text-[16px] font-semibold text-ink">{section.name}</Text>
-            {!!section.descriptor && (
-              <Text className="mt-0.5 text-[14px] leading-5 text-ink-muted">
-                {section.descriptor}
-              </Text>
-            )}
-          </View>
-          <TrendChart
-            points={section.points}
-            onPointPress={(id) =>
-              router.push({ pathname: '/shared/[id]', params: { id, ownerName } })
-            }
-          />
-        </View>
-      ))}
-
-      <Button
-        title={t.profile.scienceMethodology}
-        variant="secondary"
-        onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-      />
+  const test = getTest(testId);
+  const name = test ? t.tests[test.id].name : fallbackName || t.recordingCard.fallback;
+  const content = <>
+    <View className="mb-3 flex-row items-center gap-3">
+      <Text className="flex-1 text-[26px] font-semibold leading-[32px] text-ink">{name}</Text>
+      {onPress && <Ionicons name="chevron-forward" size={24} color={COLORS.ink} />}
     </View>
-  );
+    <View pointerEvents={onPress ? 'none' : 'auto'}>
+      {points.length ? <TrendChart points={points} onPointPress={onPress ? undefined : onPointPress} /> : (
+        <View className="h-[180px] items-center justify-center">
+          <Text className="text-center text-[16px] text-ink-muted">{t.checkups.noScore}</Text>
+        </View>
+      )}
+    </View>
+  </>;
+  const className = 'mb-4 rounded-2xl border border-ink-faint bg-white p-4';
+  return onPress ? (
+    <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={onPress} className={`${className} active:opacity-70`}>
+      {content}
+    </Pressable>
+  ) : <View className={className}>{content}</View>;
 }

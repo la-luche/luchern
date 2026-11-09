@@ -5,10 +5,12 @@ import { useNetworkState } from 'expo-network';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { ApiError } from './api';
+import { clearGuestDeletionState, deletedGuestIds, loadDeletedGuests, markGuestDeleted } from './guestDeletionState';
 import {
   createGuest as createRemoteGuest,
   fetchGuest as fetchRemoteGuest,
-  fetchGuests as fetchRemoteGuests,
+  fetchGuestSnapshot as fetchRemoteGuests,
   type Guest,
 } from './guests';
 import { createConcurrencyQueue } from './uploadRetry';
@@ -148,6 +150,7 @@ async function loadGuests(accountId: string): Promise<StoredGuest[]> {
   if (existing) return existing;
 
   const loading = (async () => {
+      const deleted = await loadDeletedGuests(accountId);
       const itemKeys = (await AsyncStorage.getAllKeys()).filter((key) =>
         key.startsWith(guestItemPrefix(accountId)),
       );
@@ -177,7 +180,7 @@ async function loadGuests(accountId: string): Promise<StoredGuest[]> {
       const legacy = Array.isArray(parsed) ? parsed : [];
       const mergedById = new Map(legacy.map((guest) => [guest.id, guest]));
       for (const guest of itemsById.values()) mergedById.set(guest.id, guest);
-      const guests = sorted([...mergedById.values()]);
+      const guests = sorted([...mergedById.values()].filter(guest => !deleted.has(guest.id)));
       // Preserve the old aggregate snapshot as a migration fallback. Each
       // profile is then copied to two independent rows so all future edits
       // write only one small A/B record instead of rewriting the full list.
@@ -201,6 +204,7 @@ async function persistGuests(accountId: string, guests: StoredGuest[]): Promise<
   const next: StoredGuest[] = [];
   const writes: [string, string][] = [];
   for (const candidate of guests) {
+    if (deletedGuestIds(accountId).has(candidate.id)) continue;
     const old = previousById.get(candidate.id);
     const oldComparable = old ? { ...old, storageGeneration: undefined } : null;
     const candidateComparable = { ...candidate, storageGeneration: undefined };
@@ -288,6 +292,7 @@ export async function updateLocalGuest(
   guestId: string,
   fields: { name: string; notes: string },
 ): Promise<StoredGuest> {
+  if ((await loadDeletedGuests(accountId)).has(guestId)) throw new Error('guest deleted');
   const updated = await withAccountLock(accountId, async () => {
     const current = await loadGuests(accountId);
     const existing = current.find((guest) => guest.id === guestId);
@@ -325,12 +330,14 @@ export function ensureGuestSyncedForAccount(
   const operation = limitedGuestSync(async () => {
     while (true) {
       assertActiveGuestAccount(accountId, expectedGeneration);
+      if ((await loadDeletedGuests(accountId)).has(guestId)) throw new Error('guest deleted');
       const local = (await loadGuests(accountId)).find((guest) => guest.id === guestId);
       assertActiveGuestAccount(accountId, expectedGeneration);
       if (!local) {
         assertActiveGuestAccount(accountId, expectedGeneration);
         const remote = await fetchRemoteGuest(guestId, accountId);
         assertActiveGuestAccount(accountId, expectedGeneration);
+        if (deletedGuestIds(accountId).has(guestId)) throw new Error('guest deleted');
         const stored = withoutPendingSync(remote);
         await withAccountLock(accountId, async () => {
           assertActiveGuestAccount(accountId, expectedGeneration);
@@ -345,14 +352,22 @@ export function ensureGuestSyncedForAccount(
 
       const sentRevision = local.localRevision ?? 0;
       assertActiveGuestAccount(accountId, expectedGeneration);
-      const remote = await createRemoteGuest(local.name, local.notes, local.id, accountId);
+      let remote: Guest;
+      try {
+        remote = await createRemoteGuest(local.name, local.notes, local.id, accountId);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 410) await markGuestDeleted(accountId, guestId);
+        throw error;
+      }
       assertActiveGuestAccount(accountId, expectedGeneration);
+      if (deletedGuestIds(accountId).has(guestId)) throw new Error('guest deleted');
       let newest!: StoredGuest;
       let changedDuringSync = false;
       await withAccountLock(accountId, async () => {
         assertActiveGuestAccount(accountId, expectedGeneration);
         const current = await loadGuests(accountId);
         assertActiveGuestAccount(accountId, expectedGeneration);
+        if (deletedGuestIds(accountId).has(guestId)) throw new Error('guest deleted');
         const latest = current.find((guest) => guest.id === guestId) ?? local;
         changedDuringSync = (latest.localRevision ?? 0) !== sentRevision;
         newest = changedDuringSync
@@ -384,7 +399,7 @@ export async function syncPendingGuests(accountId: string): Promise<void> {
   const expectedGeneration = generation;
   while (true) {
     assertActiveGuestAccount(accountId, expectedGeneration);
-    const pending = (await loadGuests(accountId)).filter((guest) => guest.pendingSync).slice(0, 4);
+    const pending = (await loadGuests(accountId)).filter((guest) => guest.pendingSync && !deletedGuestIds(accountId).has(guest.id)).slice(0, 4);
     assertActiveGuestAccount(accountId, expectedGeneration);
     if (pending.length === 0) return;
     // Only queue one concurrency window at a time. A recording that needs a
@@ -398,8 +413,14 @@ export async function syncPendingGuests(accountId: string): Promise<void> {
 export async function refreshGuestCache(accountId: string): Promise<StoredGuest[]> {
   const expectedGeneration = generation;
   assertActiveGuestAccount(accountId, expectedGeneration);
-  const remote = await fetchRemoteGuests(accountId);
+  const snapshot = await fetchRemoteGuests(accountId);
   assertActiveGuestAccount(accountId, expectedGeneration);
+  for (const id of snapshot.deletedIds) {
+    assertActiveGuestAccount(accountId, expectedGeneration);
+    await markGuestDeleted(accountId, id);
+    await removeDeletedGuestLocally(accountId, id);
+  }
+  const remote = snapshot.guests.filter(guest => !deletedGuestIds(accountId).has(guest.id));
   return withAccountLock(accountId, async () => {
     assertActiveGuestAccount(accountId, expectedGeneration);
     const local = await loadGuests(accountId);
@@ -408,7 +429,7 @@ export async function refreshGuestCache(accountId: string): Promise<StoredGuest[
     const remoteIds = new Set(remote.map((guest) => guest.id));
     const merged = remote.map<StoredGuest>((guest) => {
       const localGuest = localById.get(guest.id);
-      if (!localGuest?.pendingSync) return withoutPendingSync(guest);
+      if (!localGuest || (!localGuest.pendingSync && localGuest.updatedAt <= guest.updatedAt)) return withoutPendingSync(guest);
       return {
         ...guest,
         ...localGuest,
@@ -416,12 +437,24 @@ export async function refreshGuestCache(accountId: string): Promise<StoredGuest[
         lastRecordedAt: guest.lastRecordedAt,
       };
     });
-    // No deletion endpoint exists. Preserve local-only and cached guests even
-    // if a stale/read-replica response momentarily omits them.
-    merged.push(...local.filter((guest) => !remoteIds.has(guest.id)));
+    // Only an explicit deletion marker may remove a local/offline profile.
+    merged.push(...local.filter((guest) => !remoteIds.has(guest.id) && !deletedGuestIds(accountId).has(guest.id)));
     await persistGuests(accountId, merged);
     assertActiveGuestAccount(accountId, expectedGeneration);
     return sorted(merged);
+  });
+}
+
+export async function removeDeletedGuestLocally(accountId: string, guestId: string): Promise<void> {
+  if (!(await loadDeletedGuests(accountId)).has(guestId)) throw new Error('guest deletion not confirmed');
+  await withAccountLock(accountId, async () => {
+    const current = await loadGuests(accountId);
+    await persistGuests(accountId, current.filter(guest => guest.id !== guestId));
+    await AsyncStorage.multiRemove([guestItemKey(accountId, guestId, 0), guestItemKey(accountId, guestId, 1)]);
+    // Every live profile was migrated to per-item rows by loadGuests. Remove
+    // obsolete aggregate copies so a deleted name/note cannot reappear.
+    const legacyKeys = (await AsyncStorage.getAllKeys()).filter(key => key === storageKey(accountId) || key.startsWith(chunkStoragePrefix(accountId)));
+    await AsyncStorage.multiRemove(legacyKeys);
   });
 }
 
@@ -433,6 +466,7 @@ export async function clearAllGuestCaches(): Promise<void> {
   activeGuestAccountId = null;
   syncOperations.clear();
   await Promise.allSettled([...mutationTails.values()]);
+  await clearGuestDeletionState();
   const keys = (await AsyncStorage.getAllKeys()).filter((key) =>
     key.startsWith(STORAGE_KEY_PREFIX) ||
     key.startsWith(CHUNK_STORAGE_KEY_PREFIX) ||

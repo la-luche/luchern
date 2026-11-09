@@ -17,5 +17,10 @@ Pod::Spec.new do |s|
   s.source_files = '*.swift'
   s.resources = 'Resources/*'
   s.preserve_paths = 'Resources/*'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  # The per-pixel tensor preparation loops need optimization even when the
+  # surrounding app uses the Expo development client and Fast Refresh.
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'SWIFT_OPTIMIZATION_LEVEL' => '-O'
+  }
 end

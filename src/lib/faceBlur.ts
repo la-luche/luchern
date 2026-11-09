@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { clearWorkTimeout, setWorkTimeout } from './workTimers';
 
 import {
   addProgressListener,
@@ -93,8 +94,8 @@ export async function prepareFaceBlurredVideo(
   let stallTimer: ReturnType<typeof setTimeout> | undefined;
   let rejectStalled: ((error: Error) => void) | undefined;
   const armStallWatchdog = () => {
-    if (stallTimer) clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => {
+    if (stallTimer) clearWorkTimeout(stallTimer);
+    stallTimer = setWorkTimeout(() => {
       stalled = true;
       void cancelAsync(operationId).catch(() => {});
       rejectStalled?.(new Error('video privacy processing stalled'));
@@ -139,10 +140,10 @@ export async function prepareFaceBlurredVideo(
       await FileSystem.deleteAsync(finalUri, { idempotent: true }).catch(() => {});
       await FileSystem.deleteAsync(completionUri, { idempotent: true }).catch(() => {});
     }
-    if (signal?.aborted) throw new FaceBlurCancelledError();
+    if (signal?.aborted || (error as { code?: string })?.code === 'ERR_FACE_BLUR_CANCELLED') throw new FaceBlurCancelledError();
     throw error;
   } finally {
-    if (stallTimer) clearTimeout(stallTimer);
+    if (stallTimer) clearWorkTimeout(stallTimer);
     rejectStalled = undefined;
     subscription.remove();
     signal?.removeEventListener('abort', abort);

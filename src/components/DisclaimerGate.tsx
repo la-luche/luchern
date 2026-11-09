@@ -1,77 +1,56 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { Linking, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useT } from '../lib/i18n';
 import { METHODOLOGY_URL } from '../lib/links';
-import { COLORS } from '../lib/theme';
 import { Button } from './Button';
-import { LanguagePicker } from './LanguagePicker';
-
-const ACCEPTED_KEY = 'luche.disclaimerAccepted.v1';
 
 /**
- * First-launch medical disclaimer. Both App Store (guideline 1.4.1) and Play's
- * Health-apps policy scrutinize symptom-scoring apps — surfacing a clear
- * "not a medical device / not for diagnosis" notice up front lowers rejection
- * risk. Acceptance is persisted so it only shows once.
+ * Show once per app launch. Keep screens mounted
+ * underneath so acknowledging the warning never resets the current task.
  */
 export function DisclaimerGate({ children }: { children: ReactNode }) {
   const t = useT();
-  // undefined = still loading, true/false = resolved
-  const [accepted, setAccepted] = useState<boolean | undefined>(undefined);
-
-  useEffect(() => {
-    AsyncStorage.getItem(ACCEPTED_KEY)
-      .then((v) => setAccepted(v === 'true'))
-      .catch(() => setAccepted(false));
-  }, []);
-
-  if (accepted === undefined) {
-    return <View className="flex-1 bg-white" />;
-  }
-
-  if (accepted) return <>{children}</>;
-
-  const accept = () => {
-    AsyncStorage.setItem(ACCEPTED_KEY, 'true').catch(() => {});
-    setAccepted(true);
-  };
+  const [visible, setVisible] = useState(true);
 
   return (
     <View className="flex-1 bg-white">
-      <SafeAreaView className="flex-1">
-        <ScrollView contentContainerClassName="grow justify-center px-7 py-10">
-          <View className="mb-8">
-            <LanguagePicker />
-          </View>
-          <View className="mb-6 items-center">
-            <MaterialCommunityIcons name="shield-alert-outline" size={56} color={COLORS.ink} />
-          </View>
-          <Text selectable className="mb-4 text-center text-[26px] font-bold text-ink">
-            {t.disclaimer.title}
-          </Text>
-          <Text selectable className="mb-3 text-center text-[16px] leading-6 text-ink/70">
-            {t.disclaimer.body1lead}
-            <Text className="font-semibold text-ink">{t.disclaimer.notMedicalDevice}</Text>
-            {t.disclaimer.body1tail}
-          </Text>
-          <Text selectable className="mb-8 text-center text-[16px] leading-6 text-ink/70">
-            {t.disclaimer.body2}
-          </Text>
-          <View className="mb-3">
-            <Button
-              title={t.profile.scienceMethodology}
-              variant="secondary"
-              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-            />
-          </View>
-          <Button title={t.common.iUnderstand} onPress={accept} />
-        </ScrollView>
-      </SafeAreaView>
+      <View
+        className="flex-1"
+        accessibilityElementsHidden={visible}
+        importantForAccessibility={visible ? 'no-hide-descendants' : 'auto'}
+        pointerEvents={visible ? 'none' : 'auto'}
+      >
+        {children}
+      </View>
+      <Modal visible={visible} transparent animationType="none" onRequestClose={() => {}}>
+        <SafeAreaView className="flex-1 bg-black/50">
+          <ScrollView
+            contentContainerClassName="grow items-center justify-center px-6 py-8"
+            bounces={false}
+          >
+            <View accessibilityViewIsModal className="w-full max-w-[440px] rounded-2xl bg-white p-6">
+              <Text accessibilityRole="header" className="text-center text-[26px] font-bold leading-[32px] text-ink">
+                {t.disclaimer.title}
+              </Text>
+              <Text className="mt-4 text-center text-[18px] leading-7 text-ink-muted">
+                {t.disclaimer.body1lead}
+                <Text className="font-semibold text-ink">{t.disclaimer.notMedicalDevice}</Text>
+                {t.disclaimer.body1tail}
+              </Text>
+              <Text className="mt-3 text-center text-[16px] leading-6 text-ink-muted">
+                {t.disclaimer.body2}
+              </Text>
+              <View className="mt-6 gap-3">
+                <Button title={t.profile.scienceMethodology} variant="secondary" onPress={() => void Linking.openURL(METHODOLOGY_URL)} />
+                <Button title={t.common.iUnderstand} onPress={() => setVisible(false)} />
+              </View>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }

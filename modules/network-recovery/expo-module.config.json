@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["NetworkRecoveryModule"] },
+  "android": { "modules": ["expo.modules.networkrecovery.NetworkRecoveryModule"] }
+}

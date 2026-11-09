@@ -1,7 +1,7 @@
 {
   "name": "luche-rn",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
     "@expo/vector-icons": "^15.0.2",
@@ -25,6 +25,7 @@
     "expo-linking": "~8.0.12",
     "expo-localization": "~17.0.9",
     "expo-network": "~8.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.24",
     "expo-secure-store": "~15.0.8",
     "expo-sharing": "~14.0.8",
@@ -84,5 +85,15 @@
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ]
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-file-system",
+          "expo-video"
+        ]
+      }
+    }
   }
 }

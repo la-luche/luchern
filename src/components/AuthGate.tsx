@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ensurePatientOnboarded } from '../lib/api';
+import { ApiError } from '../lib/api';
+import { requestAppAccess } from '../lib/appAccess';
 import {
   isConnectionFailure,
   isMissingClerkAccount,
@@ -26,10 +27,10 @@ import { useT } from '../lib/i18n';
 import { suspendRecordingAccessForAuthLoss } from '../lib/storage';
 import { Button } from './Button';
 import { ConnectionProblem } from './ConnectionProblem';
+import { AppAccessGate } from './AppAccessGate';
+import { WaitlistScreen } from './WaitlistScreen';
 
-// Generous by design: on throttled networks (RU direct) each Clerk round trip
-// can take 4+ s and the sign-in flow is several of them. A slow route that
-// finishes beats a fast timeout that forces transport flip-and-retry churn.
+// Sign-in uses several round trips; allow slow connections time to finish.
 const AUTH_REQUEST_TIMEOUT_MS = 30_000;
 const AUTH_BOOTSTRAP_SLOW_MS = 8_000;
 
@@ -38,37 +39,23 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 /** Email one-time-code sign-in / sign-up (the instance's only first factor). */
-type AuthRetry = { email: string; nonce: number };
-
-function SignInScreen({
-  authRetry,
-  onAuthRetryConsumed,
-  onDirectAuthFailure,
-}: {
-  authRetry: AuthRetry | null;
-  onAuthRetryConsumed: () => void;
-  onDirectAuthFailure: (email: string) => boolean;
-}) {
+function SignInScreen() {
   const { isLoaded: siLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
   const { isLoaded: suLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
   const insets = useSafeAreaInsets();
   const net = useNetworkState();
   const t = useT();
 
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [step, setStep] = useState<'email' | 'code' | 'waitlist'>('email');
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
-  const [email, setEmail] = useState(authRetry?.email ?? '');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const startedAuthRetry = useRef<number | null>(null);
 
   const ready = siLoaded && suLoaded;
-  // isInternetReachable is Android's Google connectivity probe — on DPI
-  // networks that blackhole Google it reports false while the Russian edge is
-  // perfectly reachable, and gating on it here vetoes the exact ru-edge
-  // fallback built for those networks (observed 2026-08-19). Only a missing
-  // network connection blocks an attempt; reachability=false is unknown.
+  // Android's connectivity probe can fail while our server is reachable.
+  // Only a missing network connection blocks an attempt.
   const offline = net.isConnected === false;
 
   const showFailure = useCallback(
@@ -84,17 +71,23 @@ function SignInScreen({
 
   const sendCodeForEmail = useCallback(async (
     emailValue: string,
-    allowRussianFallback: boolean,
   ) => {
-    const identifier = emailValue.trim();
+    const identifier = emailValue.trim().toLowerCase();
     if (!ready || !identifier || busy) return;
     if (offline) {
-      showConnectionAlert(t, () => void sendCodeForEmail(identifier, false), true);
+      showConnectionAlert(t, () => void sendCodeForEmail(identifier), true);
       return;
     }
     setBusy(true);
     setError(null);
     try {
+      const access = await requestAppAccess(identifier);
+      setEmail(identifier);
+      if (access.status === 'pending') {
+        setCode('');
+        setStep('waitlist');
+        return;
+      }
       let si: Awaited<ReturnType<NonNullable<typeof signIn>['create']>> | null = null;
       try {
         // Existing account → sign-in with an emailed code.
@@ -132,19 +125,14 @@ function SignInScreen({
       }
       setStep('code');
     } catch (e: any) {
-      recordDiagnostic('auth_send_code_failed', {
-        flipAllowed: allowRussianFallback,
-        ...diagnosticErrorData(e),
-      });
-      if (
-        allowRussianFallback
-        && isConnectionFailure(e)
-        && onDirectAuthFailure(identifier)
-      ) {
-        recordDiagnostic('auth_transport_flip', { trigger: 'send_code' });
+      if (e instanceof ApiError && (e.status === 400 || e.status === 429)) {
+        setError(e.status === 400 ? t.auth.invalidEmail : t.auth.accessRateLimited);
         return;
       }
-      if (!showFailure(() => void sendCodeForEmail(identifier, false), e)) {
+      recordDiagnostic('auth_send_code_failed', {
+        ...diagnosticErrorData(e),
+      });
+      if (!showFailure(() => void sendCodeForEmail(identifier), e)) {
         setError(e?.errors?.[0]?.message ?? e?.message ?? t.auth.sendCodeError);
       }
     } finally {
@@ -153,7 +141,6 @@ function SignInScreen({
   }, [
     busy,
     offline,
-    onDirectAuthFailure,
     ready,
     showFailure,
     signIn,
@@ -162,7 +149,7 @@ function SignInScreen({
   ]);
 
   const sendCode = useCallback(
-    () => sendCodeForEmail(email, true),
+    () => sendCodeForEmail(email),
     [email, sendCodeForEmail],
   );
 
@@ -185,19 +172,6 @@ function SignInScreen({
       Alert.alert(t.about.diagnosticsFailedTitle, t.about.diagnosticsFailedBody);
     }
   }, [t]);
-
-  useEffect(() => {
-    if (
-      !ready
-      || !authRetry
-      || startedAuthRetry.current === authRetry.nonce
-    ) return;
-
-    startedAuthRetry.current = authRetry.nonce;
-    setEmail(authRetry.email);
-    onAuthRetryConsumed();
-    void sendCodeForEmail(authRetry.email, false);
-  }, [authRetry, onAuthRetryConsumed, ready, sendCodeForEmail]);
 
   async function verify() {
     if (!ready || !code.trim() || busy) return;
@@ -251,6 +225,9 @@ function SignInScreen({
     }
   }
 
+  if (step === 'waitlist') return <WaitlistScreen email={email} busy={busy} error={error}
+    onCheck={() => void sendCode()} onChangeEmail={() => { setStep('email'); setCode(''); setError(null); }} />;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -301,7 +278,7 @@ function SignInScreen({
         <View className="mt-6">
           {step === 'email' ? (
             <>
-              <Button title={busy ? t.auth.sending : t.auth.sendCode} onPress={sendCode} disabled={busy || !ready} />
+              <Button title={busy ? t.auth.checkingAccess : t.common.continue} onPress={sendCode} disabled={busy || !ready} />
               <View className="mt-3">
                 <Button
                   title={t.auth.downloadLogs}
@@ -336,28 +313,20 @@ function SignInScreen({
 
 /**
  * Gates the app behind Clerk sign-in. While Clerk loads → spinner; signed out →
- * the email-code screen; signed in → the app (and idempotently onboard the
- * caller as a 'patient' the first time).
+ * the email/waitlist screen; signed in → the server approval gate.
  */
 export function AuthGate({
   children,
   onRetryAuth,
-  authRetry,
-  onAuthRetryConsumed,
-  onDirectBootstrapFailure,
-  onDirectAuthFailure,
+  onBootstrapFailure,
 }: {
   children: React.ReactNode;
   onRetryAuth: () => void;
-  authRetry: AuthRetry | null;
-  onAuthRetryConsumed: () => void;
-  onDirectBootstrapFailure: () => boolean;
-  onDirectAuthFailure: (email: string) => boolean;
+  onBootstrapFailure: () => boolean;
 }) {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const net = useNetworkState();
   const t = useT();
-  const onboarded = useRef(false);
   const alertShown = useRef(false);
   // A native alert can outlive the outage it reported; its Try-again must be
   // a no-op once Clerk has loaded, or a stale tap restarts a healthy session.
@@ -367,9 +336,7 @@ export function AuthGate({
     if (!isLoadedRef.current) onRetryAuth();
   }, [onRetryAuth]);
   const [slow, setSlow] = useState(false);
-  // Same rule as SignInScreen: reachability=false is Android's blocked Google
-  // probe, not proof of no connectivity — it must not suppress the bootstrap
-  // transport flip on partially-blocked networks.
+  // A failed platform reachability probe is not proof of no connectivity.
   const offline = net.isConnected === false;
 
   useEffect(() => {
@@ -383,27 +350,18 @@ export function AuthGate({
 
   useEffect(() => {
     if (isLoaded || (!offline && !slow) || alertShown.current) return;
-    if (!offline && slow && onDirectBootstrapFailure()) {
-      recordDiagnostic('auth_bootstrap_slow', { recovered: 'transport_flip' });
+    if (!offline && slow && onBootstrapFailure()) {
+      recordDiagnostic('auth_bootstrap_slow', { recovered: 'retry' });
       return;
     }
     recordDiagnostic('auth_bootstrap_slow', { recovered: 'alert', offline });
     alertShown.current = true;
     showConnectionAlert(t, retryIfStillStuck, offline);
-  }, [isLoaded, offline, onDirectBootstrapFailure, retryIfStillStuck, slow, t]);
+  }, [isLoaded, offline, onBootstrapFailure, retryIfStillStuck, slow, t]);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) suspendRecordingAccessForAuthLoss();
   }, [isLoaded, isSignedIn]);
-
-  useEffect(() => {
-    if (isSignedIn && !onboarded.current) {
-      onboarded.current = true;
-      ensurePatientOnboarded(userId ?? undefined).catch(() => {
-        onboarded.current = false; // let a later render retry
-      });
-    }
-  }, [isSignedIn, userId]);
 
   if (!isLoaded) {
     if (offline || slow) {
@@ -424,13 +382,8 @@ export function AuthGate({
     );
   }
   if (!isSignedIn) {
-    return (
-      <SignInScreen
-        authRetry={authRetry}
-        onAuthRetryConsumed={onAuthRetryConsumed}
-        onDirectAuthFailure={onDirectAuthFailure}
-      />
-    );
+    return <SignInScreen />;
   }
-  return <>{children}</>;
+  if (!userId) return <Centered><ActivityIndicator /></Centered>;
+  return <AppAccessGate accountId={userId}>{children}</AppAccessGate>;
 }

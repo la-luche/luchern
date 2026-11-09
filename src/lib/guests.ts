@@ -12,6 +12,7 @@ interface GuestPayload {
 
 interface GuestsResponse {
   guests: GuestPayload[];
+  deleted_guest_ids?: string[];
 }
 
 export interface Guest {
@@ -43,8 +44,12 @@ function guest(payload: GuestPayload): Guest {
 }
 
 export async function fetchGuests(expectedAccountId?: string): Promise<Guest[]> {
+  return (await fetchGuestSnapshot(expectedAccountId)).guests;
+}
+
+export async function fetchGuestSnapshot(expectedAccountId?: string) {
   const response = await apiFetch<GuestsResponse>('/guests', {}, expectedAccountId);
-  return response.guests.map(guest);
+  return { guests: response.guests.map(guest), deletedIds: response.deleted_guest_ids ?? [] };
 }
 
 export async function fetchGuest(guestId: string, expectedAccountId?: string): Promise<Guest> {

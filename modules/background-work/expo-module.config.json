@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["BackgroundWorkModule"] },
+  "android": { "modules": ["expo.modules.backgroundwork.BackgroundWorkModule"] }
+}

@@ -30,6 +30,7 @@ yarn-error.*
 /artifacts/
 /test_local_pose_estimatino/
 /modules/face-blur/android/build/
+/modules/network-recovery/android/build/
 
 # macOS
 .DS_Store

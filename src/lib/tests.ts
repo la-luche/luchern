@@ -63,7 +63,7 @@ export const TESTS: TestConfig[] = [
     sideLimb: 'hand',
     demoVideo: require('../../assets/demos/HandMovementsDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/HandMovementsDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: 0 },
+    demoFraming: { scale: 1, x: 0, y: -0.09 },
   },
   {
     id: 'pronationSupination',
@@ -83,7 +83,7 @@ export const TESTS: TestConfig[] = [
     sideLimb: 'leg',
     demoVideo: require('../../assets/demos/ToeTappingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ToeTappingDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.18 },
+    demoFraming: { scale: 1, x: 0, y: -0.25 },
   },
   {
     id: 'legAgility',
@@ -93,7 +93,7 @@ export const TESTS: TestConfig[] = [
     sideLimb: 'leg',
     demoVideo: require('../../assets/demos/LegAgilityDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/LegAgilityDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.22 },
+    demoFraming: { scale: 1, x: 0, y: -0.32 },
   },
   {
     id: 'arisingFromChair',
@@ -101,7 +101,7 @@ export const TESTS: TestConfig[] = [
     icon: 'seat',
     demoVideo: require('../../assets/demos/ChairDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/ChairDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: 0 },
+    demoFraming: { scale: 1, x: 0, y: -0.20 },
   },
   {
     id: 'gait',
@@ -109,7 +109,7 @@ export const TESTS: TestConfig[] = [
     icon: 'walk',
     demoVideo: require('../../assets/demos/WalkingDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/WalkingDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: 0 },
+    demoFraming: { scale: 1, x: 0, y: -0.25 },
   },
   {
     id: 'restTremor',
@@ -117,7 +117,7 @@ export const TESTS: TestConfig[] = [
     icon: 'vibrate',
     demoVideo: require('../../assets/demos/RestTremorDemo.mp4'),
     demoPoster: require('../../assets/demos/posters/RestTremorDemo.jpg'),
-    demoFraming: { scale: 1, x: 0, y: -0.15 },
+    demoFraming: { scale: 1, x: 0, y: -0.24 },
   },
 ];
 

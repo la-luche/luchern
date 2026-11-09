@@ -1,3 +1,4 @@
+import { setWorkTimeout } from './workTimers';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -5,14 +6,8 @@ import { Platform } from 'react-native';
 import { CLERK_PUBLISHABLE_KEY } from './clerk';
 import { isConnectionFailure, withTimeout } from './connectivity';
 import { recordDiagnostic } from './diagnostics';
-import {
-  CANONICAL_CLERK_ORIGIN,
-  PRIMARY_API_BASE,
-  RUSSIAN_API_BASE,
-  preferApiBase,
-  requestClerkTransportFallback,
-  routeRussianStorageUrls,
-} from './edge';
+import { CLERK_PROXY_URL, PRIMARY_API_BASE, routeStorageUrls } from './edge';
+import { recoverConnection } from './networkRecovery';
 import {
   REQUEST_TIMEOUT_MS,
   ApiNetworkError,
@@ -29,7 +24,6 @@ export { ApiNetworkError, ApiTimeoutError } from './transport';
  * account and break cross-device history.
  */
 export const API_BASE = PRIMARY_API_BASE;
-export const FALLBACK_API_BASE = RUSSIAN_API_BASE;
 
 export class ApiError extends Error {
   constructor(
@@ -88,14 +82,13 @@ function assertAuthBinding(binding: AuthBinding): object {
 }
 
 function shortDelay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setWorkTimeout(resolve, ms));
 }
 
 async function requestClerkToken(
   binding: AuthBinding,
   forceRefresh = false,
 ): Promise<string | null> {
-  let fallbackRequested = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       // The singleton is configured by ClerkProvider. Deduplicating this work
@@ -112,16 +105,10 @@ async function requestClerkToken(
       return token;
     } catch (error) {
       if (!isConnectionFailure(error)) return null;
-      if (!fallbackRequested) {
-        const switched = requestClerkTransportFallback();
-        fallbackRequested = true;
-        recordDiagnostic('clerk_transport_fallback_requested', { switched });
-        if (attempt === 0) {
-          // Give a direct -> Russian ClerkProvider remount one render turn; on
-          // the Russian route this simply lets the failed socket finish closing.
-          await shortDelay(switched ? 500 : 100);
-          continue;
-        }
+      await recoverConnection(CLERK_PROXY_URL);
+      if (attempt === 0) {
+        await shortDelay(100);
+        continue;
       }
       throw error;
     }
@@ -195,7 +182,7 @@ export async function apiFetch<T>(
       token = await getToken(authAttempt > 0, authBinding);
     } catch (error) {
       if (isConnectionFailure(error)) {
-        throw new ApiNetworkError(path, reqId, error, CANONICAL_CLERK_ORIGIN);
+        throw new ApiNetworkError(path, reqId, error, CLERK_PROXY_URL);
       }
       throw error;
     }
@@ -229,13 +216,15 @@ export async function apiFetch<T>(
         REQUEST_TIMEOUT_MS,
         'read response body',
       )) as T;
-      return routeRussianStorageUrls(parsed, endpoint);
+      return routeStorageUrls(parsed);
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      // Headers arrived but the body stalled or arrived garbled — this base
-      // is compromised despite "succeeding". Demote it so the caller's retry
-      // takes the other route instead of re-stalling here.
-      preferApiBase(endpoint === API_BASE ? FALLBACK_API_BASE : API_BASE);
+      if (!init.signal?.aborted && (isConnectionFailure(error)
+        || (error instanceof Error && error.name === 'AbortError'))) {
+        await recoverConnection(endpoint);
+      }
+      // Body failures remain bounded by the transport timer. A caller can
+      // retry a safe read; writes must not be replayed after an unclear result.
       throw new ApiNetworkError(path, reqId, error, endpoint);
     } finally {
       release();

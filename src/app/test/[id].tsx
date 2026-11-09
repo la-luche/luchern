@@ -83,18 +83,9 @@ function OverlaySteps({ steps }: { steps: readonly string[] }) {
   return (
     <View className="gap-4">
       {steps.map((step, index) => (
-        <View key={index} className="flex-row items-start gap-3.5">
-          <Text
-            accessible={false}
-            className="w-7 text-center text-[22px] leading-7 text-white"
-            style={TEXT_SHADOW}
-          >
-            ✣
-          </Text>
-          <Text className="flex-1 text-[18px] font-medium leading-7 text-white" style={TEXT_SHADOW}>
-            {step}
-          </Text>
-        </View>
+        <Text key={index} className="text-[18px] font-medium leading-7 text-white" style={TEXT_SHADOW}>
+          {step}
+        </Text>
       ))}
     </View>
   );

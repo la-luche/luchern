@@ -37,6 +37,17 @@ export async function clearCaptureIntent(accountId: string): Promise<void> {
   await AsyncStorage.removeItem(key(accountId));
 }
 
+export async function clearGuestCaptureIntent(accountId: string, guestId: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(key(accountId));
+  if (!raw) return;
+  const intent = JSON.parse(raw) as CaptureIntent;
+  if (intent.guestId !== guestId) return;
+  if (intent.outputUri && FileSystem.cacheDirectory && intent.outputUri.startsWith(FileSystem.cacheDirectory)) {
+    await FileSystem.deleteAsync(intent.outputUri, { idempotent: true });
+  }
+  await clearCaptureIntent(accountId);
+}
+
 /** Logout/account deletion must remove raw camera outputs that never reached
  * durable staging. Only delete files inside Expo's cache directory; a corrupt
  * journal must never be able to target Documents or an external provider. */

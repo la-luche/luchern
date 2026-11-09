@@ -59,6 +59,8 @@ export interface Recording {
   evaluatedSide?: EvaluatedSide;
   /** Guided full-flow bundle; absent for an individual test. */
   evaluationRun?: EvaluationRunRef;
+  /** Retake provenance/tombstone: standalone locally, even during stale cloud refreshes. */
+  supersededEvaluationRun?: EvaluationRunRef;
   /** Epoch millis. */
   createdAt: number;
   /** Monotonic local revision used to choose the newest crash-recovery copy. */

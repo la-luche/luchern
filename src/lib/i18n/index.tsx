@@ -1,43 +1,67 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Localization from 'expo-localization';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { en, type Dict } from './en';
+import { es } from './es';
 import { it } from './it';
 import { ru } from './ru';
+import { zh } from './zh';
 import type { EvaluatedSide, TestConfig } from '../tests';
 
-export type Lang = 'en' | 'it' | 'ru';
+export type Lang = 'en' | 'es' | 'it' | 'ru' | 'zh';
 
-const DICTS: Record<Lang, Dict> = { en, it, ru };
+const DICTS: Record<Lang, Dict> = { en, es, it, ru, zh };
 const STORAGE_KEY = 'luche.lang.v1';
+
+function isLanguage(value: string | null | undefined): value is Lang {
+  return value != null && Object.prototype.hasOwnProperty.call(DICTS, value);
+}
 
 /** First supported language matching the device locale, else English. */
 function deviceDefault(): Lang {
   const code = Localization.getLocales()[0]?.languageCode;
-  return code === 'it' || code === 'ru' ? code : 'en';
+  return isLanguage(code) ? code : 'en';
 }
 
-type Ctx = { lang: Lang; setLang: (l: Lang) => void; t: Dict };
+type Ctx = {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: Dict;
+  isLoaded: boolean;
+  hasChosenLanguage: boolean;
+};
 const LanguageContext = createContext<Ctx | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   // Synchronous device default → no English flash. Stored override loads after.
   const [lang, setLangState] = useState<Lang>(deviceDefault);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasChosenLanguage, setHasChosenLanguage] = useState(false);
+  const chosen = useRef(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((v) => {
-      if (v === 'en' || v === 'it' || v === 'ru') setLangState(v);
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEY).then((value) => {
+      if (!cancelled && !chosen.current && isLanguage(value)) {
+        setLangState(value);
+        setHasChosenLanguage(true);
+      }
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, []);
 
   const setLang = (l: Lang) => {
+    chosen.current = true;
     setLangState(l);
+    setHasChosenLanguage(true);
     AsyncStorage.setItem(STORAGE_KEY, l).catch(() => {});
   };
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t: DICTS[lang] }}>
+    <LanguageContext.Provider value={{ lang, setLang, t: DICTS[lang], isLoaded, hasChosenLanguage }}>
       {children}
     </LanguageContext.Provider>
   );
@@ -54,10 +78,10 @@ export function useT(): Dict {
   return useCtx().t;
 }
 
-/** Current language + setter (for the switcher). */
-export function useLang(): { lang: Lang; setLang: (l: Lang) => void } {
-  const { lang, setLang } = useCtx();
-  return { lang, setLang };
+/** Current language, saved-choice readiness, and setter. */
+export function useLang(): Omit<Ctx, 't'> {
+  const { lang, setLang, isLoaded, hasChosenLanguage } = useCtx();
+  return { lang, setLang, isLoaded, hasChosenLanguage };
 }
 
 /** Localized standalone label for an explicitly instructed hand or leg. */

@@ -1,5 +1,7 @@
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
@@ -13,12 +15,13 @@ import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
-import { METHODOLOGY_URL } from '../lib/links';
+import { METHODOLOGY_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL, SUPPORT_URL, WEBSITE_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
 import { usePrivacyBlurSettings } from '../lib/faceBlurSettings';
 import { signOutFromDevice } from '../lib/logout';
 import { useRecordings } from '../lib/storage';
 import { COLORS } from '../lib/theme';
+import { showToast } from '../lib/toast';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -41,6 +44,15 @@ export default function AboutScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState<number | null>(null);
+
+  const copySupportEmail = async () => {
+    try {
+      await Clipboard.setStringAsync(SUPPORT_EMAIL);
+      showToast(t.about.supportEmailCopied);
+    } catch {
+      Alert.alert(t.about.supportCopyFailedTitle, t.about.supportCopyFailedBody);
+    }
+  };
 
   const shareDiagnostics = async () => {
     try {
@@ -150,7 +162,6 @@ export default function AboutScreen() {
   };
 
   const email = user?.primaryEmailAddress?.emailAddress;
-  const displayName = user?.fullName || user?.firstName || email || t.profile.account;
 
   const updateDepersonalisation = async (enabled: boolean) => {
     try {
@@ -179,12 +190,7 @@ export default function AboutScreen() {
                 </View>
               )}
               <View className="ml-4 flex-1">
-                <Text className="text-[17px] font-semibold text-ink">{displayName}</Text>
-                {!!email && email !== displayName && (
-                  <Text numberOfLines={1} className="mt-1 text-[14px] text-ink-muted">
-                    {email}
-                  </Text>
-                )}
+                <Text className="text-[17px] font-semibold text-ink">{email || t.profile.account}</Text>
               </View>
             </View>
             <Text className="mt-4 text-[14px] leading-5 text-ink-muted">
@@ -207,12 +213,9 @@ export default function AboutScreen() {
               className="flex-1 px-3"
             />
           </View>
-          <View className="mt-3">
-            <Button
-              title={t.profile.scienceMethodology}
-              variant="secondary"
-              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-            />
+          <View className="mt-3 gap-3">
+            <Button title={t.profile.scienceMethodology} variant="secondary" onPress={() => void Linking.openURL(METHODOLOGY_URL)} />
+            <Button title="luche.ai" variant="secondary" onPress={() => void Linking.openURL(WEBSITE_URL)} />
           </View>
         </Section>
 
@@ -256,6 +259,7 @@ export default function AboutScreen() {
             <Text className="px-1 text-[13px] leading-5 text-ink-muted">
               {t.about.privacyBlurTechnicalBody}
             </Text>
+            <Button title={t.about.privacyPolicy} variant="secondary" onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)} />
           </View>
         </Section>
 
@@ -264,14 +268,14 @@ export default function AboutScreen() {
         </Section>
 
         <Section title={t.about.supportTitle}>
-          <Text className="mb-3 text-[15px] leading-6 text-ink/70">
+          <Text selectable className="mb-3 text-[15px] leading-6 text-ink/70">
             {t.about.supportBody}
           </Text>
-          <Button
-            title={t.about.emailSupport}
-            variant="secondary"
-            onPress={() => Linking.openURL('mailto:founders@luche.ai?subject=Luche%20support')}
-          />
+          <View className="gap-3">
+            <Button title={t.about.emailSupport} variant="secondary" onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Luche%20support`).catch(() => copySupportEmail())} />
+            <Button title={t.about.copySupportEmail} variant="secondary" onPress={() => void copySupportEmail()} />
+            <Button title={t.about.supportTitle} variant="secondary" onPress={() => void Linking.openURL(SUPPORT_URL)} />
+          </View>
           <Text className="mb-3 mt-4 text-[15px] leading-6 text-ink/70">
             {t.about.diagnosticsBody}
           </Text>
@@ -279,7 +283,7 @@ export default function AboutScreen() {
         </Section>
 
         <Section title={t.about.versionTitle}>
-          <Text className="text-[15px] text-ink/70">{t.about.versionValue}</Text>
+          <Text className="text-[15px] text-ink/70">{Constants.expoConfig?.version ?? '—'}</Text>
         </Section>
 
       </ScrollView>

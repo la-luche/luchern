@@ -204,7 +204,7 @@ h2 {
   background: #000;
   bottom: 0;
   left: 0;
-  padding: 0 22px 20px;
+  padding: 0 24px 34px;
   position: absolute;
   right: 0;
   z-index: 5;
@@ -251,7 +251,8 @@ h2 {
 
 .steps {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+  padding: 4px 0 12px;
   position: relative;
 }
 
@@ -259,10 +260,10 @@ h2 {
   align-items: flex-start;
   display: grid;
   font-size: 18px;
-  font-weight: 560;
-  gap: 12px;
-  grid-template-columns: 24px 1fr;
-  line-height: 1.38;
+  font-weight: 500;
+  gap: 14px;
+  grid-template-columns: 28px 1fr;
+  line-height: 28px;
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.95);
 }
 
@@ -282,7 +283,7 @@ h2 {
   font-weight: 800;
   height: 64px;
   justify-content: center;
-  margin-top: 18px;
+  margin-top: 8px;
   position: relative;
 }
 

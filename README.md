@@ -29,11 +29,14 @@ locates face and body regions before a sanitized video is written.
 
 ```bash
 npm install
-npx expo start        # then press i (iOS) / a (Android)
+npx expo run:ios      # or: npx expo run:android
+# For later JS-only edits with the development build installed:
+npx expo start --dev-client
 ```
 
-Camera recording requires a **real device or a config-dev-client build** — the
-simulator has no camera feed. Capture works on device via Expo Go.
+Luche requires a **native development build** because its custom native modules
+are not included in Expo Go. Camera recording also requires a real device.
+The `go.luche.ai` preview and automatic preview deployments were retired.
 
 Useful checks:
 

@@ -3,22 +3,6 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 /**
- * Static (no-ML) framing guide drawn over the live preview: a centered guide
- * frame plus a short per-test hint. It doesn't track anyone — it just gives the
- * patient/helper something concrete to aim for, which cuts down on clips where
- * the body/hand is out of frame.
- */
-export function FramingGuide() {
-  return (
-    <View pointerEvents="none" className="absolute inset-0">
-      {/* Reserved top/bottom bands match the overlay chrome, so the guide can
-          never sit underneath the labels or the enlarged capture controls. */}
-      <View className="absolute inset-x-6 bottom-48 top-48 rounded-3xl border-2 border-white/70" />
-    </View>
-  );
-}
-
-/**
  * Review-before-submit panel: replays the clip that was just captured and lets
  * the patient confirm it looks right before anything is uploaded. Submit hands
  * the clip to storage/upload; Retake discards it and returns to the camera.

@@ -23,6 +23,7 @@ jest.mock('expo-camera', () => ({
 }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: () => {} }));
 jest.mock('expo-router', () => ({
+  useFocusEffect: callback => require('react').useEffect(callback, [callback]),
   useLocalSearchParams: () => ({ id: 'fingerTapping' }),
   useRouter: () => ({ back: mockBack }),
   Redirect: () => null,

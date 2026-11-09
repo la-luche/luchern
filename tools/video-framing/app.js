@@ -6,9 +6,8 @@ const TESTS = [
     poster: 'FingerTappingDemo.jpg',
     framing: { scale: 1, x: 0, y: -0.08 },
     steps: [
-      'Hold the phone in your other hand, prop it up, or ask someone to point it at the hand you’re recording.',
       'Tap your index finger and thumb together.',
-      'Make each tap as big and fast as you can. Repeat 10 times.',
+      'Open your finger and thumb as wide as you can, then tap them together as fast as you can. Repeat 30 times.',
     ],
   },
   {
@@ -18,9 +17,8 @@ const TESTS = [
     poster: 'HandMovementsDemo.jpg',
     framing: { scale: 1, x: 0, y: -0.09 },
     steps: [
-      'Hold the phone in your other hand, prop it up, or ask someone to point it at the hand you’re recording.',
-      'Make a tight fist with your palm facing the phone.',
-      'Open your hand wide and close it, 10 times, as fast as you can.',
+      'Hold your hand with your palm facing the camera and make a tight fist.',
+      'Open your hand fully and powerfully toward the camera, like you’re throwing something toward it, then close it. Repeat 10 times as fast as you can.',
     ],
   },
   {
@@ -30,9 +28,8 @@ const TESTS = [
     poster: 'HandTurnsDemo.jpg',
     framing: { scale: 1, x: 0, y: -0.09 },
     steps: [
-      'Hold the phone in your other hand, prop it up, or ask someone to point it at the hand you’re recording.',
       'Stretch your arm out in front of you, palm facing down.',
-      'Turn your palm up and down, 10 times, as fast as you can.',
+      'Turn your forearm as far as you can so your palm faces fully up, then fully down. Keep turning as fast as you can for at least 10 seconds.',
     ],
   },
   {
@@ -40,10 +37,9 @@ const TESTS = [
     name: 'Toe taps',
     video: 'ToeTappingDemo.mp4',
     poster: 'ToeTappingDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.13 },
+    framing: { scale: 1, x: 0, y: -0.25 },
     steps: [
       'Sit in a chair with both feet flat on the floor.',
-      'Prop up the phone, or ask someone to point it at the foot you’re recording.',
       'Keep your heel down and tap your toes 10 times, as big and fast as you can.',
     ],
   },
@@ -52,10 +48,9 @@ const TESTS = [
     name: 'Foot lifts',
     video: 'LegAgilityDemo.mp4',
     poster: 'LegAgilityDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.14 },
+    framing: { scale: 1, x: 0, y: -0.32 },
     steps: [
       'Sit in a chair with both feet flat on the floor.',
-      'Prop up the phone, or ask someone to point it at the leg and foot you’re recording.',
       'Lift one foot and tap it firmly back down 10 times, as high and fast as you can.',
     ],
   },
@@ -64,11 +59,10 @@ const TESTS = [
     name: 'Standing up',
     video: 'ChairDemo.mp4',
     poster: 'ChairDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.29 },
+    framing: { scale: 1, x: 0, y: -0.20 },
     steps: [
       'Sit back in a firm chair with your feet flat on the floor.',
-      'Ask someone to hold the phone so your whole body and the chair stay in view.',
-      'Cross your arms over your chest and stand up without using your hands. Repeat 3 times.',
+      'Cross your arms over your chest and keep them crossed. Stand up once without using your hands.',
     ],
   },
   {
@@ -76,9 +70,8 @@ const TESTS = [
     name: 'Walking',
     video: 'WalkingDemo.mp4',
     poster: 'WalkingDemo.jpg',
-    framing: { scale: 1, x: 0, y: 0 },
+    framing: { scale: 1, x: 0, y: -0.25 },
     steps: [
-      'Ask someone to hold the phone and keep your legs and feet in view.',
       'Walk about 10 steps away from the phone.',
       'Turn around and walk back.',
     ],
@@ -88,16 +81,17 @@ const TESTS = [
     name: 'Hands at rest',
     video: 'RestTremorDemo.mp4',
     poster: 'RestTremorDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.15 },
+    framing: { scale: 1, x: 0, y: -0.24 },
     steps: [
-      'Sit in a chair and rest your hands on the arms of the chair.',
-      'Prop up the phone, or ask someone to hold it so your hands stay in view.',
-      'Keep your hands relaxed and as still as you can for about 15 seconds.',
+      'Sit down and rest your hands on the armrests or on a table beside you.',
+      'Count backward from 1,000 by 3s: 1000, 997, 994, 991 ... Record for 20 seconds.',
     ],
   },
 ];
 
 const STORAGE_KEY = 'luche.video-framing.desktop.v1';
+// A fresh page must show files replaced on disk, including videos selected later.
+const ASSET_VERSION = Date.now();
 const DEFAULT_FRAMING = Object.freeze({ scale: 1, x: 0, y: 0 });
 const MIN_SCALE = 1;
 const MAX_SCALE = 2.5;
@@ -211,8 +205,8 @@ function renderTask() {
   const test = currentTest();
   elements.taskSelect.value = test.id;
   elements.taskCount.textContent = `${state.index + 1} of ${TESTS.length} · ${test.id}`;
-  elements.video.poster = `../../assets/demos/posters/${test.poster}`;
-  elements.video.src = `../../assets/demos/${test.video}`;
+  elements.video.poster = `../../assets/demos/posters/${test.poster}?v=${ASSET_VERSION}`;
+  elements.video.src = `../../assets/demos/${test.video}?v=${ASSET_VERSION}`;
   elements.video.load();
   if (elements.playToggle.checked) elements.video.play().catch(() => {});
 

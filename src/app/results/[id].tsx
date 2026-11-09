@@ -16,6 +16,7 @@ import {
   localizeSeverity,
   useT,
 } from '../../lib/i18n';
+import { checkupHref, historyPerson, personHistoryHref, testHistoryHref } from '../../lib/personFlow';
 import { METHODOLOGY_URL } from '../../lib/links';
 import { recordingExportTempUri } from '../../lib/recordingFiles';
 import { fetchSharedTrialDetail } from '../../lib/sharedRecordings';
@@ -25,11 +26,15 @@ import { COLORS } from '../../lib/theme';
 
 /** Detail for one recording: retained local playback or cloud playback on demand. */
 export default function ResultDetailScreen() {
-  const { id, guestId, singleTestComplete } = useLocalSearchParams<{
+  const { id, guestId: guestParam, singleTestComplete, fromHistory, fromCheckup, fromTestType } = useLocalSearchParams<{
     id: string;
     guestId?: string;
     singleTestComplete?: string;
+    fromHistory?: string;
+    fromCheckup?: string;
+    fromTestType?: string;
   }>();
+  const guestId = guestParam || undefined;
   const router = useRouter();
   const {
     recordings,
@@ -107,16 +112,18 @@ export default function ResultDetailScreen() {
   }
 
   if (!recording) {
-    return guestId ? (
-      <Redirect href={{ pathname: '/guests/[id]', params: { id: guestId } }} />
-    ) : (
-      <Redirect href="/results" />
-    );
+    if (fromCheckup) return <Redirect href={checkupHref(fromCheckup, historyPerson(guestId))} />;
+    if (fromTestType) return <Redirect href={testHistoryHref(fromTestType, historyPerson(guestId))} />;
+    return <Redirect href={personHistoryHref(historyPerson(guestId))} />;
   }
 
   const leaveResult = () => {
-    if (guestId) {
-      router.dismissTo({ pathname: '/guests/[id]', params: { id: guestId } });
+    if (fromCheckup) {
+      router.dismissTo(checkupHref(fromCheckup, historyPerson(guestId)));
+    } else if (fromTestType) {
+      router.dismissTo(testHistoryHref(fromTestType, historyPerson(guestId)));
+    } else if (fromHistory === '1' || guestId) {
+      router.dismissTo(personHistoryHref(historyPerson(guestId)));
     } else {
       router.dismissTo('/');
     }
@@ -218,7 +225,7 @@ export default function ResultDetailScreen() {
     <Screen>
       <Header
         title={test ? t.tests[test.id].name : t.result.fallbackTitle}
-        onBack={guestId || singleTestComplete === '1' ? leaveResult : undefined}
+        onBack={fromCheckup || fromTestType || fromHistory === '1' || guestId || singleTestComplete === '1' ? leaveResult : undefined}
         right={
           <Pressable
             onPress={confirmDelete}
@@ -359,12 +366,9 @@ export default function ResultDetailScreen() {
                 {t.result.noScoreBody}
               </Text>
               {(recording.analysisFailureReasons ?? []).map((reason) => (
-                <View key={reason} className="flex-row gap-2">
-                  <Text className="text-[14px] text-red-700">•</Text>
-                  <Text selectable className="flex-1 text-[14px] leading-5 text-red-700">
-                    {formatAnalysisFailureReason(reason)}
-                  </Text>
-                </View>
+                <Text key={reason} selectable className="text-[14px] leading-5 text-red-700">
+                  {formatAnalysisFailureReason(reason)}
+                </Text>
               ))}
             </View>
           ) : recording.status === 'blur_failed' ? (
@@ -400,10 +404,10 @@ export default function ResultDetailScreen() {
                 <Text className="text-[14px] text-ink-muted">
                   {recording.status === 'uploading'
                     ? recording.uploadRetrying
-                      ? `${t.uploadBanner.retrying} · ${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)}`
+                      ? `${t.uploadBanner.retrying} (${t.uploadBanner.attempt(recording.uploadAttempt ?? 2)})`
                       : t.result.uploading
                     : recording.status === 'preparing'
-                      ? `${t.result.privacyBlurring} · ${Math.round((recording.privacyBlurProgress ?? 0) * 100)}%`
+                      ? `${t.result.privacyBlurring} ${Math.round((recording.privacyBlurProgress ?? 0) * 100)}%`
                       : t.result.processing}
                 </Text>
                 {recording.status === 'preparing' && (
@@ -419,13 +423,10 @@ export default function ResultDetailScreen() {
               </View>
             </View>
           )}
-          <View className="mt-4 w-full">
-            <Button
-              title={t.profile.scienceMethodology}
-              variant="secondary"
-              onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-            />
-          </View>
+        </View>
+
+        <View className="mt-4">
+          <Button title={t.profile.scienceMethodology} variant="secondary" onPress={() => void Linking.openURL(METHODOLOGY_URL)} />
         </View>
 
         <View className="mt-8">
@@ -446,7 +447,7 @@ export default function ResultDetailScreen() {
           )}
           <View className="mt-3">
             <Button
-              title={guestId ? t.result.backToGuest : t.result.backToMenu}
+              title={fromCheckup ? t.checkups.backToCheckup : fromTestType || fromHistory === '1' || guestId ? t.people.backToHistory : t.result.backToMenu}
               onPress={leaveResult}
             />
           </View>

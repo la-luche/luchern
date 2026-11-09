@@ -16,10 +16,10 @@ describe('privacy blur settings', () => {
     __testing.reset();
   });
 
-  it('is disabled by default', async () => {
+  it('enables face and background de-identification by default', async () => {
     await expect(getPrivacyBlurSettings()).resolves.toEqual({
-      face: false,
-      background: false,
+      face: true,
+      background: true,
     });
   });
 
@@ -58,12 +58,35 @@ describe('privacy blur settings', () => {
     });
   });
 
-  it('falls back to disabled when preference storage cannot be read', async () => {
-    jest.spyOn(AsyncStorage, 'multiGet').mockRejectedValueOnce(new Error('storage unavailable'));
+  it('preserves a saved opt-out after reloading the settings', async () => {
+    await setPrivacyBlurEnabled(false);
+    __testing.reset();
 
     await expect(getPrivacyBlurSettings()).resolves.toEqual({
       face: false,
       background: false,
+    });
+  });
+
+  it('preserves and migrates a legacy opt-out', async () => {
+    await AsyncStorage.multiSet([
+      [__testing.faceStorageKey, 'false'],
+      [__testing.backgroundStorageKey, 'false'],
+    ]);
+
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: false,
+      background: false,
+    });
+    expect(await AsyncStorage.getItem(__testing.depersonalisationStorageKey)).toBe('false');
+  });
+
+  it('keeps de-identification enabled when preference storage cannot be read', async () => {
+    jest.spyOn(AsyncStorage, 'multiGet').mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(getPrivacyBlurSettings()).resolves.toEqual({
+      face: true,
+      background: true,
     });
   });
 });

@@ -11,6 +11,7 @@ jest.mock('../guests', () => ({
   createGuest: jest.fn(),
   fetchGuest: jest.fn(),
   fetchGuests: jest.fn(),
+  fetchGuestSnapshot: jest.fn(),
 }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,8 +23,10 @@ import {
   ensureGuestSyncedForAccount,
   refreshGuestCache,
   updateLocalGuest,
+  removeDeletedGuestLocally,
 } from '../guestStorage';
-import { createGuest, fetchGuests } from '../guests';
+import { createGuest, fetchGuestSnapshot } from '../guests';
+import { clearGuestDeletionState, markGuestDeleted } from '../guestDeletionState';
 
 const accountId = 'user-event';
 const guestId = '0198f04d-58ad-7c08-b1ac-67a40b046be7';
@@ -48,6 +51,7 @@ describe('offline-first guest storage', () => {
     __testing.reset();
     activateGuestAccount(accountId);
     await AsyncStorage.clear();
+    await clearGuestDeletionState();
   });
 
   it('creates and reloads a usable guest while the API is offline', async () => {
@@ -90,9 +94,9 @@ describe('offline-first guest storage', () => {
     );
     await updateLocalGuest(accountId, guestId, { name: 'Edited locally', notes: 'new note' });
     await flushBackgroundSync();
-    (fetchGuests as jest.Mock).mockResolvedValue([
+    (fetchGuestSnapshot as jest.Mock).mockResolvedValue({ guests: [
       remoteGuest({ name: 'Old cloud name', testCount: 4 }),
-    ]);
+    ], deletedIds: [] });
 
     const refreshed = await refreshGuestCache(accountId);
 
@@ -164,5 +168,24 @@ describe('offline-first guest storage', () => {
     await expect(__testing.loadGuests(accountId)).resolves.toEqual([
       expect.objectContaining({ id: guestId, name: 'first' }),
     ]);
+  });
+
+  it('does not resurrect a deleted profile from A/B rows, legacy snapshots, or stale cloud data', async () => {
+    await AsyncStorage.setItem(__testing.storageKey(accountId), JSON.stringify([remoteGuest()]));
+    await __testing.loadGuests(accountId);
+    await markGuestDeleted(accountId, guestId);
+    await removeDeletedGuestLocally(accountId, guestId);
+    __testing.reset(); activateGuestAccount(accountId);
+    expect(await __testing.loadGuests(accountId)).toEqual([]);
+    (fetchGuestSnapshot as jest.Mock).mockResolvedValue({ guests: [remoteGuest()], deletedIds: [] });
+    expect(await refreshGuestCache(accountId)).toEqual([]);
+    await expect(ensureGuestSyncedForAccount(accountId, guestId)).rejects.toThrow('guest deleted');
+    expect(createGuest).not.toHaveBeenCalled();
+  });
+
+  it('accepts explicit remote deletion markers while retaining unrelated offline profiles', async () => {
+    await __testing.persistGuests(accountId, [remoteGuest(), remoteGuest({ id: 'keep', pendingSync: true })]);
+    (fetchGuestSnapshot as jest.Mock).mockResolvedValue({ guests: [], deletedIds: [guestId] });
+    expect((await refreshGuestCache(accountId)).map(g => g.id)).toEqual(['keep']);
   });
 });

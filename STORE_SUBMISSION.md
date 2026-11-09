@@ -44,6 +44,12 @@ Declare account identifiers, uploaded user video, derived keypoints/results, and
 diagnostics shared voluntarily by the user. Video is linked to the signed-in
 account for ownership/access control. It is not used for tracking.
 
+The pending native connection-recovery feature can send DNS queries to Google
+Public DNS after a connection failure. Review its retained IP/query and derived
+location/technical data against the live App Store Connect answers before
+releasing this build; see `PRIVACY.md`. The live answers have not been verified
+or edited as part of this code change. There is no special DNS-warning field.
+
 ### 4. Play Data Safety form (Play Console)
 Same content as #3, different form. Declare camera (not microphone), account
 identifiers, and that video leaves the device over encrypted transport.

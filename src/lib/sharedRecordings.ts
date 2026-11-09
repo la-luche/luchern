@@ -1,4 +1,6 @@
 import { apiFetch } from './api';
+import type { EvaluatedSide } from './tests';
+import type { EvaluationRunRef } from './types';
 
 /** A person who approved the current account's permanent sharing code. */
 export interface SharedPatient {
@@ -26,6 +28,13 @@ export interface SharedTrialPoint {
   recorded_at: string;
   /** Null while server-side analysis is still running or could not score. */
   score: number | null;
+  updrs_grade?: number | null;
+  analysis_status?: string | null;
+  scoreable?: boolean | null;
+  evaluated_side?: string | null;
+  evaluation_run_id?: string | null;
+  evaluation_run_started_at?: string | null;
+  evaluation_run_expected_steps?: number | null;
 }
 
 export interface SharedTrialsResponse {
@@ -44,6 +53,11 @@ export interface SharedRecording {
   unit: string;
   createdAt: number;
   score: number | null;
+  updrsGrade?: number | null;
+  analysisStatus?: string | null;
+  scoreable?: boolean | null;
+  evaluatedSide?: EvaluatedSide;
+  evaluationRun?: EvaluationRunRef;
 }
 
 export interface SharedTrialDetail {
@@ -64,14 +78,16 @@ export interface SharedTrialDetail {
   duration_seconds: number | null;
 }
 
-export function fetchSharedPatients(): Promise<SharedPatientsResponse> {
-  return apiFetch<SharedPatientsResponse>('/patients');
+export function fetchSharedPatients(expectedAccountId?: string): Promise<SharedPatientsResponse> {
+  return expectedAccountId
+    ? apiFetch<SharedPatientsResponse>('/patients', {}, expectedAccountId)
+    : apiFetch<SharedPatientsResponse>('/patients');
 }
 
-export function fetchSharedTrials(patientId: string): Promise<SharedTrialsResponse> {
-  return apiFetch<SharedTrialsResponse>(
-    `/patients/${encodeURIComponent(patientId)}/trials`,
-  );
+export function fetchSharedTrials(patientId: string, expectedAccountId?: string): Promise<SharedTrialsResponse> {
+  const path = `/patients/${encodeURIComponent(patientId)}/trials`;
+  if (expectedAccountId) return apiFetch<SharedTrialsResponse>(path, {}, expectedAccountId);
+  return apiFetch<SharedTrialsResponse>(path);
 }
 
 /** Fetch trial metadata and a fresh, short-lived signed video URL. */
@@ -101,6 +117,15 @@ export function flattenSharedTrials(
         unit: test?.unit ?? 'severity',
         createdAt: Number.isNaN(createdAt) ? 0 : createdAt,
         score: point.score,
+        updrsGrade: point.updrs_grade,
+        analysisStatus: point.analysis_status,
+        scoreable: point.scoreable,
+        evaluatedSide: point.evaluated_side === 'left' || point.evaluated_side === 'right' ? point.evaluated_side : undefined,
+        evaluationRun: point.evaluation_run_id ? {
+          id: point.evaluation_run_id,
+          startedAt: Date.parse(point.evaluation_run_started_at ?? '') || (Number.isNaN(createdAt) ? 0 : createdAt),
+          expectedSteps: point.evaluation_run_expected_steps ?? 13,
+        } : undefined,
       });
     }
   }

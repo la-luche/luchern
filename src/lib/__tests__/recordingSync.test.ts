@@ -10,6 +10,21 @@ import type { Recording } from '../types';
 
 const now = Date.parse('2026-07-17T12:00:00Z');
 
+it('does not resurrect a superseded checkup clip from a stale server response', () => {
+  const run = { id: 'run', startedAt: 1, expectedSteps: 13 };
+  const previous = local({ supersededEvaluationRun: run });
+  const merged = mergeOwnedTrials([previous], [trial({ evaluation_run_id: 'run' })], now);
+  expect(merged.recordings[0].evaluationRun).toBeUndefined();
+  expect(merged.recordings[0].supersededEvaluationRun).toEqual(run);
+  expect(merged.recordings[0].result?.score).toBe(.4);
+});
+it('honors a server detachment made by a replacement on another device', () => {
+  const run = { id: 'run', startedAt: 1, expectedSteps: 13 };
+  const merged = mergeOwnedTrials([local({ evaluationRun: run })], [trial({ evaluation_run_id: null })], now);
+  expect(merged.recordings[0].evaluationRun).toBeUndefined();
+  expect(merged.recordings[0].supersededEvaluationRun).toEqual(run);
+});
+
 function trial(overrides: Partial<OwnedTrialSummary> = {}): OwnedTrialSummary {
   return {
     trial_id: 42,

@@ -10,6 +10,8 @@ export type PrivacyBlurSettings = {
   background: boolean;
 };
 
+const DEFAULT_PRIVACY_BLUR_SETTINGS: PrivacyBlurSettings = { face: true, background: true };
+
 let cached: PrivacyBlurSettings | null = null;
 let loading: Promise<PrivacyBlurSettings> | null = null;
 const listeners = new Set<(settings: PrivacyBlurSettings) => void>();
@@ -29,14 +31,14 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
       .then(async (entries) => {
         const values = Object.fromEntries(entries);
         const stored = values[DEPERSONALISATION_STORAGE_KEY];
+        const hasLegacyPreference =
+          values[FACE_STORAGE_KEY] != null || values[BACKGROUND_STORAGE_KEY] != null;
         const enabled = stored == null
-          ? values[FACE_STORAGE_KEY] === 'true' || values[BACKGROUND_STORAGE_KEY] === 'true'
+          ? !hasLegacyPreference || values[FACE_STORAGE_KEY] === 'true' || values[BACKGROUND_STORAGE_KEY] === 'true'
           : stored === 'true';
 
         cached = { face: enabled, background: enabled };
 
-        const hasLegacyPreference =
-          values[FACE_STORAGE_KEY] != null || values[BACKGROUND_STORAGE_KEY] != null;
         if (stored == null && hasLegacyPreference) {
           const serialized = enabled ? 'true' : 'false';
           await AsyncStorage.multiSet([
@@ -49,7 +51,7 @@ export async function getPrivacyBlurSettings(): Promise<PrivacyBlurSettings> {
         return cached;
       })
       .catch(() => {
-        cached = { face: false, background: false };
+        cached = { ...DEFAULT_PRIVACY_BLUR_SETTINGS };
         return cached;
       })
       .finally(() => {
@@ -72,7 +74,7 @@ export async function setPrivacyBlurEnabled(enabled: boolean): Promise<void> {
 
 export function usePrivacyBlurSettings() {
   const [settings, setSettings] = useState<PrivacyBlurSettings>(
-    cached ?? { face: false, background: false },
+    cached ?? { ...DEFAULT_PRIVACY_BLUR_SETTINGS },
   );
   const [isLoading, setIsLoading] = useState(cached == null);
 

@@ -201,19 +201,23 @@ private final class RTMPoseVideoScanner {
   private let asset: AVURLAsset
   private let progress: (Double) -> Void
   private let isCancelled: () -> Bool
-  private let ciContext = CIContext(options: [.cacheIntermediates: false])
+  private let ciContext: CIContext
+  private(set) var timings: [String: Double] = [:]
 
   init(
     asset: AVURLAsset,
+    useSoftwareRenderer: Bool = false,
     progress: @escaping (Double) -> Void,
     isCancelled: @escaping () -> Bool
   ) {
     self.asset = asset
+    self.ciContext = CIContext(options: [.cacheIntermediates: false, .useSoftwareRenderer: useSoftwareRenderer])
     self.progress = progress
     self.isCancelled = isCancelled
   }
 
   func scan() throws -> PoseTimeline {
+    let scanStarted = privacyTimestampMs()
     let duration = CMTimeGetSeconds(asset.duration)
     guard duration.isFinite, duration > 0 else {
       throw Self.error(21, "The recording duration could not be read.")
@@ -238,19 +242,28 @@ private final class RTMPoseVideoScanner {
       throw reader.error ?? Self.error(24, "The recording pose scan could not start.")
     }
 
+    let modelStarted = privacyTimestampMs()
     let engine = try RTMPoseEngine()
+    timings["modelLoadMs"] = privacyTimestampMs() - modelStarted
+    timings["videoDurationMs"] = duration * 1000
     var keyframes: [PoseKeyframe] = []
-    while let sample = output.copyNextSampleBuffer() {
+    while true {
+      let decodeStarted = privacyTimestampMs()
+      let nextSample = output.copyNextSampleBuffer()
+      timings["decodeMs", default: 0] += privacyTimestampMs() - decodeStarted
+      guard let sample = nextSample else { break }
       if isCancelled() {
         reader.cancelReading()
         throw Self.cancelledError()
       }
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
       let keyframe = try autoreleasepool { () throws -> PoseKeyframe in
+        let displayStarted = privacyTimestampMs()
         let image = try displayImage(
           pixelBuffer: pixelBuffer,
           transform: track.preferredTransform
         )
+        timings["displayImageMs", default: 0] += privacyTimestampMs() - displayStarted
         let landmarks = try engine.analyze(image)
         let seconds = max(0, CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample)))
         let person = landmarks.flatMap(personRect)
@@ -275,26 +288,22 @@ private final class RTMPoseVideoScanner {
       throw Self.error(26, "No video frames could be decoded for pose estimation.")
     }
     progress(scanProgressShare)
+    timings.merge(engine.timings) { _, measured in measured }
+    timings["scanMs"] = privacyTimestampMs() - scanStarted
     return PoseTimeline(keyframes: keyframes.sorted { $0.seconds < $1.seconds })
   }
 
   private func displayImage(pixelBuffer: CVPixelBuffer, transform: CGAffineTransform) throws -> CGImage {
-    let transformed = CIImage(cvPixelBuffer: pixelBuffer).transformed(by: transform)
+    let source = CIImage(cvPixelBuffer: pixelBuffer)
+    let transformed = source.transformed(by: privacyDisplayTransform(
+      transform, sourceExtent: source.extent
+    ))
     let extent = transformed.extent.integral
     let displayImage = transformed.transformed(
       by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
     )
     let displayExtent = CGRect(origin: .zero, size: extent.size)
-    // After the track's 90-degree preferred transform, CIContext's CGImage is
-    // rotated 180 degrees relative to the top-left raster consumed by
-    // RTMPoseEngine. Correct both axes so decoded frames match PNG/JPEG input.
-    let topLeftImage = displayImage.transformed(
-      by: CGAffineTransform(
-        translationX: displayExtent.width,
-        y: displayExtent.height
-      ).scaledBy(x: -1, y: -1)
-    )
-    guard let image = ciContext.createCGImage(topLeftImage, from: displayExtent) else {
+    guard let image = ciContext.createCGImage(displayImage, from: displayExtent) else {
       throw Self.error(27, "A display-oriented video frame could not be created.")
     }
     return image
@@ -374,7 +383,8 @@ private final class FaceBlurProcessor {
   private let progress: (Double) -> Void
   private let completion: (Result<[String: Any], Error>) -> Void
   private let stateLock = NSLock()
-  private let ciContext = CIContext(options: [.cacheIntermediates: false])
+  private let ciContext: CIContext
+  private let useSoftwareRenderer: Bool
 
   private var exportSession: AVAssetExportSession?
   private var progressTimer: DispatchSourceTimer?
@@ -382,6 +392,9 @@ private final class FaceBlurProcessor {
   private var stats = PrivacyBlurStats()
   private var cancelled = false
   private var firstFrameError: Error?
+  private var startedAtMs = 0.0
+  private var exportStartedAtMs = 0.0
+  private var timings: [String: Double] = [:]
 
   /** Match OpenCV's automatic sigma when GaussianBlur is passed sigmaX=0. */
   private static func openCVGaussianSigma(forRequestedKernel requested: CGFloat) -> CGFloat {
@@ -395,6 +408,7 @@ private final class FaceBlurProcessor {
     outputURL: URL,
     blurFaces: Bool,
     blurBackground: Bool,
+    useSoftwareRenderer: Bool = false,
     showPoseOverlay: Bool = false,
     progress: @escaping (Double) -> Void,
     completion: @escaping (Result<[String: Any], Error>) -> Void
@@ -409,12 +423,19 @@ private final class FaceBlurProcessor {
     self.outputURL = outputURL
     self.blurFaces = blurFaces
     self.blurBackground = blurBackground
+    self.useSoftwareRenderer = useSoftwareRenderer
+    // GPU submission is forbidden after backgrounding without the optional
+    // background-GPU entitlement. The detector itself already runs on CPU.
+    self.ciContext = CIContext(options: [
+      .cacheIntermediates: false, .useSoftwareRenderer: useSoftwareRenderer
+    ])
     self.showPoseOverlay = showPoseOverlay
     self.progress = progress
     self.completion = completion
   }
 
   func start() {
+    startedAtMs = privacyTimestampMs()
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self else { return }
       do {
@@ -424,17 +445,22 @@ private final class FaceBlurProcessor {
         )
         try? FileManager.default.removeItem(at: self.outputURL)
         let asset = AVURLAsset(url: self.inputURL)
-        let detected = try RTMPoseVideoScanner(
+        let scanner = RTMPoseVideoScanner(
           asset: asset,
+          useSoftwareRenderer: self.useSoftwareRenderer,
           progress: self.progress,
           isCancelled: { [weak self] in self?.isCancelled ?? true }
-        ).scan()
+        )
+        let detected = try scanner.scan()
+        let filterStarted = privacyTimestampMs()
         let timeline = detected
           .filteredForBodyOutliers()
           .filteredForUnreliableWindows()
         if self.isCancelled { throw Self.cancelledError() }
         self.stateLock.lock()
         self.timeline = timeline
+        self.timings = scanner.timings
+        self.timings["timelineFilterMs"] = privacyTimestampMs() - filterStarted
         self.stateLock.unlock()
         try self.startExport(asset: asset, timeline: timeline)
       } catch {
@@ -459,6 +485,7 @@ private final class FaceBlurProcessor {
   }
 
   private func startExport(asset: AVURLAsset, timeline: PoseTimeline) throws {
+    exportStartedAtMs = privacyTimestampMs()
     guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
       throw Self.error(3, "This video cannot be prepared for privacy blurring.")
     }
@@ -654,6 +681,9 @@ private final class FaceBlurProcessor {
     let frameError = firstFrameError
     let finalStats = stats
     let finalTimeline = timeline
+    var finalTimings = timings
+    finalTimings["renderExportMs"] = privacyTimestampMs() - exportStartedAtMs
+    finalTimings["nativeTotalMs"] = privacyTimestampMs() - startedAtMs
     let exporter = exportSession
     exportSession = nil
     stateLock.unlock()
@@ -684,7 +714,8 @@ private final class FaceBlurProcessor {
       "poseSamples": finalTimeline?.poseSamples ?? 0,
       "totalPoseSamples": finalTimeline?.keyframes.count ?? 0,
       "faceSamples": finalTimeline?.faceSamples ?? 0,
-      "detectorMode": "rtmdet_nano_rtmpose_t_coco17_dense"
+      "detectorMode": "rtmdet_nano_rtmpose_t_coco17_dense",
+      "timings": finalTimings.mapValues { ($0 * 100).rounded() / 100 }
     ]))
   }
 
@@ -704,10 +735,31 @@ private final class FaceBlurProcessor {
 public final class FaceBlurModule: Module {
   private let operationsLock = NSLock()
   private var operations: [String: FaceBlurProcessor] = [:]
+  private var backgroundSafeRendering = false
+  private var expirationObserver: NSObjectProtocol?
 
   public func definition() -> ModuleDefinition {
     Name("FaceBlur")
     Events(progressEvent)
+
+    OnCreate {
+      self.expirationObserver = NotificationCenter.default.addObserver(
+        forName: Notification.Name("LucheProcessingExpired"), object: nil, queue: nil
+      ) { [weak self] _ in
+        guard let self else { return }
+        self.operationsLock.lock()
+        let active = Array(self.operations.values)
+        self.operationsLock.unlock()
+        active.forEach { $0.cancel() }
+      }
+    }
+    OnDestroy {
+      if let observer = self.expirationObserver { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    AsyncFunction("prepareForBackgroundAsync") {
+      self.backgroundSafeRendering = true
+    }
 
     AsyncFunction("blurVideoAsync") {
       (
@@ -732,6 +784,7 @@ public final class FaceBlurModule: Module {
           outputURL: outputURL,
           blurFaces: blurFaces,
           blurBackground: blurBackground,
+          useSoftwareRenderer: self.backgroundSafeRendering,
           progress: { [weak self] value in
             DispatchQueue.main.async {
               self?.sendEvent(progressEvent, ["operationId": operationId, "progress": value])
@@ -743,7 +796,9 @@ public final class FaceBlurModule: Module {
             self?.operationsLock.unlock()
             switch result {
             case .success(let response): promise.resolve(response)
-            case .failure(let error): promise.reject("ERR_FACE_BLUR", error.localizedDescription)
+            case .failure(let error):
+              let code = (error as NSError).code == NSUserCancelledError ? "ERR_FACE_BLUR_CANCELLED" : "ERR_FACE_BLUR"
+              promise.reject(code, error.localizedDescription)
             }
           }
         )

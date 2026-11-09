@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { supersedeCheckupRetakes } from './checkupRetakes';
 import { getTest, type EvaluatedSide, type TestId } from './tests';
 import type { CloudResult, Recording, RecordingStatus } from './types';
 
@@ -90,11 +91,12 @@ function remoteRecording(
     testId: validTestId,
     guestId,
     evaluatedSide: evaluatedSide(trial.evaluated_side) ?? local?.evaluatedSide,
-    evaluationRun: trial.evaluation_run_id ? {
+    evaluationRun: local?.supersededEvaluationRun ? undefined : trial.evaluation_run_id ? {
       id: trial.evaluation_run_id,
       startedAt: Date.parse(trial.evaluation_run_started_at ?? '') || local?.evaluationRun?.startedAt || createdAt,
       expectedSteps: trial.evaluation_run_expected_steps ?? local?.evaluationRun?.expectedSteps ?? 1,
-    } : local?.evaluationRun,
+    } : trial.evaluation_run_id === null ? undefined : local?.evaluationRun,
+    supersededEvaluationRun: local?.supersededEvaluationRun ?? (trial.evaluation_run_id === null ? local?.evaluationRun : undefined),
     createdAt,
     videoUri: keepLocalVideo ? local?.videoUri : undefined,
     // Originals are never uploaded, so they have no cloud fallback and must
@@ -181,7 +183,7 @@ export function mergeOwnedTrials(
   }
 
   recordings.sort((a, b) => b.createdAt - a.createdAt);
-  return { recordings, localUrisToDelete: [...localUrisToDelete] };
+  return { recordings: supersedeCheckupRetakes(recordings), localUrisToDelete: [...localUrisToDelete] };
 }
 
 /** Merge one server endpoint without allowing it to alter another history scope. */

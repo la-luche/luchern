@@ -2,7 +2,7 @@
   "expo": {
     "name": "Luche",
     "slug": "luche-rn",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/luche-app-icon.png",
     "scheme": "luche",
@@ -20,12 +20,6 @@
     "android": {
       "package": "ai.getferal.luche",
       "allowBackup": false,
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA"
@@ -73,7 +67,9 @@
           }
         }
       ],
-      "./plugins/with-android-lean-apk"
+      "./plugins/with-android-lean-apk",
+      "./plugins/with-background-work",
+      "./plugins/with-network-recovery"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -23,6 +23,26 @@ export type FaceBlurResult = {
   totalPoseSamples: number;
   faceSamples: number;
   detectorMode: 'rtmdet_nano_rtmpose_t_coco17_dense';
+  /** iOS elapsed milliseconds. Scan includes its decode/preprocess/inference
+   * subtotals; renderExport includes Core Image rendering and video encoding.
+   * Optional for older development clients and Android. */
+  timings?: {
+    nativeTotalMs: number;
+    videoDurationMs: number;
+    scanMs: number;
+    modelLoadMs: number;
+    decodeMs: number;
+    displayImageMs: number;
+    imageConversionMs: number;
+    detectorPreprocessMs: number;
+    detectorInferenceMs: number;
+    detectorPostprocessMs: number;
+    posePreprocessMs?: number;
+    poseInferenceMs?: number;
+    posePostprocessMs?: number;
+    timelineFilterMs: number;
+    renderExportMs: number;
+  };
 };
 
 export type PoseRectDiagnostic = {
@@ -37,6 +57,7 @@ type FaceBlurEvents = {
 };
 
 declare class FaceBlurNativeModule extends NativeModule<FaceBlurEvents> {
+  prepareForBackgroundAsync?(): Promise<void>;
   blurVideoAsync(
     inputUri: string,
     outputUri: string,
@@ -67,12 +88,13 @@ declare class FaceBlurNativeModule extends NativeModule<FaceBlurEvents> {
 
 const nativeModule = requireNativeModule<FaceBlurNativeModule>('FaceBlur');
 
-export function blurVideoAsync(
+export async function blurVideoAsync(
   inputUri: string,
   outputUri: string,
   operationId: string,
   options: PrivacyBlurOptions,
 ): Promise<FaceBlurResult> {
+  await nativeModule.prepareForBackgroundAsync?.();
   return nativeModule.blurVideoAsync(
     inputUri,
     outputUri,

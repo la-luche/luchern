@@ -2,6 +2,11 @@ import CoreGraphics
 import Foundation
 import onnxruntime_objc
 
+// Monotonic elapsed time; wall-clock changes must not affect performance data.
+func privacyTimestampMs() -> Double {
+  ProcessInfo.processInfo.systemUptime * 1000
+}
+
 struct RTMPosePoint {
   let x: CGFloat
   let y: CGFloat
@@ -137,6 +142,8 @@ final class RTMPoseEngine {
   private let environment: ORTEnv
   private let detector: ORTSession
   private let pose: ORTSession
+  // Accumulated in memory, never logged per frame. One engine serves one scan.
+  private(set) var timings: [String: Double] = [:]
 
   init() throws {
     let detectorPath = try Self.modelPath(named: "rtmdet_nano_person_320")
@@ -151,7 +158,9 @@ final class RTMPoseEngine {
     diagnosticsDirectory: URL? = nil
   ) throws -> [RTMPosePoint]? {
     let diagnostics = try diagnosticsDirectory.map(RTMPoseDiagnosticWriter.init(directory:))
+    let imageStarted = privacyTimestampMs()
     let pixels = try PixelImage(image)
+    timings["imageConversionMs", default: 0] += privacyTimestampMs() - imageStarted
     try diagnostics?.write(bytes: pixels.bytes, name: "display-rgba.bin")
     guard let box = try detectLargestPerson(in: pixels, diagnostics: diagnostics) else {
       try diagnostics?.write(json: [
@@ -176,6 +185,7 @@ final class RTMPoseEngine {
     in image: PixelImage,
     diagnostics: RTMPoseDiagnosticWriter?
   ) throws -> DetectionBox? {
+    let preprocessStarted = privacyTimestampMs()
     let ratio = min(
       Float(Self.detectorHeight) / Float(image.height),
       Float(Self.detectorWidth) / Float(image.width)
@@ -211,11 +221,18 @@ final class RTMPoseEngine {
     try diagnostics?.write(floats: input, name: "detector-input-f32.bin")
 
     let value = try Self.tensor(input, shape: [1, 3, 320, 320])
+    let inferenceStarted = privacyTimestampMs()
+    timings["detectorPreprocessMs", default: 0] += inferenceStarted - preprocessStarted
     let outputs = try detector.run(
       withInputs: ["input": value],
       outputNames: ["dets"],
       runOptions: nil
     )
+    let postprocessStarted = privacyTimestampMs()
+    timings["detectorInferenceMs", default: 0] += postprocessStarted - inferenceStarted
+    defer {
+      timings["detectorPostprocessMs", default: 0] += privacyTimestampMs() - postprocessStarted
+    }
     guard let dets = outputs["dets"] else {
       throw RTMPoseError.message("RTMDet did not return its detection tensor.")
     }
@@ -248,6 +265,7 @@ final class RTMPoseEngine {
     box: DetectionBox,
     diagnostics: RTMPoseDiagnosticWriter?
   ) throws -> [RTMPosePoint] {
+    let preprocessStarted = privacyTimestampMs()
     let centerX = (box.left + box.right) * 0.5
     let centerY = (box.top + box.bottom) * 0.5
     var scaleWidth = (box.right - box.left) * 1.25
@@ -281,11 +299,18 @@ final class RTMPoseEngine {
     try diagnostics?.write(floats: input, name: "pose-input-f32.bin")
 
     let value = try Self.tensor(input, shape: [1, 3, 256, 192])
+    let inferenceStarted = privacyTimestampMs()
+    timings["posePreprocessMs", default: 0] += inferenceStarted - preprocessStarted
     let outputs = try pose.run(
       withInputs: ["input": value],
       outputNames: ["simcc_x", "simcc_y"],
       runOptions: nil
     )
+    let postprocessStarted = privacyTimestampMs()
+    timings["poseInferenceMs", default: 0] += postprocessStarted - inferenceStarted
+    defer {
+      timings["posePostprocessMs", default: 0] += privacyTimestampMs() - postprocessStarted
+    }
     guard let xValue = outputs["simcc_x"], let yValue = outputs["simcc_y"] else {
       throw RTMPoseError.message("RTMPose did not return both SimCC tensors.")
     }

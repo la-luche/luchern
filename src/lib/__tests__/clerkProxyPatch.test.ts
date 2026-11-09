@@ -18,7 +18,7 @@ jest.doMock(clerkSharedErrorPath, () => ({
 }));
 const { createClerkInstance } = require(createClerkInstancePath);
 
-const EDGE = 'https://xn--e1alyq.xn--p1ai/__clerk';
+const EDGE = 'https://luche.ai/__clerk';
 const DIRECT_REQUEST =
   'https://clerk.luche.ai/v1/client/sign_ins?__clerk_api_version=2025-11-10';
 
@@ -62,7 +62,7 @@ describe('@clerk/clerk-expo native proxy patch', () => {
     };
     await proxied.beforeRequest!(request);
 
-    expect(request.url.origin).toBe('https://xn--e1alyq.xn--p1ai');
+    expect(request.url.origin).toBe('https://luche.ai');
     expect(request.url.pathname).toBe('/__clerk/v1/client/sign_ins');
     expect(request.url.searchParams.get('__clerk_api_version')).toBe('2025-11-10');
     expect(request.url.searchParams.get('_is_native')).toBe('1');

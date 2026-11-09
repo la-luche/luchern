@@ -1,6 +1,8 @@
+import { clearWorkTimeout, setWorkTimeout } from './workTimers';
+
 /**
- * Pure, React-Native-free helpers for the upload lifecycle so they can be unit
- * tested without RN mocks. storage.ts wires these to AsyncStorage + drive().
+ * Queue/retry helpers for the upload lifecycle. Native-backed timers continue
+ * retries while the activity is hidden; storage.ts wires up persistence.
  */
 
 /** Thrown by cloud.ts when the client poll ceiling is reached. NOT a real
@@ -28,14 +30,14 @@ export function throwIfCancelled(signal?: AbortSignal): void {
 /** Backoff/poll sleep that exits immediately when logout cancels the pipeline. */
 export function cancellableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   throwIfCancelled(signal);
-  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (!signal) return new Promise((resolve) => setWorkTimeout(resolve, ms));
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const timer = setWorkTimeout(() => {
       signal.removeEventListener('abort', onAbort);
       resolve();
     }, ms);
     const onAbort = () => {
-      clearTimeout(timer);
+      clearWorkTimeout(timer);
       reject(new OperationCancelledError());
     };
     signal.addEventListener('abort', onAbort, { once: true });

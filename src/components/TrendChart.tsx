@@ -4,7 +4,7 @@ import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { COLORS } from '../lib/theme';
 
-/** One plotted point: a recording's id, its time (epoch ms), and 0–1 score. */
+/** One plotted point: its record id, time (epoch ms), and score on the chart's scale. */
 export interface TrendPoint {
   id: string;
   t: number;
@@ -24,17 +24,19 @@ function formatDate(ms: number): string {
 }
 
 /**
- * Severity-over-time line chart. x = time (points sorted ascending), y = 0–1
- * score (top = 1 = more severe). Tapping a dot calls onPointPress(id). A single
+ * Severity-over-time line chart. x = time (points sorted ascending), y = 0–maxScore.
+ * Defaults to the tests' normalized 0–1 scale. Tapping a dot calls onPointPress(id). A single
  * point renders centered; two-plus points draw a connecting polyline. Ported
  * from the luche.ai observer TrialChart (recharts) — same axes + tap-to-open.
  */
 export function TrendChart({
   points,
   onPointPress,
+  maxScore = 1,
 }: {
   points: TrendPoint[];
-  onPointPress: (id: string) => void;
+  onPointPress?: (id: string) => void;
+  maxScore?: 1 | 4;
 }) {
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -56,18 +58,18 @@ export function TrendChart({
       : PAD_LEFT + ((t - minT) / spanT) * plotW;
 
   const yOf = (score: number) => {
-    const s = Math.max(0, Math.min(1, score));
+    const s = Math.max(0, Math.min(1, score / maxScore));
     return PAD_TOP + (1 - s) * plotH;
   };
 
   const polyPoints = data.map((d) => `${xOf(d.t)},${yOf(d.score)}`).join(' ');
 
   return (
-    <View onLayout={onLayout}>
+    <View onLayout={onLayout} style={{ height: HEIGHT }}>
       {width > 0 && (
         <Svg width={width} height={HEIGHT}>
-          {/* Horizontal gridlines + y labels at 0.0 / 0.5 / 1.0. */}
-          {[0, 0.5, 1].map((g) => {
+          {/* Horizontal gridlines at zero, half scale, and full scale. */}
+          {[0, maxScore / 2, maxScore].map((g) => {
             const y = yOf(g);
             return (
               <Fragment key={`grid-${g}`}>
@@ -104,8 +106,8 @@ export function TrendChart({
             const cy = yOf(d.score);
             return (
               <Fragment key={d.id}>
-                <Circle cx={cx} cy={cy} r={16} fill="transparent" onPress={() => onPointPress(d.id)} />
-                <Circle cx={cx} cy={cy} r={4} fill={COLORS.ink} onPress={() => onPointPress(d.id)} />
+                {onPointPress && <Circle cx={cx} cy={cy} r={16} fill="transparent" onPress={() => onPointPress(d.id)} />}
+                <Circle cx={cx} cy={cy} r={4} fill={COLORS.ink} onPress={onPointPress ? () => onPointPress(d.id) : undefined} />
               </Fragment>
             );
           })}

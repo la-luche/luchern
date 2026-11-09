@@ -58,6 +58,10 @@ describe('privacy blur preparation', () => {
   });
 
   it('promotes the native output without deleting the original', async () => {
+    const nativeResult = await (blurVideoAsync as jest.Mock)();
+    const timings = { nativeTotalMs: 1200, scanMs: 900, renderExportMs: 280 };
+    (blurVideoAsync as jest.Mock).mockResolvedValue({ ...nativeResult, timings });
+    (blurVideoAsync as jest.Mock).mockClear();
     const progress: number[] = [];
     const result = await prepareFaceBlurredVideo(
       'r1',
@@ -81,6 +85,7 @@ describe('privacy blur preparation', () => {
       videoUri: 'file:///recordings/r1.privacy-blurred.mp4',
       framesProcessed: 20,
       recovered: false,
+      timings,
     });
     expect(progress[progress.length - 1]).toBe(1);
   });

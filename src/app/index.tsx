@@ -1,76 +1,90 @@
 import { useUser } from '@clerk/clerk-expo';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { ScrollView, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
 import { useT } from '../lib/i18n';
-import { startSession } from '../lib/session';
-import { FULL_TEST_FLOW } from '../lib/tests';
-import { COLORS } from '../lib/theme';
+import { readHistorySelection } from '../lib/historySelection';
+import { personHistoryHref } from '../lib/personFlow';
 
-/** Decluttered top-level menu: full test, individual test, guests, and history. */
+/** Main menu: check up, individual test, history, and account. */
 export default function MenuScreen() {
   const router = useRouter();
   const t = useT();
   const { user } = useUser();
-
-  const startFullCheck = () => {
-    startSession(FULL_TEST_FLOW);
-    router.push({ pathname: '/prepare', params: { mode: 'full' } });
+  const account = useRef(user?.id);
+  account.current = user?.id;
+  const mounted = useRef(true);
+  const opening = useRef(false);
+  const historyRequest = useRef(0);
+  const [openingHistory, setOpeningHistory] = useState(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useFocusEffect(useCallback(() => {
+    ++historyRequest.current;
+    opening.current = false;
+    setOpeningHistory(false);
+    return () => { ++historyRequest.current; };
+  }, []));
+  const openScreen = (href: Href) => {
+    ++historyRequest.current;
+    router.push(href);
+  };
+  const openHistory = async () => {
+    if (opening.current) return;
+    opening.current = true;
+    setOpeningHistory(true);
+    const current = ++historyRequest.current;
+    const accountId = account.current;
+    try {
+      const { person, section } = await readHistorySelection(accountId);
+      if (mounted.current && historyRequest.current === current && account.current === accountId) router.push(personHistoryHref(person, section));
+    } finally {
+      if (historyRequest.current === current) {
+        opening.current = false;
+        if (mounted.current) setOpeningHistory(false);
+      }
+    }
   };
 
   return (
     <Screen>
-      {/* The signed-in identity stays visible from the main screen. */}
-      <View className="h-12 flex-row items-center justify-end px-[18px]">
-        <Pressable
-          onPress={() => router.push('/about')}
-          accessibilityRole="button"
-          accessibilityLabel={t.profile.openProfileA11y}
-          className="h-11 max-w-[240px] flex-row items-center gap-2 rounded-full bg-ink-faint px-2.5 pr-4 active:opacity-70"
-        >
-          {user?.imageUrl ? (
-            <Image
-              source={{ uri: user.imageUrl }}
-              className="h-7 w-7 rounded-full"
-              contentFit="cover"
-            />
-          ) : (
-            <View className="h-7 w-7 items-center justify-center rounded-full bg-white">
-              <Ionicons name="person-outline" size={17} color={COLORS.ink} />
-            </View>
-          )}
-          <Text numberOfLines={1} className="shrink text-[15px] font-medium text-ink">
-            {t.profile.myAccount}
-          </Text>
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerClassName="px-6 pb-8">
-        {/* Title block. */}
-        <View className="items-center pt-3">
-          <Text className="text-[28px] font-bold text-ink">{t.common.appName}</Text>
-        </View>
-
-        {/* Recording entry points deliberately share one treatment. */}
-        <View className="mt-6 gap-3">
-          <Button title={t.menu.startFullCheck} onPress={startFullCheck} />
-          <Button title={t.menu.recordOne} onPress={() => router.push('/tests')} />
-          <Button title={t.menu.guests} onPress={() => router.push('/guests')} />
-        </View>
-
-        {/* Previous recordings. */}
-        <View className="mt-8">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-6 py-6"
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Recording actions followed by history and account navigation. */}
+        <View className="w-full max-w-[440px] self-center gap-4">
+          <Button title={t.menu.startFullCheck} size="large" onPress={() => openScreen({ pathname: '/people', params: { mode: 'full' } })} />
+          <Button title={t.menu.recordOne} size="large" onPress={() => openScreen({ pathname: '/people', params: { mode: 'single' } })} />
           <Button
             title={t.menu.previousRecordings}
+            size="large"
             variant="secondary"
-            onPress={() => router.push('/results')}
+            onPress={() => void openHistory()}
+            disabled={openingHistory}
+          />
+          <Button
+            title={t.profile.account}
+            size="large"
+            variant="secondary"
+            onPress={() => openScreen('/about')}
           />
         </View>
       </ScrollView>
+      <View className="px-6 pb-3 pt-2">
+        <View className="w-full max-w-[440px] self-center">
+          <Text className="text-center text-[17px] font-semibold leading-6 text-ink">
+            {t.disclaimer.footerTitle}
+          </Text>
+          <Text className="mt-1 text-center text-[15px] leading-[22px] text-ink-muted">
+            {t.disclaimer.footerBody}
+          </Text>
+        </View>
+      </View>
     </Screen>
   );
 }

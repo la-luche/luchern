@@ -9,12 +9,12 @@ import { ResilientVideo } from '../../components/ResilientVideo';
 import { Screen } from '../../components/Screen';
 import { isConnectionFailure, showConnectionAlert } from '../../lib/connectivity';
 import { localizeSeverity, useT } from '../../lib/i18n';
+import { METHODOLOGY_URL } from '../../lib/links';
 import {
   fetchSharedTrialDetail,
   type SharedTrialDetail,
 } from '../../lib/sharedRecordings';
 import { getTest } from '../../lib/tests';
-import { METHODOLOGY_URL } from '../../lib/links';
 import { COLORS } from '../../lib/theme';
 
 function formatGrade(detail: SharedTrialDetail): string {
@@ -161,13 +161,6 @@ export default function SharedResultDetailScreen() {
                   <Text className="mt-2 text-center text-[15px] leading-5 text-ink-muted">
                     {t.result.scoreHint}
                   </Text>
-                  <View className="mt-4 w-full">
-                    <Button
-                      title={t.result.howScoreCalculated}
-                      variant="secondary"
-                      onPress={() => void Linking.openURL(METHODOLOGY_URL)}
-                    />
-                  </View>
                 </View>
               )}
             </View>
@@ -193,6 +186,9 @@ export default function SharedResultDetailScreen() {
             </View>
           </>
         ) : null}
+        <View className="mt-4">
+          <Button title={t.result.howScoreCalculated} variant="secondary" onPress={() => void Linking.openURL(METHODOLOGY_URL)} />
+        </View>
       </ScrollView>
     </Screen>
   );

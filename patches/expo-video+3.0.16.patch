@@ -1,0 +1,74 @@
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+index 7e213f7..50cedc5 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+ import androidx.media3.exoplayer.source.MediaSource
+ import expo.modules.video.records.VideoSource
+ import okhttp3.OkHttpClient
++import com.facebook.react.modules.network.OkHttpClientProvider
+ 
+ @OptIn(UnstableApi::class)
+ fun buildBaseDataSourceFactory(context: Context, videoSource: VideoSource): DataSource.Factory {
+@@ -25,7 +26,12 @@ fun buildBaseDataSourceFactory(context: Context, videoSource: VideoSource): Data
+ 
+ @OptIn(UnstableApi::class)
+ fun buildOkHttpDataSourceFactory(context: Context, videoSource: VideoSource): OkHttpDataSource.Factory {
+-  val client = OkHttpClient.Builder().build()
++  val networkClient = OkHttpClientProvider.getOkHttpClient()
++  val client = OkHttpClient.Builder()
++    .dns(networkClient.dns)
++    .connectionPool(networkClient.connectionPool)
++    .eventListenerFactory(networkClient.eventListenerFactory)
++    .build()
+ 
+   // If the application name has ANY non-ASCII characters, we need to strip them out. This is because using non-ASCII characters
+   // in the User-Agent header can cause issues with getting the media to play.
+diff --git a/node_modules/expo-video/ios/LuchePlaybackError.swift b/node_modules/expo-video/ios/LuchePlaybackError.swift
+new file mode 100644
+index 0000000..6476331
+--- /dev/null
++++ b/node_modules/expo-video/ios/LuchePlaybackError.swift
+@@ -0,0 +1,20 @@
++import Foundation
++
++// Preserve an underlying URL transport error when AVFoundation wraps it.
++// JS can then await connection recovery before replacing the player. HTTP,
++// certificate, cancellation and decoding errors keep their original meaning.
++func luchePlaybackErrorDescription(_ error: Error?) -> String? {
++  guard let error else { return nil }
++  var current: NSError? = error as NSError
++  let codes = [NSURLErrorTimedOut, NSURLErrorCannotFindHost,
++               NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost,
++               NSURLErrorDNSLookupFailed]
++  for _ in 0..<8 {
++    guard let item = current else { break }
++    if item.domain == NSURLErrorDomain && codes.contains(item.code) {
++      return "Network connection failed (\(item.code)): \(error.localizedDescription)"
++    }
++    current = item.userInfo[NSUnderlyingErrorKey] as? NSError
++  }
++  return error.localizedDescription
++}
+diff --git a/node_modules/expo-video/ios/VideoPlayerObserver.swift b/node_modules/expo-video/ios/VideoPlayerObserver.swift
+index da422f8..6128f37 100644
+--- a/node_modules/expo-video/ios/VideoPlayerObserver.swift
++++ b/node_modules/expo-video/ios/VideoPlayerObserver.swift
+@@ -412,7 +412,7 @@ class VideoPlayerObserver: VideoSourceLoaderListener {
+     // The AVPlayerItem.error can't be modified, so we have a custom field for caching errors
+     if newStatus == .error {
+       let playerItemError = (playerItem as? VideoPlayerItem)?.urlAsset.cachingError ?? playerItem.error ?? error
+-      error = PlayerItemLoadException(playerItemError?.localizedDescription)
++      error = PlayerItemLoadException(luchePlaybackErrorDescription(playerItemError))
+       status = .error
+     }
+ 
+@@ -433,7 +433,7 @@ class VideoPlayerObserver: VideoSourceLoaderListener {
+     }
+ 
+     if player.status == .failed {
+-      error = PlayerException(player.error?.localizedDescription)
++      error = PlayerException(luchePlaybackErrorDescription(player.error))
+       status = .error
+     }
+   }

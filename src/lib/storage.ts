@@ -4,11 +4,20 @@ import { getNetworkStateAsync, useNetworkState } from 'expo-network';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 
+import {
+  allowBackgroundWork, endBackgroundWork, ensureBackgroundWork,
+  isBackgroundWorkPaused, onBackgroundExpiration, onBackgroundTick, updateBackgroundWork,
+} from './backgroundRuntime';
+import { armResultNotification, dismissResultNotifications, notifyReadyResults, requestResultNotifications } from './resultNotifications';
+import { clearWorkTimeout, setWorkTimeout } from './workTimers';
+
 import { ApiError, ensurePatientOnboarded } from './api';
 import { isCaptureActive, subscribeCaptureActivity } from './captureActivity';
+import { supersedeCheckupRetakes } from './checkupRetakes';
 import {
   clearAllCaptureIntentsAndFiles,
   clearCaptureIntent,
+  clearGuestCaptureIntent,
   recoverCaptureIntent,
 } from './captureRecovery';
 import {
@@ -22,6 +31,8 @@ import {
   uploadRecording,
 } from './cloud';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { deletedGuestIds, loadDeletedGuests, subscribeGuestDeletion } from './guestDeletionState';
+import { clearSelfProfiles } from './selfProfile';
 import { FaceBlurCancelledError, prepareFaceBlurredVideo } from './faceBlur';
 import { getPrivacyBlurSettings } from './faceBlurSettings';
 import {
@@ -99,6 +110,13 @@ let pollWakeTimer: ReturnType<typeof setTimeout> | null = null;
 let resumePromise: Promise<void> | null = null;
 const refreshRequests = new Map<string, Promise<void>>();
 const pipelineCooldowns = new Map<string, number>();
+const pausedGuests = new Map<string, number>();
+const guestPurges = new Map<string, Promise<void>>();
+const guestStages = new Map<string, Set<Promise<Recording>>>();
+const guestWorkKey = (accountId: string, guestId: string) => `${accountId}:${guestId}`;
+function guestWorkBlocked(accountId: string, guestId?: string) {
+  return !!guestId && (deletedGuestIds(accountId).has(guestId) || pausedGuests.has(guestWorkKey(accountId, guestId)));
+}
 
 // One byte upload at a time. Parallel videos compete on weak uplinks and can
 // all overrun their presigned URL lifetimes.
@@ -405,15 +423,22 @@ async function ensureLoaded(): Promise<Recording[]> {
           return migrated;
         }),
       );
+      const reconciled = supersedeCheckupRetakes(loaded);
+      for (let index = 0; index < reconciled.length; index++) {
+        if (reconciled[index] !== loaded[index]) {
+          rebound = true;
+          await persistRecordingManifest(accountId, reconciled[index]);
+        }
+      }
       if (
         chunked == null ||
         rebound ||
         manifests.some((recording) => !parsed.includes(recording))
       ) {
-        await writeRecordingSnapshot(accountId, loaded);
+        await writeRecordingSnapshot(accountId, reconciled);
       }
-      if (epoch === accountEpoch && accountId === activeAccountId) cache = loaded;
-      return loaded;
+      if (epoch === accountEpoch && accountId === activeAccountId) cache = reconciled;
+      return reconciled;
     })();
   }
   return loadPromise;
@@ -437,6 +462,11 @@ async function patch(
         ? {
             ...recording,
             ...partial,
+            // A running privacy/upload task may still hold a pre-retake snapshot.
+            ...(recording.supersededEvaluationRun ? {
+              evaluationRun: undefined,
+              supersededEvaluationRun: recording.supersededEvaluationRun,
+            } : {}),
             localRevision: (recording.localRevision ?? 0) + 1,
           }
         : recording,
@@ -492,8 +522,8 @@ async function uploadWithRetry(
       onProgress?.(0);
       const response = await serialUpload(() =>
         signal
-          ? uploadRecording(rec.videoUri!, rec.testId, onProgress, signal, expectedAccountId, artifactKind)
-          : uploadRecording(rec.videoUri!, rec.testId, onProgress, undefined, expectedAccountId, artifactKind),
+          ? uploadRecording(rec.videoUri!, rec.testId, onProgress, signal, expectedAccountId, artifactKind, ...(rec.guestId ? [{ id: rec.guestId, clientTrialId: rec.id }] : []))
+          : uploadRecording(rec.videoUri!, rec.testId, onProgress, undefined, expectedAccountId, artifactKind, ...(rec.guestId ? [{ id: rec.guestId, clientTrialId: rec.id }] : [])),
       );
       return response.uploadId;
     } catch (error) {
@@ -543,7 +573,7 @@ async function createTrialWithRetry(
             rec.createdAt,
             rec.evaluatedSide,
             rec.guestId,
-            rec.evaluationRun,
+            rec.evaluationRun ?? rec.supersededEvaluationRun,
             signal,
             expectedAccountId,
           )
@@ -554,7 +584,7 @@ async function createTrialWithRetry(
             rec.createdAt,
             rec.evaluatedSide,
             rec.guestId,
-            rec.evaluationRun,
+            rec.evaluationRun ?? rec.supersededEvaluationRun,
             undefined,
             expectedAccountId,
           );
@@ -762,6 +792,8 @@ async function runDrive(
   signal: AbortSignal,
 ) {
   try {
+    await ensureBackgroundWork();
+    throwIfCancelled(signal);
     let uploadRecording = rec;
     const privacyRequested = recordingRequestsPrivacy(uploadRecording);
     if (
@@ -784,7 +816,7 @@ async function runDrive(
           uploadRecording.createdAt,
           uploadRecording.evaluatedSide,
           uploadRecording.guestId,
-          uploadRecording.evaluationRun,
+          uploadRecording.evaluationRun ?? uploadRecording.supersededEvaluationRun,
           signal,
           accountId,
         );
@@ -848,16 +880,20 @@ async function runDrive(
         resumable: undefined,
         permanent: undefined,
       }, epoch);
-      recordDiagnostic('privacy_blur_started', {
-        recordingId: rec.id,
-        faces: true,
-        background: true,
-      });
-
+      const queuedAt = performance.now();
+      let startedAt: number | undefined;
       try {
         const originalUri = sourceVideoUri;
-        const prepared = await serialPrivacyBlur(() =>
-          prepareFaceBlurredVideo(
+        const prepared = await serialPrivacyBlur(() => {
+          throwIfCancelled(signal);
+          startedAt = performance.now();
+          recordDiagnostic('privacy_blur_started', {
+            recordingId: rec.id,
+            faces: true,
+            background: true,
+            queueWaitMs: Math.round(startedAt - queuedAt),
+          });
+          return prepareFaceBlurredVideo(
             rec.id,
             originalUri,
             {
@@ -866,8 +902,9 @@ async function runDrive(
             },
             (privacyBlurProgress) => patchVolatile(rec.id, { privacyBlurProgress }, epoch),
             signal,
-          ),
-        );
+          );
+        });
+        const preparedAt = performance.now();
         throwIfCancelled(signal);
         const preparedRecording: Recording = {
           ...uploadRecording,
@@ -915,6 +952,9 @@ async function runDrive(
           faceSamples: prepared.faceSamples,
           detectorMode: prepared.detectorMode,
           recovered: prepared.recovered,
+          queueWaitMs: Math.round((startedAt ?? queuedAt) - queuedAt),
+          preparationMs: Math.round(preparedAt - (startedAt ?? queuedAt)),
+          ...prepared.timings,
         });
       } catch (error) {
         if (error instanceof FaceBlurCancelledError || signal.aborted) throw error;
@@ -928,6 +968,8 @@ async function runDrive(
         }, epoch);
         recordDiagnostic('privacy_blur_failed', {
           recordingId: rec.id,
+          queueWaitMs: Math.round((startedAt ?? performance.now()) - queuedAt),
+          preparationMs: startedAt == null ? 0 : Math.round(performance.now() - startedAt),
           ...diagnosticErrorData(error),
         });
         return;
@@ -1030,20 +1072,32 @@ async function runDrive(
     });
     await patch(uploadRecording.id, finalPatch, epoch);
     if (isCurrent(epoch)) {
-      recordDiagnostic('pipeline_state', {
-        recordingId: rec.id,
-        status: finalPatch.status ?? rec.status,
-        ...(finalPatch.jobId ? { jobId: finalPatch.jobId } : {}),
-        ...(finalPatch.failReason ? { reason: finalPatch.failReason } : {}),
-      });
+      recordPipelineTransition(uploadRecording, finalPatch);
     }
   } catch (error) {
-    if (!(error instanceof OperationCancelledError) && !signal.aborted) throw error;
+    if (!(error instanceof OperationCancelledError) && !(error instanceof FaceBlurCancelledError) && !signal.aborted) throw error;
   }
+}
+
+/** Unchanged polls must not evict privacy timings from the diagnostic ring. */
+function recordPipelineTransition(before: Recording, partial: Partial<Recording>): void {
+  const after = { ...before, ...partial };
+  if (
+    before.status === after.status &&
+    before.jobId === after.jobId &&
+    before.failReason === after.failReason
+  ) return;
+  recordDiagnostic('pipeline_state', {
+    recordingId: after.id,
+    status: after.status,
+    ...(after.jobId ? { jobId: after.jobId } : {}),
+    ...(after.failReason ? { reason: after.failReason } : {}),
+  });
 }
 
 function startDrive(rec: Recording, stage: 'ingest' | 'poll'): Promise<void> {
   if (suspended || !activeAccountId) return Promise.resolve();
+  if (guestWorkBlocked(activeAccountId, rec.guestId)) return Promise.resolve();
   const epoch = accountEpoch;
   const accountId = activeAccountId;
   const operationKey = `${epoch}:${rec.id}`;
@@ -1068,9 +1122,10 @@ function startDrive(rec: Recording, stage: 'ingest' | 'poll'): Promise<void> {
 }
 
 function pumpPending() {
-  if (!cache || suspended || !activeAccountId) return;
+  if (!cache || suspended || !activeAccountId || isBackgroundWorkPaused()) return;
+  reconcileBackgroundWork();
   if (pollWakeTimer) {
-    clearTimeout(pollWakeTimer);
+    clearWorkTimeout(pollWakeTimer);
     pollWakeTimer = null;
   }
   const now = Date.now();
@@ -1087,7 +1142,7 @@ function pumpPending() {
     [...operations.keys()].map((key) => key.slice(key.indexOf(':') + 1)),
   );
   for (const id of pipelineCooldowns.keys()) activeIds.add(id);
-  const selected = selectPipelineBatch(cache, {
+  const selected = selectPipelineBatch(cache.filter(rec => !guestWorkBlocked(activeAccountId!, rec.guestId)), {
     activeIds,
     ingestSlots,
     pollSlots,
@@ -1120,9 +1175,61 @@ function pumpPending() {
   );
   const nextWakeAt = Math.min(nextPollAt ?? Infinity, nextCooldownAt ?? Infinity);
   if (Number.isFinite(nextWakeAt)) {
-    pollWakeTimer = setTimeout(pumpPending, Math.max(50, nextWakeAt - now));
+    pollWakeTimer = setWorkTimeout(pumpPending, Math.max(50, nextWakeAt - now));
   }
 }
+
+const backgroundBatchIds = new Set<string>();
+let finishingBackground: Promise<void> | undefined;
+let backgroundReconcileAgain = false;
+function reconcileBackgroundWork() {
+  if (!cache || !activeAccountId) return;
+  const pending = cache.filter(r => ['preparing', 'uploading', 'processing'].includes(r.status));
+  pending.forEach(r => backgroundBatchIds.add(r.id));
+  const batch = cache.filter(r => backgroundBatchIds.has(r.id));
+  const fraction = (r: Recording) => r.status === 'done' || r.status === 'needs_retry' ? 1
+    : r.status === 'preparing' ? (r.privacyBlurProgress ?? 0) * 0.75
+    : r.status === 'uploading' ? 0.75 + (r.uploadProgress ?? 0) * 0.15
+    : r.status === 'processing' ? 0.9 : 0;
+  if (pending.length) {
+    updateBackgroundWork(batch.reduce((sum, r) => sum + fraction(r), 0) / Math.max(1, batch.length), '');
+  }
+  if (finishingBackground) { backgroundReconcileAgain = true; return; }
+  backgroundReconcileAgain = false;
+  const epoch = accountEpoch;
+  const accountId = activeAccountId;
+  const finish = notifyReadyResults(accountId,
+    () => (cache ?? []).filter(r => !guestWorkBlocked(accountId, r.guestId)),
+    () => isCurrent(epoch, accountId))
+    .catch(error => recordDiagnostic('result_notification_failed', diagnosticErrorData(error)))
+    .finally(() => {
+      if (finishingBackground !== finish) return;
+      finishingBackground = undefined;
+      if (backgroundReconcileAgain) { reconcileBackgroundWork(); return; }
+      if (!isCurrent(epoch, accountId)) return;
+      if (cache?.some(r => ['preparing', 'uploading', 'processing'].includes(r.status)) || operations.size) return;
+      endBackgroundWork(!cache?.some(r => backgroundBatchIds.has(r.id) && ['failed', 'blur_failed'].includes(r.status)));
+      backgroundBatchIds.clear();
+    });
+  finishingBackground = finish;
+}
+
+onBackgroundTick(pumpPending);
+onBackgroundExpiration(() => {
+  cancelOperations();
+  recordDiagnostic('background_work_expired', {});
+  const epoch = accountEpoch;
+  void withCacheMutation(async () => {
+    if (!cache || !isCurrent(epoch)) return;
+    const recovered = recoverInterruptedPrivacyWork(cache);
+    if (!recovered.recoveredIds.length) return;
+    // Surface the existing Resume processing action if the OS/user stops the
+    // lease. Never leave an idle model displaying "De-identifying" forever.
+    cache = recovered.recordings;
+    await persist(epoch);
+    emit();
+  }).catch(error => recordDiagnostic('background_recovery_failed', diagnosticErrorData(error)));
+});
 
 subscribeCaptureActivity((active) => {
   if (active && cache) {
@@ -1145,6 +1252,7 @@ async function performRefreshFromServer(
   if (!isCurrent(expectedEpoch)) return;
   const accountId = activeAccountId;
   if (!accountId) return;
+  if (guestId && deletedGuestIds(accountId).has(guestId)) return;
   let response: Awaited<ReturnType<typeof fetchOwnedTrials>>;
   try {
     response = await fetchOwnedTrials(guestId, accountId);
@@ -1170,6 +1278,7 @@ async function performRefreshFromServer(
   await withCacheMutation(async () => {
     const local = await ensureLoaded();
     if (!isCurrent(expectedEpoch)) return;
+    if (guestId && deletedGuestIds(accountId).has(guestId)) return;
     const merged = mergeTrialScope(local, response.trials, guestId);
     cache = merged.recordings;
     localUrisToDelete = merged.localUrisToDelete;
@@ -1198,11 +1307,13 @@ function refreshFromServer(
 
 function cancelOperations() {
   if (pollWakeTimer) {
-    clearTimeout(pollWakeTimer);
+    clearWorkTimeout(pollWakeTimer);
     pollWakeTimer = null;
   }
   pipelineCooldowns.clear();
   for (const operation of operations.values()) operation.controller.abort();
+  endBackgroundWork(false);
+  backgroundBatchIds.clear();
 }
 
 /**
@@ -1216,6 +1327,7 @@ export function suspendRecordingAccessForAuthLoss(): void {
   suspended = true;
   accountEpoch += 1;
   cancelOperations();
+  void dismissResultNotifications().catch(() => {});
   activeAccountId = null;
   requestedAccountId = null;
   activationPromise = null;
@@ -1262,10 +1374,17 @@ async function activateAccount(accountId: string): Promise<void> {
     activeAccountId = accountId;
     activateGuestAccount(accountId);
     suspended = false;
+    allowBackgroundWork();
     cache = null;
     loadPromise = null;
-    const loaded = await ensureLoaded();
+    await loadDeletedGuests(accountId);
+    let loaded = await ensureLoaded();
     if (!isCurrent(epoch, accountId)) return;
+    for (const guestId of deletedGuestIds(accountId)) {
+      await clearGuestCaptureIntent(accountId, guestId);
+      if (loaded.some(recording => recording.guestId === guestId)) await purgeGuestRecordings(accountId, guestId);
+    }
+    loaded = await ensureLoaded();
     await excludeRecordingsFromBackup().catch((error) => {
       recordDiagnostic('recording_backup_exclusion_failed', diagnosticErrorData(error));
     });
@@ -1278,6 +1397,11 @@ async function activateAccount(accountId: string): Promise<void> {
       recordDiagnostic('privacy_blur_interrupted', {
         recordingIds: recovered.recoveredIds.join(','),
       });
+    }
+    for (const recording of cache ?? []) {
+      if (['preparing', 'uploading', 'processing'].includes(recording.status) && recording.originalVideoUri) {
+        await armResultNotification(accountId, recording).catch(error => recordDiagnostic('notification_arm_failed', diagnosticErrorData(error)));
+      }
     }
     const interruptedCapture = await recoverCaptureIntent(accountId);
     if (interruptedCapture && isCurrent(epoch, accountId)) {
@@ -1315,7 +1439,26 @@ async function activateAccount(accountId: string): Promise<void> {
   }
 }
 
-async function stage(
+function stage(
+  testId: TestId,
+  videoUri: string,
+  evaluatedSide?: EvaluatedSide,
+  guestId?: string,
+  evaluationRun?: EvaluationRunRef,
+  expectedAccountId?: string,
+): Promise<Recording> {
+  const key = guestId && expectedAccountId ? guestWorkKey(expectedAccountId, guestId) : null;
+  const pending = key ? guestStages.get(key) ?? new Set<Promise<Recording>>() : null;
+  const operation = stageRecordingFile(testId, videoUri, evaluatedSide, guestId, evaluationRun, expectedAccountId)
+    .finally(() => {
+      pending?.delete(operation);
+      if (key && pending?.size === 0) guestStages.delete(key);
+    });
+  if (key && pending) { pending.add(operation); guestStages.set(key, pending); }
+  return operation;
+}
+
+async function stageRecordingFile(
   testId: TestId,
   videoUri: string,
   evaluatedSide?: EvaluatedSide,
@@ -1333,6 +1476,7 @@ async function stage(
   }
   await ensureLoaded();
   const epoch = accountEpoch;
+  if (guestWorkBlocked(expectedAccountId, guestId)) throw new Error('guest unavailable');
   const id = makeId();
   const durableUri = recordingFileUri(videoUri, id);
   const sourceSize = await recordingFileSize(videoUri);
@@ -1413,26 +1557,47 @@ async function stage(
 }
 
 async function finalizeDraft(id: string): Promise<Recording> {
+  const epoch = accountEpoch;
+  const accountId = activeAccountId;
   const existing = (await ensureLoaded()).find((recording) => recording.id === id);
+  if (!accountId || !isCurrent(epoch, accountId)) throw new Error('recording account changed');
   if (!existing) throw new Error('saved recording unavailable');
-  if (existing.status !== 'draft') return existing;
-  const privacyRequested = recordingRequestsPrivacy(existing);
-  try {
-    await patch(id, {
-      status: privacyRequested ? 'preparing' : 'uploading',
-      privacyBlurState: privacyRequested ? 'pending' : undefined,
-      privacyBlurProgress: privacyRequested ? 0 : undefined,
-      uploadProgress: privacyRequested ? undefined : 0,
-      uploadAttempt: privacyRequested ? undefined : 1,
-      uploadRetrying: privacyRequested ? undefined : false,
-      failReason: undefined,
-    });
-  } catch (error) {
-    if ((cache ?? []).find((recording) => recording.id === id)?.status !== 'preparing') {
-      throw error;
+  if (AppState.currentState === 'active') allowBackgroundWork();
+  await armResultNotification(accountId, existing).catch(error => recordDiagnostic('notification_arm_failed', diagnosticErrorData(error)));
+  void requestResultNotifications().catch(error => recordDiagnostic('notification_permission_failed', diagnosticErrorData(error)));
+  if (existing.status === 'draft') {
+    const privacyRequested = recordingRequestsPrivacy(existing);
+    try {
+      await patch(id, {
+        status: privacyRequested ? 'preparing' : 'uploading',
+        privacyBlurState: privacyRequested ? 'pending' : undefined,
+        privacyBlurProgress: privacyRequested ? 0 : undefined,
+        uploadProgress: privacyRequested ? undefined : 0,
+        uploadAttempt: privacyRequested ? undefined : 1,
+        uploadRetrying: privacyRequested ? undefined : false,
+        failReason: undefined,
+      }, epoch);
+    } catch (error) {
+      if ((cache ?? []).find((recording) => recording.id === id)?.status !== 'preparing') {
+        throw error;
+      }
+      recordDiagnostic('recording_index_write_failed', diagnosticErrorData(error));
     }
-    recordDiagnostic('recording_index_write_failed', diagnosticErrorData(error));
   }
+  // Commit the new clip before changing previous attempts. A crash between
+  // these writes is repaired from the durable manifests during loading.
+  await withCacheMutation(async () => {
+    if (!isCurrent(epoch, accountId)) throw new Error('recording account changed');
+    const current = await ensureLoaded();
+    const next = supersedeCheckupRetakes(current);
+    for (let index = 0; index < next.length; index++) {
+      if (next[index] !== current[index]) await persistRecordingManifest(accountId, next[index]);
+    }
+    if (!isCurrent(epoch)) throw new Error('recording account changed');
+    cache = next;
+    schedulePersist(epoch);
+    emit();
+  });
   const finalized = (cache ?? []).find((recording) => recording.id === id);
   if (!finalized) throw new Error('saved recording unavailable');
   resumePending();
@@ -1518,7 +1683,88 @@ async function removeById(id: string) {
   });
 }
 
+export async function guestRecordingsForDeletion(accountId: string, guestId: string): Promise<Recording[]> {
+  const epoch = accountEpoch;
+  if (!isCurrent(epoch, accountId)) throw new Error('recording account changed');
+  const records = await ensureLoaded();
+  // A capture interrupted during its move may have only a recovery manifest.
+  const manifests = await readRecordingManifests(accountId);
+  if (!isCurrent(epoch, accountId)) throw new Error('recording account changed');
+  const byId = new Map([...manifests, ...records].map(recording => [recording.id, recording]));
+  return [...byId.values()].filter(recording => recording.guestId === guestId);
+}
+
+/** Stop this person's uploads/preprocessing before deleting any of their bytes. */
+export async function pauseGuestRecordings(accountId: string, guestId: string): Promise<() => void> {
+  const key = guestWorkKey(accountId, guestId);
+  pausedGuests.set(key, (pausedGuests.get(key) ?? 0) + 1);
+  const release = () => {
+    const count = (pausedGuests.get(key) ?? 1) - 1;
+    if (count > 0) pausedGuests.set(key, count); else pausedGuests.delete(key);
+    pumpPending();
+  };
+  try {
+    // Finish already-started camera moves before taking the final count or
+    // removing originals. New stages are blocked by pausedGuests above.
+    await Promise.allSettled([...(guestStages.get(key) ?? [])]);
+    const records = await guestRecordingsForDeletion(accountId, guestId);
+    const pending = records.flatMap(recording => {
+      const operation = operationForRecording(recording.id);
+      if (!operation) return [];
+      operation.controller.abort();
+      return [operation.promise];
+    });
+    await Promise.allSettled(pending);
+    await cacheMutationTail;
+    return release;
+  } catch (error) { release(); throw error; }
+}
+
+export function purgeGuestRecordings(accountId: string, guestId: string): Promise<void> {
+  const key = guestWorkKey(accountId, guestId);
+  const existing = guestPurges.get(key);
+  if (existing) return existing;
+  const operation = (async () => {
+    if (!(await loadDeletedGuests(accountId)).has(guestId)) throw new Error('guest deletion not confirmed');
+    const release = await pauseGuestRecordings(accountId, guestId);
+    const epoch = accountEpoch;
+    try {
+      const recordings = await guestRecordingsForDeletion(accountId, guestId);
+      await clearGuestCaptureIntent(accountId, guestId);
+      for (const recording of recordings) {
+        const uris = new Set([recording.videoUri, recording.originalVideoUri, recording.privacyBlurOriginalUri, recording.stagingSourceUri]);
+        for (const uri of uris) if (uri) await deleteRecordingFile(uri);
+        await deletePrivacyBlurArtifacts(recording.id);
+        await deleteRecordingManifest(recording.id);
+      }
+      await withCacheMutation(async () => {
+        if (!isCurrent(epoch, accountId)) throw new Error('recording account changed');
+        cache = (await ensureLoaded()).filter(recording => recording.guestId !== guestId);
+        // Both A/B index generations must forget the deleted recordings.
+        await persist(epoch);
+        await persist(epoch);
+        await AsyncStorage.removeItem(storageKey(accountId));
+        emit();
+      });
+    } finally { release(); }
+  })().finally(() => guestPurges.delete(key));
+  guestPurges.set(key, operation);
+  return operation;
+}
+
+subscribeGuestDeletion((accountId, guestId) => {
+  if (activeAccountId !== accountId || suspended) return;
+  emit();
+  void purgeGuestRecordings(accountId, guestId).catch(error => recordDiagnostic('guest_cleanup_failed', diagnosticErrorData(error)));
+});
+
 function resumePending() {
+  // Running operations also need a new lease after a failed foreground start;
+  // they will not pass through runDrive again merely because the app reopened.
+  if (cache && !suspended && AppState.currentState === 'active' &&
+      cache.some(r => ['preparing', 'uploading', 'processing'].includes(r.status))) {
+    void ensureBackgroundWork();
+  }
   if (!cache || suspended || resumePromise) {
     pumpPending();
     return;
@@ -1528,6 +1774,10 @@ function resumePending() {
     if (!cache || !isCurrent(epoch)) return;
     let changed = false;
     cache = cache.map((recording) => {
+      if (recording.status === 'preparing' && recording.privacyBlurState === 'processing' && !operationForRecording(recording.id)) {
+        changed = true;
+        return { ...recording, privacyBlurState: 'pending' as const, privacyBlurProgress: undefined };
+      }
       if (recording.status !== 'failed' || !recording.resumable) return recording;
       changed = true;
       return {
@@ -1583,6 +1833,11 @@ async function retryPrivacyBlur(id: string) {
     existing.uploadId ||
     existing.jobId
   ) return;
+  if (AppState.currentState === 'active') allowBackgroundWork();
+  if (activeAccountId) {
+    await armResultNotification(activeAccountId, existing).catch(error => recordDiagnostic('notification_arm_failed', diagnosticErrorData(error)));
+    void requestResultNotifications().catch(error => recordDiagnostic('notification_permission_failed', diagnosticErrorData(error)));
+  }
   await patch(id, {
     status: 'preparing',
     videoUri: existing.originalVideoUri ?? existing.videoUri,
@@ -1613,6 +1868,7 @@ async function purgeForLogout(): Promise<void> {
   await deleteAllRecordingFiles();
   await clearRecordingExportTemps();
   await clearAllGuestCaches();
+  await clearSelfProfiles();
   const recordingKeys = (await AsyncStorage.getAllKeys()).filter(
     (key) =>
       key === LEGACY_STORAGE_KEY ||
@@ -1654,6 +1910,7 @@ export function useRecordings(
         suspended
       ) return;
       const epoch = accountEpoch;
+      allowBackgroundWork();
       void refreshFromServer(guestId, epoch).catch((error) => {
         recordDiagnostic('recording_sync_failed', diagnosticErrorData(error));
       });
@@ -1744,9 +2001,10 @@ export function useRecordings(
     [allRecordings],
   );
   const recordings = useMemo(() => {
-    if (includeGuests) return allRecordings;
-    return allRecordings.filter((recording) => recording.guestId === guestId);
-  }, [allRecordings, guestId, includeGuests]);
+    const available = accountId ? allRecordings.filter(recording => !recording.guestId || !deletedGuestIds(accountId).has(recording.guestId)) : [];
+    if (includeGuests) return available;
+    return available.filter((recording) => recording.guestId === guestId);
+  }, [accountId, allRecordings, guestId, includeGuests]);
 
   return {
     recordings,
@@ -1765,7 +2023,15 @@ export function useRecordings(
 }
 
 export const __testing = {
+  activateAccount,
+  stage,
+  finalizeDraft,
+  patch,
+  ensureLoaded,
   driveOnce,
+  resumePending,
+  reconcileBackgroundWork,
+  recordPipelineTransition,
   recoverInterruptedPrivacyWork,
   serializeCacheMutation: withCacheMutation,
   readRecordingSnapshot,
