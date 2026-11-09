@@ -1,13 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { ApiError, apiFetch } from './api';
-import {
-  PRIMARY_API_BASE,
-  RUSSIAN_API_BASE,
-  RUSSIAN_EDGE_ORIGIN,
-  preferApiBase,
-} from './edge';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { recoverConnection } from './networkRecovery';
 import type { CloudResult, EvaluationRunRef } from './types';
 import type { EvaluatedSide, TestId } from './tests';
 import {
@@ -89,18 +84,6 @@ function noScoreReasons(trial: TrialDetail): string[] {
  * before the separate createAnalysisTrial call, so a transient API failure
  * never forces the large file to be sent again.
  */
-/**
- * The raw R2 PUT bypasses fetchWithTransport, so a blocked or stalled R2
- * path must flip the API-base preference by hand: the retry's presign then
- * arrives via the other base and routeRussianStorageUrls yields the
- * alternate upload route (direct R2 ↔ the edge's /r2 proxy). Without this,
- * a healthy primary API + blocked R2 is an infinite retry loop.
- */
-function demoteUploadRoute(uploadUrl: string): void {
-  const viaEdgeProxy = uploadUrl.startsWith(RUSSIAN_EDGE_ORIGIN);
-  preferApiBase(viaEdgeProxy ? PRIMARY_API_BASE : RUSSIAN_API_BASE);
-}
-
 export async function uploadRecording(
   videoUri: string,
   testId: TestId,
@@ -134,7 +117,7 @@ export async function uploadRecording(
     elapsedMs: Date.now() - presignStartedAt,
   });
 
-  // 2. PUT the raw bytes straight to R2. Content-Type must match the presign.
+  // 2. PUT the raw bytes to the signed URL. Content-Type must match the presign.
   // Use the immediate foreground URLSession. Durable local state restarts a
   // failed transfer after foreground/relaunch, while iOS background sessions
   // can perform opaque whole-file retries whose progress jumps backwards.
@@ -193,14 +176,18 @@ export async function uploadRecording(
       ...diagnosticErrorData(error),
     });
     if (signal?.aborted) throw new OperationCancelledError();
-    demoteUploadRoute(req.upload_url);
+    await recoverConnection(req.upload_url);
     if (stalled) throw new Error('upload stalled for 45 seconds');
     throw error;
   } finally {
     signal?.removeEventListener('abort', onAbort);
   }
   if (stallTimer) clearTimeout(stallTimer);
-  if (!put) throw new Error('upload interrupted');
+  if (!put) {
+    if (signal?.aborted) throw new OperationCancelledError();
+    await recoverConnection(req.upload_url);
+    throw new Error('upload interrupted');
+  }
   if (put.status < 200 || put.status >= 300) {
     const r2Code = put.body?.match(/<Code>([^<]{1,80})<\/Code>/)?.[1];
     recordDiagnostic('r2_upload_failed', {
@@ -208,9 +195,6 @@ export async function uploadRecording(
       status: put.status,
       ...(r2Code ? { r2Code } : {}),
     });
-    // A real R2 rejection carries an XML <Code>; an error status without one
-    // is a middlebox/DPI block page — reroute the retry.
-    if (!r2Code) demoteUploadRoute(req.upload_url);
     throw new Error(`upload failed (${put.status})`);
   }
   onProgress?.(1);

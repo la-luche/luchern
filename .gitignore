@@ -47,3 +47,5 @@ example
 # generated native folders
 /ios
 /android
+
+/modules/network-recovery/android/build/

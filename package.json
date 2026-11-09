@@ -84,5 +84,15 @@
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ]
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-file-system",
+          "expo-video"
+        ]
+      }
+    }
   }
 }

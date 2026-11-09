@@ -1,12 +1,4 @@
-/**
- * Network-condition matrix: RU networks can block, throttle, or PARTIALLY
- * serve any subset of requests — headers without body, HTTP-status block
- * pages, connection resets mid-body. This suite enumerates combinations of
- * route behaviors and asserts the transport invariant: if any usable
- * configuration exists, a request converges to it within one apiFetch call
- * plus one caller retry — no combination is a permanent dead end, and
- * nothing hangs forever.
- */
+/** Bounded behavior on complete, partial, stalled and rejected connections. */
 jest.mock('@clerk/clerk-expo', () => ({ getClerkInstance: jest.fn() }));
 jest.mock('../diagnostics', () => ({
   diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
@@ -15,15 +7,8 @@ jest.mock('../diagnostics', () => ({
 
 import { getClerkInstance } from '@clerk/clerk-expo';
 
-import { API_BASE, ApiError, FALLBACK_API_BASE, apiFetch } from '../api';
-import {
-  PRIMARY_API_BASE,
-  RUSSIAN_CLERK_PROXY,
-  RUSSIAN_EDGE_ORIGIN,
-  apiBaseOrder,
-  resetPreferredApiBase,
-  selectClerkProxyUrl,
-} from '../edge';
+import { API_BASE, ApiError, apiFetch } from '../api';
+
 import { ApiNetworkError, ApiTimeoutError } from '../transport';
 
 type RouteState =
@@ -42,10 +27,6 @@ const STATES: RouteState[] = [
 
 // A route serves a complete, valid response only in these states.
 const usable = (s: RouteState) => s === 'healthy' || s === 'slow';
-// The probe now downloads the body, so a stalled or reset body FAILS it —
-// only a block page (fast, complete HTML body) still deceives it.
-const probePasses = (s: RouteState) => usable(s) || s === 'blockPage200';
-
 function stalledBodyRead(signal: AbortSignal | undefined): Promise<never> {
   return new Promise((_resolve, reject) => {
     const abort = () => reject(new TypeError('Network request failed'));
@@ -120,11 +101,9 @@ function respond(state: RouteState, signal: AbortSignal | undefined): Promise<Re
   });
 }
 
-function installFetch(primary: RouteState, edge: RouteState): void {
-  globalThis.fetch = jest.fn((url: string, init?: RequestInit) => {
-    const isEdge = String(url).startsWith(RUSSIAN_EDGE_ORIGIN);
-    return respond(isEdge ? edge : primary, init?.signal ?? undefined);
-  }) as unknown as typeof fetch;
+function installFetch(state: RouteState): void {
+  globalThis.fetch = jest.fn((_url: string, init?: RequestInit) =>
+    respond(state, init?.signal ?? undefined)) as unknown as typeof fetch;
 }
 
 type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
@@ -149,7 +128,6 @@ const isTransportFailure = (e: unknown) =>
 describe('network-condition matrix', () => {
   beforeEach(async () => {
     jest.useFakeTimers();
-    resetPreferredApiBase();
     (getClerkInstance as jest.Mock).mockReturnValue({
       session: { getToken: jest.fn().mockResolvedValue('token') },
     });
@@ -160,96 +138,32 @@ describe('network-condition matrix', () => {
     jest.useRealTimers();
   });
 
-  describe('apiFetch GET converges whenever any route is usable', () => {
-    const combos = STATES.flatMap((p) => STATES.map((e) => [p, e] as const));
-
-    it.each(combos)('primary=%s edge=%s', async (primary, edge) => {
-      installFetch(primary, edge);
-
-      const anyUsable = usable(primary) || usable(edge);
-      const first = await settle(apiFetch('/ping'));
-
-      if (first.ok) {
-        expect(anyUsable).toBe(true);
-        return;
-      }
-      expect(isTransportFailure(first.error)).toBe(true);
-      // First call may fail while probing a compromised route (e.g. a
-      // stalled body is only discovered after headers). The invariant is
-      // that failure demoted the bad route, so the caller's single retry
-      // succeeds whenever anything usable exists.
-      const second = await settle(apiFetch('/ping'));
-      expect(second.ok).toBe(anyUsable);
-      if (!second.ok) expect(isTransportFailure(second.error)).toBe(true);
-    });
-  });
-
-  describe('clerk probe selection never hangs; direct has priority when it answers', () => {
-    const combos = STATES.flatMap((p) => STATES.map((e) => [p, e] as const));
-
-    it.each(combos)('direct=%s edge=%s', async (direct, edge) => {
-      installFetch(direct, edge);
-
-      const selection = selectClerkProxyUrl();
-      const outcome = selection.then((value) => value);
-      await jest.advanceTimersByTimeAsync(20_000);
-      const proxyUrl = await outcome;
-
-      if (probePasses(direct)) {
-        // Direct priority: whenever direct answers its probe, direct wins —
-        // a fast edge answer must never steal the launch (the historical
-        // "US users exiled to the edge" bug).
-        expect(proxyUrl).toBeUndefined();
-        expect(apiBaseOrder()[0]).toBe(PRIMARY_API_BASE);
-      } else if (probePasses(edge)) {
-        expect(proxyUrl).toBe(RUSSIAN_CLERK_PROXY);
-      } else {
-        // Nothing answered and no stored verdict: canonical direct default.
-        expect(proxyUrl).toBeUndefined();
-        expect(apiBaseOrder()[0]).toBe(PRIMARY_API_BASE);
-      }
-    });
-  });
-
-  it('a stalled-body primary demotes itself so the retry uses the edge', async () => {
-    installFetch('stalledBody', 'healthy');
-
-    const first = await settle(apiFetch('/ping'));
-    expect(first.ok).toBe(false);
-
-    const calls = (globalThis.fetch as jest.Mock).mock.calls.length;
-    const second = await settle(apiFetch('/ping'));
-    expect(second.ok).toBe(true);
-    // Retry went straight to the edge (demoted preference), not primary.
-    const retryUrl = (globalThis.fetch as jest.Mock).mock.calls[calls][0] as string;
-    expect(retryUrl.startsWith(FALLBACK_API_BASE)).toBe(true);
-  });
-
-  it('a 403-serving middlebox on primary is not a dead end for reads', async () => {
-    installFetch('http403', 'healthy');
-
+  it.each(STATES)('GET finishes or reports a bounded error: %s', async (state) => {
+    installFetch(state);
     const result = await settle(apiFetch('/ping'));
-    expect(result.ok).toBe(true);
-    const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([u]) => u as string);
-    expect(urls[0]).toBe(`${API_BASE}/ping`);
-    expect(urls[1].startsWith(FALLBACK_API_BASE)).toBe(true);
+    expect(result.ok).toBe(usable(state));
+    if (!result.ok) expect(isTransportFailure(result.error)).toBe(true);
+    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBeLessThanOrEqual(3);
+    expect((globalThis.fetch as jest.Mock).mock.calls.every(([url]) => url === `${API_BASE}/ping`)).toBe(true);
   });
 
-  it('a captive-portal 200 block page on primary converges to the edge', async () => {
-    installFetch('blockPage200', 'healthy');
-
-    // Headers say 200, body is HTML: first call fails on parse and demotes.
-    const first = await settle(apiFetch('/ping'));
-    expect(first.ok).toBe(false);
-    const second = await settle(apiFetch('/ping'));
-    expect(second.ok).toBe(true);
+  it.each(STATES)('POST is never repeated after an ambiguous outcome: %s', async (state) => {
+    installFetch(state);
+    const result = await settle(apiFetch('/trials', { method: 'POST' }));
+    expect(result.ok).toBe(usable(state));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('slow routes inside the window are served, not flipped away from', async () => {
-    installFetch('slow', 'refused');
-
-    const result = await settle(apiFetch('/ping'));
-    expect(result.ok).toBe(true);
-    expect((globalThis.fetch as jest.Mock).mock.calls[0][0]).toBe(`${PRIMARY_API_BASE}/ping`);
+  it('honors caller cancellation without starting another request', async () => {
+    installFetch('blackhole');
+    const controller = new AbortController();
+    const pending = apiFetch('/ping', { signal: controller.signal });
+    const outcome = pending.catch(error => error);
+    for (let turn = 0; turn < 20 && !(globalThis.fetch as jest.Mock).mock.calls.length; turn += 1) {
+      await Promise.resolve();
+    }
+    controller.abort();
+    await settle(outcome);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

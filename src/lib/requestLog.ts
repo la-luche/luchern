@@ -1,22 +1,12 @@
 import { recordDiagnostic } from './diagnostics';
+import { isConnectionFailure } from './connectivity';
+import { recoverConnection } from './networkRecovery';
 
-/**
- * Records which backend host each request ACTUALLY hit — not which transport
- * the selection logic chose. Added after a debugging session where the two
- * disagreed for weeks (clerk-expo dropped proxyUrl, so "ru-edge selected"
- * sessions still sent every Clerk call direct) and the exported diagnostics
- * could not show it. Runs in release builds.
- *
- * Noise control: every non-GET is recorded; GETs only when they fail or take
- * longer than SLOW_GET_MS (token refreshes fire constantly and would flush
- * the 200-event ring).
- */
+/** Record slow/failed reads and writes without credentials or query strings. */
 const SLOW_GET_MS = 10_000;
 
 const ROUTE_BY_HOST: Record<string, string> = {
-  'clerk.luche.ai': 'clerk-direct',
-  'xn--e1alyq.xn--p1ai': 'ru-edge',
-  'feral-api.ratemepls.com': 'primary',
+  'luche.ai': 'app',
 };
 
 let installed = false;
@@ -28,10 +18,12 @@ export function installRequestLog(): void {
   globalThis.fetch = async (input: any, init?: any) => {
     let host = '';
     let path = '';
+    let requestUrl = '';
     try {
       const url = new URL(typeof input === 'string' ? input : (input?.url ?? String(input)));
       host = url.hostname;
       path = url.pathname;
+      requestUrl = url.href;
     } catch {
       // non-URL input (Request polyfill edge cases) — pass through untouched
     }
@@ -52,6 +44,12 @@ export function installRequestLog(): void {
       }
       return response;
     } catch (error: any) {
+      const signal = init?.signal ?? (typeof input === 'object' ? input?.signal : undefined);
+      // A caller cancellation is not a failed connection. Our own request
+      // deadlines report recovery explicitly from transport.ts.
+      if (!signal?.aborted && error?.name !== 'AbortError' && isConnectionFailure(error)) {
+        await recoverConnection(requestUrl);
+      }
       recordDiagnostic('http_request', {
         route,
         method,

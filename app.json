@@ -73,7 +73,8 @@
           }
         }
       ],
-      "./plugins/with-android-lean-apk"
+      "./plugins/with-android-lean-apk",
+      "./plugins/with-network-recovery"
     ],
     "experiments": {
       "typedRoutes": true,

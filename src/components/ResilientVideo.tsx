@@ -2,6 +2,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useRef } from 'react';
 
 import { recordDiagnostic } from '../lib/diagnostics';
+import { recoverConnection } from '../lib/networkRecovery';
 
 const VIDEO_METADATA_TIMEOUT_MS = 15_000;
 
@@ -25,33 +26,38 @@ export function ResilientVideo({
   });
 
   useEffect(() => {
+    let disposed = false;
     failed.current = false;
     let ready = player.status === 'readyToPlay';
     if (ready) onReady?.();
 
-    const fail = (message: string) => {
+    const fail = async (message: string, timedOut = false) => {
       if (failed.current) return;
       failed.current = true;
       recordDiagnostic('video_playback_error', { message });
-      onError();
+      if (timedOut || /network|connection|timed? ?out|NSURLErrorDomain/i.test(message)) {
+        await recoverConnection(uri);
+      }
+      if (!disposed) onError();
     };
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       if (status === 'readyToPlay') {
         ready = true;
         onReady?.();
       } else if (status === 'error') {
-        fail(error?.message ?? 'video player error');
+        void fail(error?.message ?? 'video player error');
       }
     });
     const timer = setTimeout(() => {
-      if (!ready) fail('video metadata timed out');
+      if (!ready) void fail('video metadata timed out', true);
     }, VIDEO_METADATA_TIMEOUT_MS);
 
     return () => {
+      disposed = true;
       clearTimeout(timer);
       subscription.remove();
     };
-  }, [onError, onReady, player]);
+  }, [onError, onReady, player, uri]);
 
   return <VideoView player={player} style={{ flex: 1 }} nativeControls contentFit="contain" />;
 }

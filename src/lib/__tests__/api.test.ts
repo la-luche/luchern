@@ -8,17 +8,12 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 
 import {
   API_BASE,
-  FALLBACK_API_BASE,
   ApiError,
   ApiNetworkError,
   apiFetch,
 } from '../api';
 import { REQUEST_TIMEOUT_MS } from '../transport';
-import {
-  preferApiBase,
-  registerClerkTransportFallback,
-  resetPreferredApiBase,
-} from '../edge';
+
 
 function response({
   ok = true,
@@ -42,7 +37,6 @@ function response({
 describe('mobile API transport', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    resetPreferredApiBase();
     (getClerkInstance as jest.Mock).mockReturnValue({
       session: { getToken: jest.fn().mockResolvedValue('token') },
     });
@@ -65,7 +59,7 @@ describe('mobile API transport', () => {
     );
   });
 
-  it('falls back to the Russian edge for a safe read', async () => {
+  it('retries a safe read at the same canonical URL', async () => {
     (globalThis.fetch as jest.Mock)
       .mockRejectedValueOnce(new TypeError('Network request failed'))
       .mockResolvedValueOnce(response({ json: { patients: [] } }));
@@ -74,66 +68,16 @@ describe('mobile API transport', () => {
 
     expect((globalThis.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
       `${API_BASE}/patients`,
-      `${FALLBACK_API_BASE}/patients`,
-    ]);
-  });
-
-  it('falls back to the primary base when a Russian-edge read fails', async () => {
-    preferApiBase(FALLBACK_API_BASE);
-    (globalThis.fetch as jest.Mock)
-      .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValueOnce(response({ json: { patients: [] } }));
-
-    await apiFetch('/patients');
-
-    expect((globalThis.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
-      `${FALLBACK_API_BASE}/patients`,
       `${API_BASE}/patients`,
     ]);
   });
 
-  it('retries a Russian-edge read on a fresh connection when primary is blocked', async () => {
-    preferApiBase(FALLBACK_API_BASE);
-    (globalThis.fetch as jest.Mock)
-      .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValueOnce(response({ json: { patients: [] } }));
-
-    await apiFetch('/patients');
-
-    expect((globalThis.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
-      `${FALLBACK_API_BASE}/patients`,
-      `${API_BASE}/patients`,
-      `${FALLBACK_API_BASE}/patients`,
-    ]);
-  });
-
-  it('sends the retry of a failed Russian-edge POST to the primary base', async () => {
-    preferApiBase(FALLBACK_API_BASE);
-    (globalThis.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
-
-    await expect(apiFetch('/invites', { method: 'POST' })).rejects.toBeInstanceOf(
-      ApiNetworkError,
-    );
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
-    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(response({ json: { token: '1234' } }));
-    await apiFetch('/invites', { method: 'POST' });
-    expect((globalThis.fetch as jest.Mock).mock.calls[1][0]).toBe(`${API_BASE}/invites`);
-  });
-
-  it('switches ClerkProvider when signed-in token refresh cannot use direct Clerk', async () => {
-    const fallback = jest.fn(() => true);
-    const unregister = registerClerkTransportFallback(fallback);
-    (getClerkInstance as jest.Mock).mockReturnValue({
-      session: { getToken: jest.fn().mockRejectedValue(new TypeError('Network request failed')) },
-    });
-
+  it('reports exhausted token refresh without sending an unauthenticated API request', async () => {
+    const getToken = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    (getClerkInstance as jest.Mock).mockReturnValue({ session: { getToken } });
     await expect(apiFetch('/trials/299')).rejects.toBeInstanceOf(ApiNetworkError);
-    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledTimes(2);
     expect(globalThis.fetch).not.toHaveBeenCalled();
-
-    unregister();
   });
 
   it('retries one failed Clerk token refresh before surfacing an error', async () => {
@@ -258,7 +202,7 @@ describe('mobile API transport', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('does not repeat an ambiguous POST but sends its retry to the other edge', async () => {
+  it('does not replay an ambiguous POST; an explicit retry uses the same URL', async () => {
     (globalThis.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
 
     await expect(apiFetch('/invites', { method: 'POST' })).rejects.toBeInstanceOf(
@@ -268,27 +212,27 @@ describe('mobile API transport', () => {
 
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce(response({ json: { token: '1234' } }));
     await apiFetch('/invites', { method: 'POST' });
-    expect((globalThis.fetch as jest.Mock).mock.calls[1][0]).toBe(`${FALLBACK_API_BASE}/invites`);
+    expect((globalThis.fetch as jest.Mock).mock.calls[1][0]).toBe(`${API_BASE}/invites`);
   });
 
-  it('retries a read on the other hostname when one serves an HTTP error', async () => {
-    // A 403/451 can be a DPI middlebox on one route; only response.ok marks
-    // a base healthy, and safe reads get the remaining attempts.
+  it('retries transient server errors on a safe read', async () => {
     (globalThis.fetch as jest.Mock)
-      .mockResolvedValueOnce(response({ ok: false, status: 403 }))
+      .mockResolvedValueOnce(response({ ok: false, status: 503 }))
       .mockResolvedValueOnce(response({ json: { patients: [] } }));
-
     await apiFetch('/patients');
-
     expect((globalThis.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
-      `${API_BASE}/patients`,
-      `${FALLBACK_API_BASE}/patients`,
+      `${API_BASE}/patients`, `${API_BASE}/patients`,
     ]);
   });
 
-  it('surfaces the final HTTP error when every attempt is refused', async () => {
+  it('returns a permission error without retrying it', async () => {
     (globalThis.fetch as jest.Mock).mockResolvedValue(response({ ok: false, status: 403 }));
+    await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiError);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
 
+  it('bounds retries when the server is unavailable', async () => {
+    (globalThis.fetch as jest.Mock).mockResolvedValue(response({ ok: false, status: 503 }));
     await expect(apiFetch('/patients')).rejects.toBeInstanceOf(ApiError);
     expect(globalThis.fetch).toHaveBeenCalledTimes(3);
   });
@@ -301,8 +245,7 @@ describe('mobile API transport', () => {
     expect((globalThis.fetch as jest.Mock).mock.calls.every(([url]) => String(url).startsWith(API_BASE))).toBe(true);
   });
 
-  it('routes a Russian-edge presigned URL through its R2 proxy', async () => {
-    preferApiBase(FALLBACK_API_BASE);
+  it('routes a signed storage URL through the application origin', async () => {
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce(response({
       json: {
         upload_url: 'https://account.r2.cloudflarestorage.com/prod-svet/a.mp4?sig=abc',
@@ -315,7 +258,7 @@ describe('mobile API transport', () => {
     });
 
     expect(result.upload_url).toBe(
-      'https://xn--e1alyq.xn--p1ai/r2/prod-svet/a.mp4?sig=abc',
+      'https://luche.ai/r2/prod-svet/a.mp4?sig=abc',
     );
   });
 });
