@@ -50,7 +50,12 @@ export function RecordingOverlay(props: Props) {
           source={RECORDING_GUIDES[testId]}
           resizeMode="stretch"
           fadeDuration={0}
-          style={[styles.guide, testId === 'restTremor' && styles.restGuide, side === 'left' && styles.mirrored]}
+          style={[
+            styles.guide,
+            testId === 'restTremor' && styles.restGuide,
+            testId === 'pronationSupination' && (side === 'left' ? styles.leftPalmGuide : styles.rightPalmGuide),
+            side === 'left' && styles.mirrored,
+          ]}
         />
       </View>
 
@@ -171,6 +176,8 @@ const styles = StyleSheet.create({
   // crop them a second time on phones taller than the reference canvas.
   guide: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   restGuide: { left: '-5%' },
+  rightPalmGuide: { left: '9%' },
+  leftPalmGuide: { left: '-9%' },
   mirrored: { transform: [{ scaleX: -1 }] },
   chrome: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
