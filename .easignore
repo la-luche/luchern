@@ -10,6 +10,7 @@ expo-env.d.ts
 /android/
 .kotlin/
 /modules/face-blur/android/build/
+/modules/background-work/android/build/
 /modules/network-recovery/android/build/
 
 # Local credentials and secrets

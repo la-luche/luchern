@@ -115,7 +115,7 @@ it('asks for language before the first warning and only shows the warning on lat
   expect(screen.root.findAllByType(LanguagePicker)).toHaveLength(0);
   expect(screen.root.findByType(Modal).props.visible).toBe(true);
   expect(screen.root.findAllByType(Text).map(node => node.props.children)).toContain(es.disclaimer.body2);
-  act(() => screen.root.findByType(Button).props.onPress());
+  act(() => screen.root.findAllByType(Button).find(button => button.props.title === es.common.iUnderstand).props.onPress());
   expect(screen.root.findByType(Modal).props.visible).toBe(false);
   act(() => screen.unmount());
   await render(SetupContent);

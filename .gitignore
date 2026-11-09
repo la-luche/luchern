@@ -24,12 +24,14 @@ expo-env.d.ts
 .metro-health-check*
 
 # debug
+/.tmp-*/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 /artifacts/
 /test_local_pose_estimatino/
 /modules/face-blur/android/build/
+/modules/background-work/android/build/
 /modules/network-recovery/android/build/
 
 # macOS
