@@ -48,9 +48,9 @@ export function RecordingOverlay(props: Props) {
         <Image
           testID={`recording-guide-${testId}`}
           source={RECORDING_GUIDES[testId]}
-          resizeMode="cover"
+          resizeMode="stretch"
           fadeDuration={0}
-          style={[styles.guide, side === 'left' && styles.mirrored]}
+          style={[styles.guide, testId === 'restTremor' && styles.restGuide, side === 'left' && styles.mirrored]}
         />
       </View>
 
@@ -74,6 +74,13 @@ export function RecordingOverlay(props: Props) {
             className="active:opacity-70"
             style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
+          {recording ? (
+            <View pointerEvents="none" testID="recording-elapsed" style={[styles.round, styles.elapsedBadge]}>
+              <Text style={styles.elapsedText} maxFontSizeMultiplier={1.2}>
+                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+              </Text>
+            </View>
+          ) : null}
           <View pointerEvents="none" style={styles.instructionBubble}>
             <Text style={styles.instruction} maxFontSizeMultiplier={1.35}>
               <Emphasis text={copy.instruction} />
@@ -86,14 +93,6 @@ export function RecordingOverlay(props: Props) {
         <View pointerEvents="box-none" style={styles.footer}>
           <View pointerEvents="none" style={styles.statusRow}>
             {sideLabel ? <Text style={styles.statusBadge} maxFontSizeMultiplier={1.3}>{sideLabel}</Text> : null}
-            {recording ? (
-              <View testID="recording-elapsed" style={styles.elapsedBadge}>
-                <View style={styles.redDot} />
-                <Text style={styles.elapsedText} maxFontSizeMultiplier={1.2}>
-                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-                </Text>
-              </View>
-            ) : null}
           </View>
           <Text
             testID="recording-target"
@@ -168,11 +167,14 @@ export function RecordingOverlay(props: Props) {
 
 const styles = StyleSheet.create({
   artwork: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
-  guide: { position: 'absolute', width: '100%', height: '102%', top: '-1%' },
+  // These are complete, approved screen compositions. Cover would zoom and
+  // crop them a second time on phones taller than the reference canvas.
+  guide: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  restGuide: { left: '-5%' },
   mirrored: { transform: [{ scaleX: -1 }] },
   chrome: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
-  titleRow: { alignItems: 'center', minHeight: 56, paddingHorizontal: 51 },
+  titleRow: { alignItems: 'center', minHeight: 56, paddingHorizontal: 60 },
   titleBubble: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 34, backgroundColor: '#1415168c' },
   title: { color: 'white', textAlign: 'center', fontWeight: '600', letterSpacing: 0.42 },
   instructionBubble: { alignSelf: 'center', maxWidth: '96%', marginTop: 13, paddingHorizontal: 21, paddingVertical: 14, borderRadius: 24, backgroundColor: '#1415168c' },
@@ -187,9 +189,8 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 30, marginBottom: 5 },
   statusBadge: { color: 'white', fontSize: 14, fontWeight: '600', backgroundColor: '#1415168c', borderRadius: 18, overflow: 'hidden', paddingVertical: 5, paddingHorizontal: 12 },
-  elapsedBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#141516cc', borderRadius: 24, paddingVertical: 6, paddingHorizontal: 20 },
-  redDot: { width: 12, height: 12, backgroundColor: '#ef5751', borderRadius: 6 },
-  elapsedText: { color: 'white', fontSize: 44, lineHeight: 52, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  elapsedBadge: { position: 'absolute', top: 8, right: 16, width: 56, height: 44 },
+  elapsedText: { color: 'white', fontSize: 17, lineHeight: 22, fontWeight: '600', fontVariant: ['tabular-nums'] },
   metric: { color: 'white', textAlign: 'center', fontWeight: '700', letterSpacing: -1.5, fontVariant: ['tabular-nums'], textShadowColor: '#0005', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12, marginBottom: 12, alignSelf: 'stretch' },
   captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26 },
   zoom: { width: 58, height: 58 },

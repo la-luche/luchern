@@ -32,6 +32,7 @@ import {
   uploadRecording,
 } from './cloud';
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { deviceProcessingFraction, needsDeviceProcessing } from './deviceProcessing';
 import { deletedGuestIds, loadDeletedGuests, subscribeGuestDeletion } from './guestDeletionState';
 import { clearSelfProfiles } from './selfProfile';
 import { FaceBlurCancelledError, prepareFaceBlurredVideo } from './faceBlur';
@@ -801,7 +802,7 @@ async function runDrive(
   signal: AbortSignal,
 ) {
   try {
-    await ensureBackgroundWork();
+    if (needsDeviceProcessing(rec)) await ensureBackgroundWork();
     throwIfCancelled(signal);
     let uploadRecording = rec;
     const privacyRequested = recordingRequestsPrivacy(uploadRecording);
@@ -987,6 +988,15 @@ async function runDrive(
 
     const network = await currentNetworkState().catch(() => null);
     if (network?.isConnected === false) {
+      if (uploadRecording.jobId) {
+        // Losing the phone's connection cannot fail a job already running on
+        // the server. Keep its state and retry the status request later.
+        await patch(uploadRecording.id, {
+          status: 'processing', nextPollAt: Date.now() + 5_000,
+          failReason: undefined, resumable: undefined, permanent: undefined,
+        }, epoch);
+        return;
+      }
       await patch(uploadRecording.id, {
         status: 'failed',
         failReason: 'device offline',
@@ -1193,15 +1203,11 @@ let finishingBackground: Promise<void> | undefined;
 let backgroundReconcileAgain = false;
 function reconcileBackgroundWork() {
   if (!cache || !activeAccountId) return;
-  const pending = cache.filter(r => ['preparing', 'uploading', 'processing'].includes(r.status));
+  const pending = cache.filter(needsDeviceProcessing);
   pending.forEach(r => backgroundBatchIds.add(r.id));
   const batch = cache.filter(r => backgroundBatchIds.has(r.id));
-  const fraction = (r: Recording) => r.status === 'done' || r.status === 'needs_retry' ? 1
-    : r.status === 'preparing' ? (r.privacyBlurProgress ?? 0) * 0.75
-    : r.status === 'uploading' ? 0.75 + (r.uploadProgress ?? 0) * 0.15
-    : r.status === 'processing' ? 0.9 : 0;
   if (pending.length) {
-    updateBackgroundWork(batch.reduce((sum, r) => sum + fraction(r), 0) / Math.max(1, batch.length), '');
+    updateBackgroundWork(batch.reduce((sum, r) => sum + deviceProcessingFraction(r), 0) / Math.max(1, batch.length), '');
   }
   if (finishingBackground) { backgroundReconcileAgain = true; return; }
   backgroundReconcileAgain = false;
@@ -1216,7 +1222,11 @@ function reconcileBackgroundWork() {
       finishingBackground = undefined;
       if (backgroundReconcileAgain) { reconcileBackgroundWork(); return; }
       if (!isCurrent(epoch, accountId)) return;
-      if (cache?.some(r => ['preparing', 'uploading', 'processing'].includes(r.status)) || operations.size) return;
+      // An iOS continued task must make real progress. Waiting at 90% for
+      // remote scoring makes iOS expire it and display a false "Task failed".
+      // Complete the device task after de-identification + upload + trial
+      // creation; the server owns the remaining work. Polls need no new lease.
+      if (cache?.some(needsDeviceProcessing) || [...operations.values()].some(op => op.stage === 'ingest')) return;
       endBackgroundWork(!cache?.some(r => backgroundBatchIds.has(r.id) && ['failed', 'blur_failed'].includes(r.status)));
       backgroundBatchIds.clear();
     });
@@ -1771,7 +1781,7 @@ function resumePending() {
   // Running operations also need a new lease after a failed foreground start;
   // they will not pass through runDrive again merely because the app reopened.
   if (cache && !suspended && AppState.currentState === 'active' &&
-      cache.some(r => ['preparing', 'uploading', 'processing'].includes(r.status))) {
+      cache.some(needsDeviceProcessing)) {
     void ensureBackgroundWork();
   }
   if (!cache || suspended || resumePromise) {

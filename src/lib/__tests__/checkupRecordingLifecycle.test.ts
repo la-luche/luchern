@@ -41,7 +41,7 @@ import { persistRecordingManifest, deleteRecordingFile } from '../recordingFiles
 import { setCaptureActive } from '../captureActivity';
 import type { Recording } from '../types';
 import { AppState } from 'react-native';
-import { ensureBackgroundWork } from '../backgroundRuntime';
+import { endBackgroundWork, ensureBackgroundWork } from '../backgroundRuntime';
 import { prepareFaceBlurredVideo } from '../faceBlur';
 import * as Notifications from 'expo-notifications';
 import { armResultNotification } from '../resultNotifications';
@@ -58,6 +58,20 @@ beforeEach(async () => {
   setCaptureActive(true);
   await AsyncStorage.clear();
   AppState.currentState = 'active';
+});
+
+it('finishes device work successfully while scoring continues on the server', async () => {
+  await __testing.writeRecordingSnapshot('remote-scoring', [clip('uploaded', 1, {
+    guestId: undefined, status: 'processing', jobId: '1550', privacyBlurState: 'completed',
+  })]);
+  await __testing.activateAccount('remote-scoring');
+  jest.clearAllMocks();
+  __testing.resumePending();
+  __testing.reconcileBackgroundWork();
+  for (let i = 0; i < 30; i++) await new Promise<void>(resolve => setImmediate(resolve));
+  expect(ensureBackgroundWork).not.toHaveBeenCalled();
+  expect(endBackgroundWork).toHaveBeenCalledWith(true);
+  expect((await __testing.ensureLoaded())[0]).toMatchObject({ status: 'processing', jobId: '1550' });
 });
 
 it('waits for background execution before scanning and advances the video queue after switching apps', async () => {

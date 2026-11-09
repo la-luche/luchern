@@ -122,7 +122,7 @@ beforeEach(() => {
 });
 afterEach(() => { if (screen) act(() => screen.unmount()); screen = undefined; endSession(); jest.restoreAllMocks(); });
 
-it('copies the support email and opens the restored website and email links', async () => {
+it('copies the support email and opens the useful website and email links', async () => {
   jest.spyOn(Clipboard, 'setStringAsync').mockResolvedValue(true);
   jest.spyOn(Linking, 'openURL').mockResolvedValue();
   jest.spyOn(toast, 'showToast').mockImplementation(() => {});
@@ -132,9 +132,9 @@ it('copies the support email and opens the restored website and email links', as
   expect(Linking.openURL).not.toHaveBeenCalled();
   expect(toast.showToast).toHaveBeenCalledWith(en.about.supportEmailCopied);
   expect(visibleText()).toContain('hello@luche.ai');
+  expect(button('luche.ai')).toBeUndefined();
   for (const [title, url] of [
     [en.profile.scienceMethodology, 'https://luche.ai/methodology'],
-    ['luche.ai', 'https://luche.ai'],
     [en.about.privacyPolicy, 'https://luche.ai/privacy-policy'],
     [en.about.supportTitle, 'https://luche.ai/support'],
     [en.about.emailSupport, 'mailto:hello@luche.ai?subject=Luche%20support'],
