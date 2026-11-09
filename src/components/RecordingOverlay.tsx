@@ -71,7 +71,8 @@ export function RecordingOverlay(props: Props) {
             accessibilityRole="button"
             accessibilityLabel={t.common.back}
             accessibilityState={{ disabled: recording }}
-            style={({ pressed }) => [styles.round, styles.back, pressed && styles.pressed, recording && styles.disabled]}
+            className="active:opacity-70"
+            style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
           <View pointerEvents="none" style={styles.instructionBubble}>
             <Text style={styles.instruction} maxFontSizeMultiplier={1.35}>
@@ -88,7 +89,9 @@ export function RecordingOverlay(props: Props) {
             {recording ? (
               <View testID="recording-elapsed" style={styles.elapsedBadge}>
                 <View style={styles.redDot} />
-                <Text style={styles.elapsedText}>{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</Text>
+                <Text style={styles.elapsedText} maxFontSizeMultiplier={1.2}>
+                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -108,23 +111,27 @@ export function RecordingOverlay(props: Props) {
               accessibilityRole="button"
               accessibilityLabel={t.record.zoomOut}
               accessibilityState={{ disabled: recording || zoom <= 0 }}
-              style={({ pressed }) => [styles.round, styles.zoom, pressed && styles.pressed, (recording || zoom <= 0) && styles.disabled]}
+              className="active:opacity-70"
+              style={[styles.round, styles.zoom, (recording || zoom <= 0) && styles.disabled]}
             ><Ionicons name="remove" size={30} color="white" /></Pressable>
             <Pressable
+              testID="recording-control"
               onPress={recording ? props.onStop : props.onStart}
               disabled={!recording && !cameraReady}
               accessibilityRole="button"
               accessibilityLabel={recording ? t.record.endA11y : t.record.startA11y}
               accessibilityState={{ disabled: !recording && !cameraReady }}
-              style={({ pressed }) => [styles.record, pressed && styles.pressed, !recording && !cameraReady && styles.disabled]}
-            ><View style={[styles.recordCore, recording && styles.stopCore]} /></Pressable>
+              className="active:opacity-70"
+              style={[styles.record, !recording && !cameraReady && styles.disabled]}
+            ><View pointerEvents="none" style={[styles.recordCore, recording && styles.stopCore]} /></Pressable>
             <Pressable
               onPress={() => props.onZoom(0.1)}
               disabled={recording || zoom >= 1}
               accessibilityRole="button"
               accessibilityLabel={t.record.zoomIn}
               accessibilityState={{ disabled: recording || zoom >= 1 }}
-              style={({ pressed }) => [styles.round, styles.zoom, pressed && styles.pressed, (recording || zoom >= 1) && styles.disabled]}
+              className="active:opacity-70"
+              style={[styles.round, styles.zoom, (recording || zoom >= 1) && styles.disabled]}
             ><Ionicons name="add" size={30} color="white" /></Pressable>
           </View>
           <Text style={styles.captureLabel} maxFontSizeMultiplier={1.3}>
@@ -141,7 +148,8 @@ export function RecordingOverlay(props: Props) {
           accessibilityRole="button"
           accessibilityLabel={t.record.flashlight}
           accessibilityState={{ disabled: recording || facing === 'front', selected: torch }}
-          style={({ pressed }) => [styles.round, torch && styles.flashActive, pressed && styles.pressed, (recording || facing === 'front') && styles.disabled]}
+          className="active:opacity-70"
+          style={[styles.round, torch && styles.flashActive, (recording || facing === 'front') && styles.disabled]}
         ><Ionicons name="flash-outline" size={26} color={torch ? '#fff0a8' : 'white'} /></Pressable>
         <Pressable
           testID="recording-flip"
@@ -150,7 +158,8 @@ export function RecordingOverlay(props: Props) {
           accessibilityRole="button"
           accessibilityLabel={t.record.flipCamera}
           accessibilityState={{ disabled: recording }}
-          style={({ pressed }) => [styles.round, pressed && styles.pressed, recording && styles.disabled]}
+          className="active:opacity-70"
+          style={[styles.round, recording && styles.disabled]}
         ><Ionicons name="camera-reverse-outline" size={27} color="white" /></Pressable>
       </View>
     </View>
@@ -173,20 +182,19 @@ const styles = StyleSheet.create({
   back: { position: 'absolute', top: 8, left: 16, width: 44, height: 44 },
   sideControls: { position: 'absolute', top: '43%', right: 16, gap: 12 },
   flashActive: { backgroundColor: '#45442dc9' },
-  pressed: { opacity: 0.7 },
   disabled: { opacity: 0.38 },
   space: { flex: 1 },
   footer: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 30, marginBottom: 5 },
   statusBadge: { color: 'white', fontSize: 14, fontWeight: '600', backgroundColor: '#1415168c', borderRadius: 18, overflow: 'hidden', paddingVertical: 5, paddingHorizontal: 12 },
-  elapsedBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1415168c', borderRadius: 18, paddingVertical: 5, paddingHorizontal: 12 },
-  redDot: { width: 7, height: 7, backgroundColor: '#ef5751', borderRadius: 4 },
-  elapsedText: { color: 'white', fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  elapsedBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#141516cc', borderRadius: 24, paddingVertical: 6, paddingHorizontal: 20 },
+  redDot: { width: 12, height: 12, backgroundColor: '#ef5751', borderRadius: 6 },
+  elapsedText: { color: 'white', fontSize: 44, lineHeight: 52, fontWeight: '700', fontVariant: ['tabular-nums'] },
   metric: { color: 'white', textAlign: 'center', fontWeight: '700', letterSpacing: -1.5, fontVariant: ['tabular-nums'], textShadowColor: '#0005', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12, marginBottom: 12, alignSelf: 'stretch' },
   captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26 },
   zoom: { width: 58, height: 58 },
   record: { width: 88, height: 88, borderRadius: 44, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center' },
-  recordCore: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#df544f' },
-  stopCore: { backgroundColor: '#242721' },
+  recordCore: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#df544f' },
+  stopCore: { width: 32, height: 32, borderRadius: 7 },
   captureLabel: { color: 'white', textAlign: 'center', fontSize: 15, lineHeight: 20, fontWeight: '500', marginTop: 12, textShadowColor: '#0009', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 7 },
 });
