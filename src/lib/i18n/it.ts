@@ -181,6 +181,47 @@ export const it: Dict = {
       'Ogni risultato è una stima sperimentale della prestazione motoria, non una valutazione MDS-UPDRS ufficiale. Rivolgiti sempre a un professionista sanitario qualificato e non usare Luche per prendere decisioni mediche o terapeutiche.',
   },
   record: {
+    guidance: {
+      fingerTapping: {
+        title: "Pollice e indice",
+        instruction: "Allontana **bene** pollice e indice e riuniscili **velocemente**",
+      },
+      handMovements: {
+        title: "Apri e chiudi",
+        instruction: "Apri **bene** la mano e chiudila a pugno il più **velocemente** possibile",
+      },
+      pronationSupination: {
+        title: "Gira il palmo",
+        instruction: "Gira il palmo **completamente** verso l’alto, poi **completamente** verso il basso, il più **velocemente** possibile",
+      },
+      restTremor: {
+        title: "Mani a riposo",
+        instruction: "Rilassa le mani e conta all’indietro da 100 sottraendo tre",
+      },
+      toeTapping: {
+        title: "Punta del piede",
+        instruction: "Tieni il tallone a terra e alza e abbassa la punta **in alto** e **velocemente**",
+      },
+      legAgility: {
+        title: "Solleva il piede",
+        instruction: "Solleva il piede **in alto** e riappoggialo a terra il più **velocemente** possibile",
+      },
+      arisingFromChair: {
+        title: "Alzati",
+        instruction: "Incrocia le braccia sul petto e alzati",
+      },
+      gait: {
+        title: "Cammina",
+        instruction: "Fai 10 passi allontanandoti, girati e torna indietro",
+      },
+    },
+    target: {
+      taps: (count: number) => `${count} tocchi`,
+      reps: (count: number) => `${count} rip.`,
+      seconds: (count: number) => `${count} s`,
+      lifts: (count: number) => `${count} sollevamenti`,
+      steps: (count: number) => `${count} passi`,
+    },
     cameraAccessNeeded: 'Accesso alla fotocamera disattivato',
     cameraAccessBody: (name: string) =>
       `Per registrare “${name}” serve l’accesso alla fotocamera. Luche registra un breve video senza audio per creare il tuo risultato. Puoi modificare l’accesso alla fotocamera nelle Impostazioni oppure tornare indietro.`,
@@ -503,10 +544,10 @@ export const it: Dict = {
       title: 'Appoggia e rilassa le mani',
       blurb: 'Bastano pochi secondi con le mani ferme e rilassate.',
       timeEstimate: '20 secondi',
-      setup: 'Siediti e appoggia le mani sui braccioli o su un tavolo accanto a te.',
+      setup: 'Siediti e appoggia le mani sulle cosce, sui braccioli o su un tavolo accanto a te.',
       steps: [
-        'Siediti e appoggia le mani sui braccioli o su un tavolo accanto a te.',
-        'Conta all’indietro da 1.000 sottraendo 3 ogni volta: 1000, 997, 994, 991 ... Registra per 20 secondi.',
+        'Siediti e appoggia le mani sulle cosce, sui braccioli o su un tavolo accanto a te.',
+        'Conta all’indietro da 100 sottraendo 3 ogni volta: 100, 97, 94, 91 ... Registra per 20 secondi.',
       ],
       goodTip: 'Le mani a riposo restano ben visibili, con buona luce.',
       avoidTip: 'Evita di muovere le mani o di farle uscire dall’inquadratura.',

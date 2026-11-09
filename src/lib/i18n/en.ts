@@ -183,6 +183,47 @@ export const en = {
       'Every result is an experimental motor-task estimate, not an official MDS-UPDRS rating. Always consult a qualified clinician, and do not use Luche to make medical or treatment decisions.',
   },
   record: {
+    guidance: {
+      fingerTapping: {
+        title: "Finger taps",
+        instruction: "Open and close your index finger and thumb **wide** and **fast**",
+      },
+      handMovements: {
+        title: "Open and close",
+        instruction: "Open your hand **wide** and close it into a fist as **fast** as you can",
+      },
+      pronationSupination: {
+        title: "Palm turns",
+        instruction: "Turn your palm **fully** up, then **fully** down, as **quickly** as you can",
+      },
+      restTremor: {
+        title: "Hands at rest",
+        instruction: "Rest your hands and count back from 100 in threes",
+      },
+      toeTapping: {
+        title: "Toe taps",
+        instruction: "Keep your heel down and tap your toes **high** and **fast**",
+      },
+      legAgility: {
+        title: "Foot lifts",
+        instruction: "Lift your foot **high** and put it down as **fast** as you can",
+      },
+      arisingFromChair: {
+        title: "Standing up",
+        instruction: "Cross your arms over your chest and stand up",
+      },
+      gait: {
+        title: "Walking",
+        instruction: "Walk 10 steps away, turn around, and walk back",
+      },
+    },
+    target: {
+      taps: (count: number) => `${count} taps`,
+      reps: (count: number) => `${count} ${count === 1 ? 'rep' : 'reps'}`,
+      seconds: (count: number) => `${count} sec`,
+      lifts: (count: number) => `${count} lifts`,
+      steps: (count: number) => `${count} steps`,
+    },
     cameraAccessNeeded: 'Camera access is off',
     cameraAccessBody: (name: string) =>
       `Recording “${name}” requires camera access. Luche records a short video without sound to create your result. You can change camera access in Settings or go back.`,
@@ -488,19 +529,19 @@ export const en = {
     },
     legAgility: {
       name: 'Foot lifts',
-      descriptor: 'Lift and tap down your foot',
-      title: 'Lift and tap down your foot',
+      descriptor: 'Lift and put down your foot',
+      title: 'Lift and put down your foot',
       blurb: 'A short recording of your foot lifting and lowering.',
       timeEstimate: 'About 30 seconds',
       setup: 'Sit in a chair with both feet flat on the floor.',
       steps: [
         'Sit in a chair with both feet flat on the floor.',
-        'Lift one foot and tap it firmly back down 10 times, as high and fast as you can.',
+        'Lift one foot and put it back down 10 times, as high and fast as you can.',
       ],
       goodTip: 'Keep your leg and foot in view with plenty of light.',
       avoidTip: 'Don’t let your leg or foot leave the frame.',
       frameHint: 'Keep your leg and foot in the frame',
-      cueStart: 'Lift and tap down your foot',
+      cueStart: 'Lift and put down your foot',
     },
     restTremor: {
       name: 'Hands at rest',
@@ -508,10 +549,10 @@ export const en = {
       title: 'Rest your hands and stay still',
       blurb: 'A short recording of your hands while they rest.',
       timeEstimate: '20 seconds',
-      setup: 'Sit down and rest your hands on the armrests or on a table beside you.',
+      setup: 'Sit down and rest your hands on your lap, on the armrests, or on a table beside you.',
       steps: [
-        'Sit down and rest your hands on the armrests or on a table beside you.',
-        'Count backward from 1,000 by 3s: 1000, 997, 994, 991 ... Record for 20 seconds.',
+        'Sit down and rest your hands on your lap, on the armrests, or on a table beside you.',
+        'Count backward from 100 by 3s: 100, 97, 94, 91 ... Record for 20 seconds.',
       ],
       goodTip: 'Keep your resting hands in view with plenty of light.',
       avoidTip: 'Try not to move your hands or let them leave the frame.',

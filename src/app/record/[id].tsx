@@ -1,14 +1,15 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useUser } from '@clerk/clerk-expo';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 
 import { Button } from '../../components/Button';
-import { FramingGuide, ReviewPanel } from '../../components/Capture';
+import { ReviewPanel } from '../../components/Capture';
+import { RecordingOverlay } from '../../components/RecordingOverlay';
 import { Screen } from '../../components/Screen';
 import { preferredRearCameraLens } from '../../lib/cameraLens';
 import { cues } from '../../lib/cues';
@@ -21,6 +22,7 @@ import {
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { ensureFreeRecordingSpace } from '../../lib/recordingFiles';
+import { recordingMaxDuration } from '../../lib/recordingGuide';
 import { advanceSession, useSession } from '../../lib/session';
 import { useRecordings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
@@ -29,17 +31,11 @@ import { COLORS } from '../../lib/theme';
 
 type Phase = 'framing' | 'recording' | 'review';
 
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 /**
  * Capture screen as a small state machine:
  *   framing → (Start) → recording → (End) → review → (Submit) → result
  * The clip is held locally and only uploaded on Submit; Retake discards it. A
- * static framing guide helps the patient stay in frame, and start/end haptic
+ * static movement guide shows the requested pose, and start/end haptic
  * cues confirm the capture transitions.
  */
 export default function RecordScreen() {
@@ -73,6 +69,7 @@ export default function RecordScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
+  const stopCuePlayed = useRef(false);
   const [zoom, setZoom] = useState(0);
 
   // Opening the recording feature leads directly to the system permission
@@ -147,16 +144,21 @@ export default function RecordScreen() {
       if (!user?.id) throw new Error('recording account unavailable');
       const evaluationRun = session.active ? session.run ?? undefined : undefined;
       await beginCaptureIntent(user.id, { testId: test.id, evaluatedSide, guestId, evaluationRun });
+      stopCuePlayed.current = false;
       setPhase('recording');
       cues.start(t.tests[test.id].cueStart);
-      // recordAsync resolves only once stopRecording() is called.
+      // Timed tasks finish at their target; repetition tasks stop manually.
       // codec must be set on iOS for the videoBitrate cap (below) to apply.
       const video = await cameraRef.current.recordAsync({
         codec: 'hvc1',
-        maxDuration: 120,
+        maxDuration: recordingMaxDuration(test.id),
         maxFileSize: 64 * 1024 * 1024,
       });
       if (!video?.uri) throw new Error('camera returned no recording');
+      if (!stopCuePlayed.current) {
+        stopCuePlayed.current = true;
+        cues.stop(t.record.cueDone);
+      }
       outputReceived = true;
       await attachCaptureOutput(user.id, video.uri);
       const staged = await stageRecording(
@@ -179,7 +181,10 @@ export default function RecordScreen() {
   };
 
   const endRecording = () => {
-    cues.stop(t.record.cueDone);
+    if (!stopCuePlayed.current) {
+      stopCuePlayed.current = true;
+      cues.stop(t.record.cueDone);
+    }
     cameraRef.current?.stopRecording();
   };
 
@@ -287,6 +292,7 @@ export default function RecordScreen() {
   // --- Camera --------------------------------------------------------------------
   return (
     <View className="flex-1 bg-black">
+          <StatusBar style="light" />
           {/* No audio (mute), 720p, and a 3 Mbps HEVC cap. The keypoint model only
               sees ~768px so higher res/bitrate is wasted upload; 3 Mbps HEVC keeps
               keypoint quality. NB: videoQuality presets are Android-only in
@@ -315,123 +321,26 @@ export default function RecordScreen() {
             }}
           />
 
-          {/* Framing guide during framing + recording (helps stay in frame). */}
-          {(phase === 'framing' || recording) && <FramingGuide />}
-
-          {/* Overlay chrome. box-none so the preview shows through. */}
-          <SafeAreaView className="absolute inset-0" pointerEvents="box-none">
-            {/* Top bar. */}
-            <View className="min-h-[60px] flex-row items-center justify-between px-4">
-              {!recording ? (
-                <Pressable
-                  onPress={() => router.back()}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.common.back}
-                  className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
-                >
-                  <Ionicons name="chevron-back" size={28} color={COLORS.white} />
-                </Pressable>
-              ) : (
-                <View className="min-h-[48px] flex-row items-center gap-2 rounded-full bg-black/50 px-4 py-2">
-                  <View className="h-3 w-3 rounded-full bg-red-500" />
-                  <Text className="text-[17px] font-semibold text-white">{formatElapsed(elapsed)}</Text>
-                </View>
-              )}
-              <View className="flex-row items-center gap-2">
-                {phase === 'framing' && facing === 'back' && (
-                  <Pressable
-                    onPress={() => setTorch((v) => !v)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.record.flashlight}
-                    className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
-                  >
-                    <Ionicons name={torch ? 'flash' : 'flash-off'} size={25} color={COLORS.white} />
-                  </Pressable>
-                )}
-                {phase === 'framing' && (
-                  <Pressable
-                    onPress={flip}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.record.flipCamera}
-                    className="h-14 w-14 items-center justify-center rounded-full bg-black/50 active:opacity-70"
-                  >
-                    <Ionicons name="camera-reverse-outline" size={27} color={COLORS.white} />
-                  </Pressable>
-                )}
-              </View>
-            </View>
-
-            {/* Test name and framing hint get their own rows, so they cannot
-                collide with the back/camera controls on narrow phones. */}
-            <View pointerEvents="none" className="mt-3 items-center gap-2 px-5">
-              <View className="max-w-full rounded-full bg-black/55 px-4 py-2">
-                <Text className="text-center text-[17px] font-semibold text-white">
-                  {t.tests[test.id].name}
-                  {sideLabel ? ` · ${sideLabel}` : ''}
-                </Text>
-              </View>
-              <View className="max-w-full rounded-2xl bg-black/55 px-4 py-2">
-                <Text className="text-center text-[15px] font-semibold leading-5 text-white">
-                  {t.tests[test.id].frameHint}
-                </Text>
-              </View>
-            </View>
-
-            <View className="flex-1" pointerEvents="none" />
-
-            {/* Bottom control — Start / End (hidden during review). */}
-            {(phase === 'framing' || recording) && (
-              <View className="items-center px-4 pb-4">
-                <View className="flex-row items-center justify-center gap-6">
-                  {phase === 'framing' && (
-                    <Pressable
-                      onPress={() => stepZoom(-0.1)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.record.zoomOut}
-                      className="h-16 w-16 items-center justify-center rounded-full bg-black/55 active:opacity-70"
-                    >
-                      <Ionicons name="remove" size={32} color={COLORS.white} />
-                    </Pressable>
-                  )}
-                  {!recording ? (
-                  <Pressable
-                    onPress={() => void beginRecording()}
-                    disabled={!cameraReady}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.record.startA11y}
-                    className={`h-24 w-24 items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80 ${
-                      cameraReady ? '' : 'opacity-40'
-                    }`}
-                  >
-                    <View className="h-9 w-9 rounded-xl bg-red-500" />
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={endRecording}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.record.endA11y}
-                    className="h-24 w-24 items-center justify-center rounded-full border-4 border-white/80 bg-white active:opacity-80"
-                  >
-                    <View className="h-10 w-10 rounded-xl bg-ink" />
-                  </Pressable>
-                )}
-                  {phase === 'framing' && (
-                    <Pressable
-                      onPress={() => stepZoom(0.1)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.record.zoomIn}
-                      className="h-16 w-16 items-center justify-center rounded-full bg-black/55 active:opacity-70"
-                    >
-                      <Ionicons name="add" size={32} color={COLORS.white} />
-                    </Pressable>
-                  )}
-                </View>
-                <Text className="mt-3 text-[16px] font-medium text-white/90">
-                  {recording ? t.record.tapToEnd : cameraReady ? t.record.tapToStart : t.record.preparing}
-                </Text>
-              </View>
-            )}
-          </SafeAreaView>
+          {(phase === 'framing' || recording) && (
+            <RecordingOverlay
+              testId={test.id}
+              t={t}
+              side={evaluatedSide}
+              sideLabel={sideLabel}
+              recording={recording}
+              elapsed={elapsed}
+              cameraReady={cameraReady}
+              facing={facing}
+              torch={torch}
+              zoom={zoom}
+              onBack={() => router.back()}
+              onFlash={() => setTorch((value) => !value)}
+              onFlip={flip}
+              onZoom={stepZoom}
+              onStart={() => void beginRecording()}
+              onStop={endRecording}
+            />
+          )}
 
           {/* Review the clip before it uploads. */}
           {phase === 'review' && tempUri && (
