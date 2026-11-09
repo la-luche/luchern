@@ -312,6 +312,7 @@ export const zh: Dict = {
     frames: '视频帧数',
   },
   result: {
+    unscoredBody: '此录像没有分析结果。您仍可观看或分享视频。',
     fallbackTitle: '您的结果',
     sharingUnavailableTitle: '无法分享',
     sharingUnavailableBody: '此设备不支持分享。',
@@ -355,6 +356,7 @@ export const zh: Dict = {
     useSavedRecording: '使用此录像',
   },
   status: {
+    unscored: '暂无结果',
     draft: '已保存在设备上',
     preparing: '正在处理视频隐私…',
     blur_failed: '视频隐私处理需要检查',

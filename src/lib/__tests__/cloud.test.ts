@@ -15,7 +15,7 @@ jest.mock('../diagnostics', () => ({
   diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
 }));
 import { apiFetch } from '../api';
-import { AnalysisNeedsRetryError, createAnalysisTrial, pollResult } from '../cloud';
+import { AnalysisNeedsRetryError, AnalysisNotRequestedError, createAnalysisTrial, pollResult } from '../cloud';
 
 describe('createAnalysisTrial', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -101,6 +101,12 @@ describe('createAnalysisTrial', () => {
 describe('pollResult', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.useRealTimers());
+
+  it('stops immediately when the saved video has no analysis job', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({ analysis_status: null, score: null });
+    await expect(pollResult('1240', 'gait')).rejects.toBeInstanceOf(AnalysisNotRequestedError);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
 
   it('throws PollTimeoutError when the ceiling passes with no result', async () => {
     (apiFetch as jest.Mock).mockResolvedValue({ analysis_status: 'processing', score: null });

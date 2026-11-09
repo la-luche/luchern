@@ -15,7 +15,7 @@ import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
 import { deleteAccount } from '../lib/api';
 import { useT } from '../lib/i18n';
-import { METHODOLOGY_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL, SUPPORT_URL, WEBSITE_URL } from '../lib/links';
+import { METHODOLOGY_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL, SUPPORT_URL } from '../lib/links';
 import { clearDiagnostics, exportDiagnostics } from '../lib/diagnostics';
 import { usePrivacyBlurSettings } from '../lib/faceBlurSettings';
 import { signOutFromDevice } from '../lib/logout';
@@ -215,7 +215,6 @@ export default function AboutScreen() {
           </View>
           <View className="mt-3 gap-3">
             <Button title={t.profile.scienceMethodology} variant="secondary" onPress={() => void Linking.openURL(METHODOLOGY_URL)} />
-            <Button title="luche.ai" variant="secondary" onPress={() => void Linking.openURL(WEBSITE_URL)} />
           </View>
         </Section>
 

@@ -73,6 +73,14 @@ export class AnalysisNeedsRetryError extends Error {
   }
 }
 
+/** A saved video without an analysis job is not pending work. */
+export class AnalysisNotRequestedError extends Error {
+  constructor() {
+    super('no analysis requested');
+    this.name = 'AnalysisNotRequestedError';
+  }
+}
+
 function noScoreReasons(trial: TrialDetail): string[] {
   const raw = trial.submetrics?.quality_failures;
   const reasons = Array.isArray(raw)
@@ -318,6 +326,7 @@ export async function pollResultOnce(
     };
   }
   if (t.analysis_status === 'failed') throw new Error('analysis failed');
+  if (t.analysis_status === null && t.score == null) throw new AnalysisNotRequestedError();
   return null;
 }
 
@@ -337,6 +346,7 @@ export async function pollResult(
       throwIfCancelled(signal);
       if (
         error instanceof AnalysisNeedsRetryError ||
+        error instanceof AnalysisNotRequestedError ||
         (error instanceof Error && error.message === 'analysis failed')
       ) throw error;
       // Auth/ownership/not-found failures will not heal by polling. Network,

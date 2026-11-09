@@ -329,6 +329,7 @@ export const ru: Dict = {
     frames: 'Кадры',
   },
   result: {
+    unscoredBody: 'Для этой записи нет результата. Видео можно посмотреть или отправить.',
     fallbackTitle: 'Результат',
     sharingUnavailableTitle: 'Не получается поделиться',
     sharingUnavailableBody: 'На этом устройстве нельзя поделиться файлами.',
@@ -373,6 +374,7 @@ export const ru: Dict = {
     useSavedRecording: 'Использовать эту запись',
   },
   status: {
+    unscored: 'Без результата',
     draft: 'Сохранено на устройстве',
     preparing: 'Защищаем видео…',
     blur_failed: 'Нужно проверить конфиденциальность видео',

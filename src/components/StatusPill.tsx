@@ -17,6 +17,7 @@ const STYLE: Record<
   blur_failed: { bg: 'bg-red-100', fg: 'text-red-700', spin: false, icon: 'shield-outline', iconColor: '#b91c1c' },
   uploading: { bg: 'bg-blue-100', fg: 'text-blue-700', spin: true },
   processing: { bg: 'bg-amber-100', fg: 'text-amber-700', spin: true },
+  unscored: { bg: 'bg-slate-100', fg: 'text-slate-700', spin: false, icon: 'videocam-outline', iconColor: '#334155' },
   done: { bg: 'bg-emerald-100', fg: 'text-emerald-700', spin: false, icon: 'checkmark-circle', iconColor: '#047857' },
   needs_retry: { bg: 'bg-red-100', fg: 'text-red-700', spin: false, icon: 'alert-circle', iconColor: '#b91c1c' },
   failed: { bg: 'bg-red-100', fg: 'text-red-700', spin: false, icon: 'close-circle', iconColor: '#b91c1c' },

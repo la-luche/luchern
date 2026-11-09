@@ -58,6 +58,8 @@ function statusFor(trial: OwnedTrialSummary): RecordingStatus {
   if (trial.analysis_status === 'needs_retry' || trial.scoreable === false) return 'needs_retry';
   if (trial.analysis_status === 'failed') return 'failed';
   if (trial.analysis_status === 'done' && trial.score != null) return 'done';
+  // Imported videos can have neither an analysis job nor a result.
+  if (trial.analysis_status === null && trial.score == null) return 'unscored';
   return 'processing';
 }
 

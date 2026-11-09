@@ -22,6 +22,7 @@ import {
 } from './captureRecovery';
 import {
   AnalysisNeedsRetryError,
+  AnalysisNotRequestedError,
   UploadIntentExpiredError,
   createAnalysisTrial,
   deleteRemoteRecording,
@@ -725,6 +726,14 @@ async function driveOnce(
     };
   } catch (error) {
     if (error instanceof OperationCancelledError || opts.signal?.aborted) throw error;
+    if (error instanceof AnalysisNotRequestedError) {
+      return {
+        status: 'unscored', jobId, uploadId, nextPollAt: undefined,
+        result: undefined, failReason: undefined, analysisFailureReasons: undefined,
+        uploadProgress: undefined, uploadAttempt: undefined, uploadRetrying: undefined,
+        permanent: undefined, resumable: false,
+      };
+    }
     if (error instanceof PollTimeoutError) {
       return {
         status: 'processing',

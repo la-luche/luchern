@@ -328,6 +328,7 @@ export const it: Dict = {
     frames: 'Fotogrammi',
   },
   result: {
+    unscoredBody: 'Questa registrazione non ha un risultato. Puoi comunque guardare o condividere il video.',
     fallbackTitle: 'Risultato',
     sharingUnavailableTitle: 'Condivisione non disponibile',
     sharingUnavailableBody: 'Questo dispositivo non permette di condividere file.',
@@ -372,6 +373,7 @@ export const it: Dict = {
     useSavedRecording: 'Usa questa registrazione',
   },
   status: {
+    unscored: 'Nessun risultato',
     draft: 'Salvata sul dispositivo',
     preparing: 'Protezione del video…',
     blur_failed: 'Controlla la privacy del video',

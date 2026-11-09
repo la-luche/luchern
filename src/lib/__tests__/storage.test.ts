@@ -28,9 +28,10 @@ jest.mock('../../../modules/face-blur', () => ({
 }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PollTimeoutError, UPLOAD_BACKOFFS_MS } from '../uploadRetry';
+import { PollTimeoutError, UPLOAD_BACKOFFS_MS, selectPipelineBatch } from '../uploadRetry';
 
 jest.mock('../cloud', () => ({
+  AnalysisNotRequestedError: class AnalysisNotRequestedError extends Error {},
   AnalysisNeedsRetryError: class AnalysisNeedsRetryError extends Error {
     reasons: string[];
     constructor(reasons: string[]) {
@@ -48,6 +49,7 @@ jest.mock('../cloud', () => ({
 }));
 import {
   AnalysisNeedsRetryError,
+  AnalysisNotRequestedError,
   createAnalysisTrial,
   pollResult,
   pollResultOnce,
@@ -211,6 +213,19 @@ describe('driveOnce', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('retires a cached processing entry when its server video has no analysis job', async () => {
+    const recording = { ...baseRec(), status: 'processing' as const, jobId: '1240', nextPollAt: 1 };
+    (pollResultOnce as jest.Mock).mockRejectedValue(new AnalysisNotRequestedError());
+    const patch = await driveOnce(recording, { singlePoll: true });
+    expect(patch).toMatchObject({ status: 'unscored', jobId: '1240' });
+    expect(patch.nextPollAt).toBeUndefined();
+    expect(selectPipelineBatch([{ ...recording, ...patch }], {
+      activeIds: new Set(), ingestSlots: 2, pollSlots: 2, now: Date.now(), privacyAllowed: true,
+    })).toEqual({ ingestIds: [], pollIds: [] });
+    expect(uploadRecording).not.toHaveBeenCalled();
+    expect(createAnalysisTrial).not.toHaveBeenCalled();
   });
 
   it('carries the originating account through upload, submit, and polling', async () => {

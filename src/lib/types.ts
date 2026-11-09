@@ -12,6 +12,7 @@ export type RecordingStatus =
   | 'blur_failed'
   | 'uploading'
   | 'processing'
+  | 'unscored'
   | 'done'
   | 'needs_retry'
   | 'failed';

@@ -58,6 +58,25 @@ function local(overrides: Partial<Recording> = {}): Recording {
 }
 
 describe('mergeOwnedTrials', () => {
+  it('keeps imported videos without analysis out of the processing queue', () => {
+    const existing = local({ originalVideoUri: 'file:///original.mov' });
+    const merged = mergeOwnedTrials([existing], [trial({
+      analysis_status: null, score: null, updrs_grade: null, scoreable: null,
+    })], now);
+
+    expect(merged.recordings[0]).toMatchObject({
+      status: 'unscored', jobId: '42', videoUri: existing.videoUri,
+      originalVideoUri: 'file:///original.mov',
+    });
+    expect(merged.recordings[0].result).toBeUndefined();
+    expect(merged.localUrisToDelete).toEqual([]);
+  });
+
+  it.each(['queued', 'running'])('continues processing a real %s analysis job', (status) => {
+    const merged = mergeOwnedTrials([], [trial({ analysis_status: status, score: null })], now);
+    expect(merged.recordings[0].status).toBe('processing');
+  });
+
   it('hydrates server recordings that were created on another device', () => {
     const merged = mergeOwnedTrials([], [trial()], now);
 

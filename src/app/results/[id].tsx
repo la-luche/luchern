@@ -347,6 +347,10 @@ export default function ResultDetailScreen() {
                 </View>
               )}
             </View>
+          ) : recording.status === 'unscored' ? (
+            <Text className="mt-3 text-[14px] leading-5 text-ink-muted">
+              {t.result.unscoredBody}
+            </Text>
           ) : recording.status === 'draft' ? (
             <View className="mt-3 gap-3">
               <Text className="text-[14px] leading-5 text-ink-muted">

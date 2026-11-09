@@ -332,6 +332,7 @@ export const en = {
     frames: 'Video frames',
   },
   result: {
+    unscoredBody: 'This recording has no result. You can still watch or share the video.',
     fallbackTitle: 'Your result',
     sharingUnavailableTitle: 'Sharing unavailable',
     sharingUnavailableBody: 'Sharing isn’t available on this device.',
@@ -376,6 +377,7 @@ export const en = {
     useSavedRecording: 'Use this recording',
   },
   status: {
+    unscored: 'No result',
     draft: 'Saved on device',
     preparing: 'Applying video privacy…',
     blur_failed: 'Video privacy needs attention',
