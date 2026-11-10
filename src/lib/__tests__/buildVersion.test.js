@@ -57,6 +57,21 @@ test('stale native metadata is rejected by validation', () => {
   expect(() => checkBuild(directory)).toThrow('Version mismatch: android/app/build.gradle');
 });
 
+test('EAS archives can omit development files but must retain matching native versions', () => {
+  prepareBuild(directory, 'all');
+  fs.unlinkSync(path.join(directory, 'src/app.ts'));
+  const previous = process.env.EAS_BUILD;
+  process.env.EAS_BUILD = 'true';
+  try {
+    expect(checkBuild(directory).buildNumber).toBe(37);
+    write('android/app/build.gradle', 'defaultConfig {\n versionCode 1\n versionName "1.0.1"\n}\n');
+    expect(() => checkBuild(directory)).toThrow('Version mismatch');
+  } finally {
+    if (previous === undefined) delete process.env.EAS_BUILD;
+    else process.env.EAS_BUILD = previous;
+  }
+});
+
 test('invalid native files and independent remote counters cannot partially reserve a build', () => {
   write('android/app/build.gradle', 'versionCode fromSomeOtherPlace');
   expect(() => prepareBuild(directory, 'ios')).toThrow('Unrecognized Android');

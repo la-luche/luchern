@@ -152,7 +152,10 @@ function checkBuild(directory) {
     return actual !== value;
   }).map(([file]) => file);
   if (mismatches.length) throw new Error(`Version mismatch: ${mismatches.join(', ')}. Run build:prepare before compiling.`);
-  if (fs.existsSync(path.join(directory, '.git')) && state.sourceHash !== sourceHash(directory)) {
+  // EAS archives omit development files via .easignore and may retain a shallow
+  // .git directory. The full-source fingerprint is checked before submission;
+  // native/config/artifact checks still run on the build worker.
+  if (process.env.EAS_BUILD !== 'true' && fs.existsSync(path.join(directory, '.git')) && state.sourceHash !== sourceHash(directory)) {
     throw new Error('Source changed after version preparation. Run build:prepare before compiling.');
   }
   if (process.env.EAS_BUILD_PLATFORM && !state.platforms.includes(process.env.EAS_BUILD_PLATFORM)) {

@@ -3,7 +3,13 @@ const { withXcodeProject, withAppBuildGradle } = require('expo/config-plugins');
 const phaseName = 'Verify Luche version';
 const marker = '// Luche shared version guards';
 
-function guardIos(project) {
+function guardIos(project, version, buildNumber) {
+  // Expo writes Info.plist versions but leaves Xcode's template build settings.
+  // Keep both representations aligned before the native verification phase runs.
+  if (version && buildNumber) {
+    project.updateBuildProperty('MARKETING_VERSION', version);
+    project.updateBuildProperty('CURRENT_PROJECT_VERSION', String(buildNumber));
+  }
   const phases = project.hash.project.objects.PBXShellScriptBuildPhase ?? {};
   if (Object.values(phases).some((phase) => phase?.name === `"${phaseName}"`)) return project;
   const { uuid } = project.getFirstTarget();
@@ -41,7 +47,7 @@ tasks.matching { it.name == "packageDebug" || it.name == "packageRelease" }.conf
 
 module.exports = function withBuildVersion(config) {
   config = withXcodeProject(config, (mod) => {
-    mod.modResults = guardIos(mod.modResults);
+    mod.modResults = guardIos(mod.modResults, mod.version, mod.ios.buildNumber);
     return mod;
   });
   return withAppBuildGradle(config, (mod) => {
