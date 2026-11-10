@@ -37,20 +37,6 @@ function RestGuide() {
   );
 }
 
-function HandMovementGuide({ mirrored }: { mirrored: boolean }) {
-  return (
-    <Svg testID="recording-guide-handMovements" viewBox="0 0 100 100" preserveAspectRatio="none" style={[styles.guide, styles.handGuide, mirrored && styles.mirrored]}>
-      <Defs>
-        <LinearGradient id="hand-context-fade" x1="0%" y1="0%" x2="0%" y2="100%">
-          <Stop offset="0.8" stopColor="white" /><Stop offset="1" stopColor="black" />
-        </LinearGradient>
-        <Mask id="hand-context"><Rect width={100} height={100} fill="url(#hand-context-fade)" /></Mask>
-      </Defs>
-      <SvgImage href={RECORDING_GUIDES.handMovements} x={0} y={0} width={100} height={100} preserveAspectRatio="none" mask="url(#hand-context)" />
-    </Svg>
-  );
-}
-
 type Props = {
   testId: TestId;
   t: Dict;
@@ -85,21 +71,19 @@ export function RecordingOverlay(props: Props) {
   const size = Math.min(width / 390, 1.2);
   const copy = t.record.guidance[testId];
   const target = RECORDING_TARGETS[testId];
+  const timed = target.unit === 'seconds';
   const metric = t.record.target[target.unit](recordingTargetCount(testId, recording ? elapsed : 0));
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.artwork}>
-        {testId === 'restTremor' ? <RestGuide /> : testId === 'handMovements' ? <HandMovementGuide mirrored={side === 'left'} /> : <Image
+        {testId === 'restTremor' ? <RestGuide /> : <Image
           testID={`recording-guide-${testId}`}
           source={RECORDING_GUIDES[testId]}
           resizeMode="stretch"
           fadeDuration={0}
           style={[
             styles.guide,
-            testId === 'toeTapping' && styles.toeGuide,
-            testId === 'arisingFromChair' && styles.chairGuide,
-            testId === 'gait' && styles.walkingGuide,
             testId === 'pronationSupination' && (side === 'left' ? styles.leftPalmGuide : styles.rightPalmGuide),
             side === 'left' && styles.mirrored,
           ]}
@@ -126,7 +110,13 @@ export function RecordingOverlay(props: Props) {
             className="active:opacity-70"
             style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
-          {recording ? (
+          {timed ? (
+            <View pointerEvents="none" style={[styles.round, styles.elapsedBadge]}>
+              <Text testID="recording-target" style={styles.elapsedText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
+                {metric}
+              </Text>
+            </View>
+          ) : recording ? (
             <View pointerEvents="none" testID="recording-elapsed" style={[styles.round, styles.elapsedBadge]}>
               <Text style={styles.elapsedText} maxFontSizeMultiplier={1.2}>
                 {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
@@ -146,7 +136,7 @@ export function RecordingOverlay(props: Props) {
           <View pointerEvents="none" style={styles.statusRow}>
             {sideLabel ? <Text style={styles.statusBadge} maxFontSizeMultiplier={1.3}>{sideLabel}</Text> : null}
           </View>
-          <Text
+          {!timed ? <Text
             testID="recording-target"
             pointerEvents="none"
             style={[styles.metric, { fontSize: 59 * size, lineHeight: 68 * size }]}
@@ -154,7 +144,7 @@ export function RecordingOverlay(props: Props) {
             numberOfLines={1}
             minimumFontScale={0.6}
             maxFontSizeMultiplier={1.2}
-          >{metric}</Text>
+          >{metric}</Text> : null}
           <View style={styles.captureRow}>
             <Pressable
               onPress={() => props.onZoom(-0.1)}
@@ -191,7 +181,7 @@ export function RecordingOverlay(props: Props) {
         </View>
       </SafeAreaView>
 
-      <View pointerEvents="box-none" style={[styles.sideControls, testId === 'pronationSupination' && side !== 'left' && styles.leftSideControls]}>
+      <View pointerEvents="box-none" style={styles.sideControls}>
         <Pressable
           testID="recording-flash"
           onPress={props.onFlash}
@@ -219,16 +209,13 @@ export function RecordingOverlay(props: Props) {
 
 const styles = StyleSheet.create({
   artwork: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
-  // These are complete, approved screen compositions. Cover would zoom and
-  // crop them a second time on phones taller than the reference canvas.
+  // Capture geometry is deliberate model-input framing. Never resize or move
+  // anatomy to accommodate UI chrome; move the chrome instead. These approved
+  // compositions already include each test's scale and position.
   guide: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  restGuide: { left: '-4.5%', top: '1%', width: '90%', height: '90%' },
-  handGuide: { left: '8%', top: '14%', width: '76%', height: '76%' },
-  toeGuide: { top: '-10%' },
-  chairGuide: { left: '10%', top: '-2%', width: '80%', height: '80%' },
-  walkingGuide: { left: '22.5%', top: '20%', width: '55%', height: '55%' },
-  rightPalmGuide: { left: '9%', top: '-7%' },
-  leftPalmGuide: { left: '-9%', top: '-7%' },
+  restGuide: { left: '-5%' },
+  rightPalmGuide: { left: '9%' },
+  leftPalmGuide: { left: '-9%' },
   mirrored: { transform: [{ scaleX: -1 }] },
   chrome: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
@@ -241,7 +228,6 @@ const styles = StyleSheet.create({
   round: { width: 52, height: 52, borderRadius: 30, backgroundColor: '#15171680', alignItems: 'center', justifyContent: 'center' },
   back: { position: 'absolute', top: 8, left: 16, width: 44, height: 44 },
   sideControls: { position: 'absolute', top: '43%', right: 16, gap: 12 },
-  leftSideControls: { left: 16, right: undefined },
   flashActive: { backgroundColor: '#45442dc9' },
   disabled: { opacity: 0.38 },
   space: { flex: 1 },
