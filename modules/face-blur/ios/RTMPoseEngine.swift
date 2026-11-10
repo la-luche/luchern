@@ -149,8 +149,15 @@ final class RTMPoseEngine {
     let detectorPath = try Self.modelPath(named: "rtmdet_nano_person_320")
     let posePath = try Self.modelPath(named: "rtmpose_t_coco17_256x192")
     environment = try ORTEnv(loggingLevel: .warning)
-    detector = try ORTSession(env: environment, modelPath: detectorPath, sessionOptions: nil)
-    pose = try ORTSession(env: environment, modelPath: posePath, sessionOptions: nil)
+    // Keep frame inference on the caller's user-initiated queue. Independent
+    // per-model worker pools spend CPU spinning between these small inferences,
+    // competing with useful work when iOS reduces background scheduling time.
+    let options = try ORTSessionOptions()
+    try options.setIntraOpNumThreads(1)
+    try options.addConfigEntry(withKey: "session.intra_op.allow_spinning", value: "0")
+    try options.addConfigEntry(withKey: "session.inter_op.allow_spinning", value: "0")
+    detector = try ORTSession(env: environment, modelPath: detectorPath, sessionOptions: options)
+    pose = try ORTSession(env: environment, modelPath: posePath, sessionOptions: options)
   }
 
   func analyze(
