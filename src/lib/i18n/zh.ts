@@ -188,6 +188,7 @@ export const zh: Dict = {
     disclaimerTitle: '重要健康提示',
     disclaimerBody: 'Luche 记录结构化的帕金森病动作任务，并提供动作表现的实验性估计。它不是医疗器械，不提供诊断，结果也不是正式的 MDS-UPDRS 评分。有关健康的问题，请务必咨询合格的医疗专业人员。',
     versionTitle: '版本',
+    buildTitle: '构建号',
     languageTitle: '语言',
     privacyTitle: '视频隐私',
     depersonalisationTitle: '上传前对视频去标识化',

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { getAppVersion } from './appVersion';
 
 const DIAGNOSTICS_KEY = 'luche.diagnostics.v1';
 const MAX_EVENTS = 200;
@@ -89,7 +90,7 @@ export async function exportDiagnostics(): Promise<string> {
       exportedAt: new Date().toISOString(),
       app: 'Luche',
       build: {
-        version: Constants.expoConfig?.version ?? 'unknown',
+        ...getAppVersion(),
         sdkVersion: Constants.expoConfig?.sdkVersion ?? 'unknown',
         platform: Platform.OS,
       },

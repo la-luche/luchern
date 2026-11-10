@@ -202,6 +202,7 @@ export const en = {
     disclaimerBody:
       'Luche records structured Parkinson’s motor tasks and returns experimental task-performance estimates. It is not a medical device, does not provide a diagnosis, and its results are not official MDS-UPDRS ratings. Always consult a qualified clinician about your health.',
     versionTitle: 'Version',
+    buildTitle: 'Build',
     languageTitle: 'Language',
     privacyTitle: 'Video privacy',
     depersonalisationTitle: 'Depersonalise videos before upload',

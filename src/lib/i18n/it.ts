@@ -199,6 +199,7 @@ export const it: Dict = {
     disclaimerBody:
       'Luche registra attività motorie strutturate per il Parkinson e restituisce stime sperimentali della prestazione. Non è un dispositivo medico, non fornisce diagnosi e i risultati non sono valutazioni MDS-UPDRS ufficiali. Per questioni di salute, rivolgiti sempre a un professionista sanitario qualificato.',
     versionTitle: 'Versione',
+    buildTitle: 'Build',
     languageTitle: 'Lingua',
     privacyTitle: 'Privacy dei video',
     depersonalisationTitle: 'Depersonalizza i video prima del caricamento',

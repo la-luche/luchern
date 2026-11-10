@@ -198,6 +198,7 @@ export const es: Dict = {
     disclaimerBody:
       'Luche graba tareas motoras estructuradas para el Parkinson y ofrece estimaciones experimentales de su ejecución. No es un dispositivo médico, no proporciona diagnósticos y sus resultados no son puntuaciones oficiales de la MDS-UPDRS. Consulta siempre a un profesional sanitario cualificado sobre tu salud.',
     versionTitle: 'Versión',
+    buildTitle: 'Compilación',
     languageTitle: 'Idioma',
     privacyTitle: 'Privacidad del video',
     depersonalisationTitle: 'Ocultar datos identificativos antes de subir los videos',

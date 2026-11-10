@@ -1,7 +1,6 @@
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
@@ -10,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Linking, Modal, ScrollView, Switch, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
+import { AppVersion } from '../components/AppVersion';
 import { Header } from '../components/Header';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { Screen } from '../components/Screen';
@@ -175,6 +175,7 @@ export default function AboutScreen() {
     <Screen>
       <Header title={t.about.title} />
       <ScrollView contentContainerClassName="px-6 pb-10">
+        <AppVersion />
         <Section title={t.profile.title}>
           <View className="rounded-2xl border border-ink-faint p-4">
             <View className="flex-row items-center">
@@ -264,10 +265,6 @@ export default function AboutScreen() {
             {t.about.diagnosticsBody}
           </Text>
           <Button title={t.about.exportDiagnostics} variant="secondary" onPress={shareDiagnostics} />
-        </Section>
-
-        <Section title={t.about.versionTitle}>
-          <Text className="text-[15px] text-ink/70">{Constants.expoConfig?.version ?? '—'}</Text>
         </Section>
 
       </ScrollView>

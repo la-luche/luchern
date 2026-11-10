@@ -29,7 +29,7 @@ locates face and body regions before a sanitized video is written.
 
 ```bash
 npm install
-npx expo run:ios      # or: npx expo run:android
+npm run ios          # or: npm run android
 # For later JS-only edits with the development build installed:
 npx expo start --dev-client
 ```
@@ -37,6 +37,16 @@ npx expo start --dev-client
 Luche requires a **native development build** because its custom native modules
 are not included in Expo Go. Camera recording also requires a real device.
 The `go.luche.ai` preview and automatic preview deployments were retired.
+
+### App version and builds
+
+Account shows the installed binary’s version and build number near the top, for example `Version 1.0.2 (Build 37)`. It reads native metadata, so a newer Metro manifest cannot relabel an older installation.
+
+`build-version.json` is the shared counter for iOS and Android. The build commands increment the patch version and build number automatically. Building the other platform from unchanged source reuses the same pair; building a platform again, or building changed source, advances it. Failed attempts consume a number. `npm run build:all` reserves one pair and builds both platforms sequentially on this Mac.
+
+Use `npm run build:ios` and `npm run build:android` for local EAS builds; profile arguments can follow `--`. Before a direct Xcode or Gradle invocation, run `npm run build:prepare -- ios` (or `android` / `all`) once. Preparation synchronizes app.json, package versions, and existing generated native projects without a clean prebuild. `npm run build:check` detects stale values. Pull before preparing on another machine and commit the counter with the source. EAS uses local versions and never increments the two platform counters independently.
+
+Native Xcode/Gradle guards reject stale source or metadata. Local EAS commands verify the finished IPA/APK before reporting success. For a manually prepared artifact, run `npm run build:verify -- path/to/Luche.app` (also supports IPA and APK) before installation or upload. The verifier checks the bundle ID and actual native version/build fields. EAS validates again after dependency installation; it does not depend on development-only tools being installed beforehand.
 
 Useful checks:
 
