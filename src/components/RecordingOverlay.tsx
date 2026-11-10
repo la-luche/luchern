@@ -1,10 +1,55 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { ClipPath, Defs, G, Image as SvgImage, LinearGradient, Mask, Path, Rect, Stop } from 'react-native-svg';
 
 import type { Dict } from '../lib/i18n/en';
 import { RECORDING_GUIDES, RECORDING_TARGETS, recordingTargetCount } from '../lib/recordingGuide';
 import type { EvaluatedSide, TestId } from '../lib/tests';
+
+/** Keep the approved hands and their alpha; replace only the clipped context. */
+function RestGuide() {
+  const body = 'M41 490 C91 520 170 565 232 585 C275 597 325 571 402 558 C470 547 530 554 580 550 C625 545 680 544 718 559 C789 586 817 633 818 713 C816 820 740 930 660 1026 C723 1061 798 1107 821 1177 C842 1246 828 1376 775 1445 C731 1494 646 1500 556 1514 L41 1590 Z';
+  return (
+    <Svg testID="recording-guide-restTremor" pointerEvents="none" viewBox="0 0 910 1969.333" preserveAspectRatio="none" style={[styles.guide, styles.restGuide]}>
+      <Defs>
+        <ClipPath id="rest-body">
+          <Path d={body} transform="scale(1.068075 1.066811)" />
+        </ClipPath>
+        <LinearGradient id="rest-original-fade" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0.82" stopColor="white" /><Stop offset="0.88" stopColor="black" />
+        </LinearGradient>
+        <LinearGradient id="rest-repair-fade" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0.82" stopColor="black" /><Stop offset="0.88" stopColor="white" />
+        </LinearGradient>
+        <Mask id="rest-original" x={0} y={0} width={910} height={1969.333} maskUnits="userSpaceOnUse">
+          <Rect width={910} height={1969.333} fill="url(#rest-original-fade)" />
+        </Mask>
+        <Mask id="rest-context" x={0} y={0} width={910} height={1969.333} maskUnits="userSpaceOnUse">
+          <Rect width={910} height={1969.333} fill="url(#rest-repair-fade)" />
+        </Mask>
+      </Defs>
+      <G clipPath="url(#rest-body)" mask="url(#rest-context)">
+        <SvgImage href={require('../../assets/recording-guides/restTremor-knee-edge.png')} x={0} y={0} width={910} height={1969.333} preserveAspectRatio="none" opacity={0.45} />
+      </G>
+      <SvgImage href={RECORDING_GUIDES.restTremor} x={0} y={0} width={910} height={1969.333} preserveAspectRatio="none" mask="url(#rest-original)" />
+    </Svg>
+  );
+}
+
+function HandMovementGuide({ mirrored }: { mirrored: boolean }) {
+  return (
+    <Svg testID="recording-guide-handMovements" viewBox="0 0 100 100" preserveAspectRatio="none" style={[styles.guide, styles.handGuide, mirrored && styles.mirrored]}>
+      <Defs>
+        <LinearGradient id="hand-context-fade" x1="0%" y1="0%" x2="0%" y2="100%">
+          <Stop offset="0.8" stopColor="white" /><Stop offset="1" stopColor="black" />
+        </LinearGradient>
+        <Mask id="hand-context"><Rect width={100} height={100} fill="url(#hand-context-fade)" /></Mask>
+      </Defs>
+      <SvgImage href={RECORDING_GUIDES.handMovements} x={0} y={0} width={100} height={100} preserveAspectRatio="none" mask="url(#hand-context)" />
+    </Svg>
+  );
+}
 
 type Props = {
   testId: TestId;
@@ -45,18 +90,20 @@ export function RecordingOverlay(props: Props) {
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.artwork}>
-        <Image
+        {testId === 'restTremor' ? <RestGuide /> : testId === 'handMovements' ? <HandMovementGuide mirrored={side === 'left'} /> : <Image
           testID={`recording-guide-${testId}`}
           source={RECORDING_GUIDES[testId]}
           resizeMode="stretch"
           fadeDuration={0}
           style={[
             styles.guide,
-            testId === 'restTremor' && styles.restGuide,
+            testId === 'toeTapping' && styles.toeGuide,
+            testId === 'arisingFromChair' && styles.chairGuide,
+            testId === 'gait' && styles.walkingGuide,
             testId === 'pronationSupination' && (side === 'left' ? styles.leftPalmGuide : styles.rightPalmGuide),
             side === 'left' && styles.mirrored,
           ]}
-        />
+        />}
       </View>
 
       <SafeAreaView pointerEvents="box-none" style={styles.chrome}>
@@ -144,7 +191,7 @@ export function RecordingOverlay(props: Props) {
         </View>
       </SafeAreaView>
 
-      <View pointerEvents="box-none" style={styles.sideControls}>
+      <View pointerEvents="box-none" style={[styles.sideControls, testId === 'pronationSupination' && side !== 'left' && styles.leftSideControls]}>
         <Pressable
           testID="recording-flash"
           onPress={props.onFlash}
@@ -175,9 +222,13 @@ const styles = StyleSheet.create({
   // These are complete, approved screen compositions. Cover would zoom and
   // crop them a second time on phones taller than the reference canvas.
   guide: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  restGuide: { left: '-5%' },
-  rightPalmGuide: { left: '9%' },
-  leftPalmGuide: { left: '-9%' },
+  restGuide: { left: '-4.5%', top: '1%', width: '90%', height: '90%' },
+  handGuide: { left: '8%', top: '14%', width: '76%', height: '76%' },
+  toeGuide: { top: '-10%' },
+  chairGuide: { left: '10%', top: '-2%', width: '80%', height: '80%' },
+  walkingGuide: { left: '22.5%', top: '20%', width: '55%', height: '55%' },
+  rightPalmGuide: { left: '9%', top: '-7%' },
+  leftPalmGuide: { left: '-9%', top: '-7%' },
   mirrored: { transform: [{ scaleX: -1 }] },
   chrome: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
@@ -190,6 +241,7 @@ const styles = StyleSheet.create({
   round: { width: 52, height: 52, borderRadius: 30, backgroundColor: '#15171680', alignItems: 'center', justifyContent: 'center' },
   back: { position: 'absolute', top: 8, left: 16, width: 44, height: 44 },
   sideControls: { position: 'absolute', top: '43%', right: 16, gap: 12 },
+  leftSideControls: { left: 16, right: undefined },
   flashActive: { backgroundColor: '#45442dc9' },
   disabled: { opacity: 0.38 },
   space: { flex: 1 },
