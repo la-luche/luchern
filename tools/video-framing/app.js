@@ -15,7 +15,7 @@ const TESTS = [
     name: 'Open and close',
     video: 'HandMovementsDemo.mp4',
     poster: 'HandMovementsDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.09 },
+    framing: { scale: 1, x: 0, y: 0 },
     steps: [
       'Hold your hand with your palm facing the camera and make a tight fist.',
       'Open your hand fully and powerfully toward the camera, like you’re throwing something toward it, then close it. Repeat 10 times as fast as you can.',
@@ -37,7 +37,7 @@ const TESTS = [
     name: 'Toe taps',
     video: 'ToeTappingDemo.mp4',
     poster: 'ToeTappingDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.25 },
+    framing: { scale: 1, x: 0, y: -0.18 },
     steps: [
       'Sit in a chair with both feet flat on the floor.',
       'Keep your heel down and tap your toes 10 times, as big and fast as you can.',
@@ -48,7 +48,7 @@ const TESTS = [
     name: 'Foot lifts',
     video: 'LegAgilityDemo.mp4',
     poster: 'LegAgilityDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.32 },
+    framing: { scale: 1, x: 0, y: -0.22 },
     steps: [
       'Sit in a chair with both feet flat on the floor.',
       'Lift one foot and tap it firmly back down 10 times, as high and fast as you can.',
@@ -59,7 +59,7 @@ const TESTS = [
     name: 'Standing up',
     video: 'ChairDemo.mp4',
     poster: 'ChairDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.20 },
+    framing: { scale: 1, x: 0, y: 0 },
     steps: [
       'Sit back in a firm chair with your feet flat on the floor.',
       'Cross your arms over your chest and keep them crossed. Stand up once without using your hands.',
@@ -70,7 +70,7 @@ const TESTS = [
     name: 'Walking',
     video: 'WalkingDemo.mp4',
     poster: 'WalkingDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.25 },
+    framing: { scale: 1, x: 0, y: 0 },
     steps: [
       'Walk about 10 steps away from the phone.',
       'Turn around and walk back.',
@@ -81,7 +81,7 @@ const TESTS = [
     name: 'Hands at rest',
     video: 'RestTremorDemo.mp4',
     poster: 'RestTremorDemo.jpg',
-    framing: { scale: 1, x: 0, y: -0.24 },
+    framing: { scale: 1, x: 0, y: -0.15 },
     steps: [
       'Sit down and rest your hands on the armrests or on a table beside you.',
       'Count backward from 1,000 by 3s: 1000, 997, 994, 991 ... Record for 20 seconds.',
