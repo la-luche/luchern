@@ -515,8 +515,8 @@ export const en = {
       timeEstimate: 'Under 1 minute (once)',
       setup: 'Use a firm chair and keep both feet flat on the floor.',
       steps: [
-        'Sit back in a firm chair with your feet flat on the floor.',
-        'Cross your arms over your chest and keep them crossed. Stand up once without using your hands.',
+        'Sit with feet flat and arms crossed.',
+        'Stand up once without using your hands.',
       ],
       goodTip: 'Keep your whole body and the chair in view.',
       avoidTip: 'Don’t uncross your arms, use your hands, or sit outside the frame.',
