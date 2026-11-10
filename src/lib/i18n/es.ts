@@ -20,6 +20,7 @@ export const es: Dict = {
     aboutA11y: 'Acerca de Luche y la privacidad',
   },
   checkups: {
+    recorded: (count: number, total: number) => `${count} de ${total} pruebas grabadas`,
     title: 'Chequeo',
     checkups: 'Chequeos',
     tests: 'Pruebas',

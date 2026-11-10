@@ -20,6 +20,8 @@ import {
   clearCaptureIntent,
 } from '../../lib/captureRecovery';
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
+import { rememberHistorySelection } from '../../lib/historySelection';
+import { historyPerson } from '../../lib/personFlow';
 import { diagnosticErrorData, recordDiagnostic } from '../../lib/diagnostics';
 import { ensureFreeRecordingSpace } from '../../lib/recordingFiles';
 import { recordingMaxDuration } from '../../lib/recordingGuide';
@@ -205,6 +207,11 @@ export default function RecordScreen() {
         evaluationRun,
       );
       if (!staged.videoUri) throw new Error('saved recording is unavailable');
+      if (evaluationRun) {
+        // History must reopen this person's checkups even when capture is left
+        // before Continue or while local privacy preparation is still running.
+        void rememberHistorySelection(user.id, { person: historyPerson(guestId), section: 'checkups' });
+      }
       setStagedRecordingId(staged.id);
       setTempUri(staged.videoUri);
       setPhase('review');

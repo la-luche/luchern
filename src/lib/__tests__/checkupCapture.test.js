@@ -11,6 +11,7 @@ const { en } = require('../i18n/en');
 const { startSession, endSession, advanceSession } = require('../session');
 const { FULL_TEST_FLOW } = require('../tests');
 const { setCaptureActive } = require('../captureActivity');
+const { rememberHistorySelection } = require('../historySelection');
 
 let mockParams, mockRecordings, mockFocused;
 const mockRecord = jest.fn();
@@ -52,6 +53,7 @@ jest.mock('../storage', () => ({ useRecordings: () => ({ recordings: mockRecordi
 jest.mock('../diagnostics', () => ({ diagnosticErrorData: () => ({}), recordDiagnostic: jest.fn() }));
 jest.mock('../i18n', () => ({ useT: () => jest.requireActual('../i18n/en').en, formatEvaluatedSide: () => '' }));
 jest.mock('../toast', () => ({ showToast: jest.fn() }));
+jest.mock('../historySelection', () => ({ rememberHistorySelection: jest.fn() }));
 let screen;
 async function render(Component) { await act(async () => { screen = create(React.createElement(Component)); }); }
 beforeEach(() => {
@@ -105,6 +107,7 @@ it('does not release another screen camera when a hidden capture finishes stagin
 });
 it('starts processing as soon as a checkup clip finishes, before Continue is pressed', async () => {
   await recordClip();
+  expect(rememberHistorySelection).toHaveBeenCalledWith('owner', { person: { kind: 'guest', id: 'guest' }, section: 'checkups' });
   expect(mockFinalize).toHaveBeenCalledWith('new-clip');
   expect(setCaptureActive).toHaveBeenLastCalledWith(false);
   expect(mockReplace).not.toHaveBeenCalled();
@@ -161,6 +164,7 @@ it('still waits for confirmation before processing an individual test', async ()
   endSession();
   await recordClip();
   expect(mockFinalize).not.toHaveBeenCalled();
+  expect(rememberHistorySelection).not.toHaveBeenCalled();
   await act(async () => { await screen.root.findByType(ReviewPanel).props.onRetake(); });
   expect(mockRemove).toHaveBeenCalledWith('new-clip');
 });

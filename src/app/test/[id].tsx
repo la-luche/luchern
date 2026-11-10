@@ -1,14 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback } from 'react';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { DemoVideo } from '../../components/Instruction';
 import { formatEvaluatedSide, useT } from '../../lib/i18n';
-import { advanceSession, useSession } from '../../lib/session';
+import { advanceSession, endSession, useSession } from '../../lib/session';
+import { checkupHref, historyPerson } from '../../lib/personFlow';
+import { useRecordings } from '../../lib/storage';
 import { getTest } from '../../lib/tests';
 import { COLORS } from '../../lib/theme';
 
@@ -42,14 +45,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: SCRIM_FADE_HEIGHT,
-  },
-  bottomSafeArea: {
-    backgroundColor: '#000',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    zIndex: 10,
   },
 });
 
@@ -108,13 +103,28 @@ export default function InstructionScreen() {
   const test = getTest(id);
   const t = useT();
   const session = useSession();
-  const insets = useSafeAreaInsets();
+  const { recordings } = useRecordings({ guestId });
   useKeepAwake(); // don't let the screen dim/lock while a helper reads the steps
 
-  if (!test) return <Redirect href="/" />;
+  const inSession = session.active && batteryReview !== '1' && session.current?.testId === test?.id;
+  const savedRunId = inSession && session.run && recordings.some(recording => recording.evaluationRun?.id === session.run?.id)
+    ? session.run.id : undefined;
+  const goBack = useCallback(() => {
+    if (inSession) endSession();
+    if (savedRunId) router.dismissTo(checkupHref(savedRunId, historyPerson(guestId)));
+    else router.back();
+  }, [inSession, savedRunId, guestId, router]);
+  useFocusEffect(useCallback(() => {
+    if (!inSession) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      goBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [inSession, goBack]));
 
+  if (!test) return <Redirect href="/" />;
   const tt = t.tests[test.id];
-  const inSession = session.active && batteryReview !== '1' && session.current?.testId === test.id;
   const routeSide = side === 'left' || side === 'right' ? side : undefined;
   const evaluatedSide = inSession ? session.current?.evaluatedSide : routeSide;
   const sideLabel = formatEvaluatedSide(t, test, evaluatedSide);
@@ -153,7 +163,7 @@ export default function InstructionScreen() {
       >
         <View className="h-16 flex-row items-center justify-between px-4">
           <Pressable
-            onPress={() => router.back()}
+            onPress={goBack}
             accessibilityRole="button"
             accessibilityLabel={t.common.back}
             className="h-12 w-12 items-center justify-center rounded-full bg-black/45 active:opacity-70"
@@ -207,11 +217,14 @@ export default function InstructionScreen() {
               <OverlaySteps steps={tt.steps} />
             </ScrollView>
 
-            <View
+            <SafeAreaView
+              // Add breathing room above the system inset; max(inset, gap)
+              // leaves the button flush against Android's navigation bar.
+              edges={['bottom']}
               className="px-6 pt-2"
               style={{
                 backgroundColor: '#000',
-                paddingBottom: Math.max(insets.bottom, 12),
+                paddingBottom: 24,
               }}
             >
               <Pressable
@@ -232,14 +245,10 @@ export default function InstructionScreen() {
               >
                 <Text className="text-[18px] font-bold text-ink">{t.instruction.ready}</Text>
               </Pressable>
-            </View>
+            </SafeAreaView>
           </View>
         </View>
       </SafeAreaView>
-      <View
-        pointerEvents="none"
-        style={[styles.bottomSafeArea, { height: Math.max(insets.bottom, 12) }]}
-      />
     </View>
   );
 }

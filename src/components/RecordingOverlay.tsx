@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { ClipPath, Defs, G, Image as SvgImage, LinearGradient, Mask, Path, Rect, Stop } from 'react-native-svg';
 
@@ -65,6 +66,29 @@ function Emphasis({ text }: { text: string }) {
   );
 }
 
+function RecordingElapsed({ elapsed }: { elapsed: number }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const blink = Animated.loop(Animated.sequence([
+      Animated.timing(opacity, { toValue: 0.2, duration: 450, useNativeDriver: true, isInteraction: false }),
+      Animated.timing(opacity, { toValue: 1, duration: 450, useNativeDriver: true, isInteraction: false }),
+    ]));
+    blink.start();
+    return () => blink.stop();
+  }, [opacity]);
+  const seconds = Math.max(0, Math.floor(elapsed));
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
+  return (
+    <View pointerEvents="none" testID="recording-elapsed" style={styles.elapsedBadge}>
+      <Animated.View testID="recording-dot" style={[styles.recordingDot, { opacity }]} />
+      <Text testID="recording-elapsed-value" style={styles.elapsedText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
+        {clock}
+      </Text>
+    </View>
+  );
+}
+
 /** Local artwork is a screen overlay only: it is never added to the recorded video. */
 export function RecordingOverlay(props: Props) {
   const { testId, t, side, sideLabel, recording, elapsed, cameraReady, facing, torch, zoom } = props;
@@ -95,8 +119,11 @@ export function RecordingOverlay(props: Props) {
           <View pointerEvents="none" style={styles.titleRow}>
             <View style={styles.titleBubble}>
               <Text
-                style={[styles.title, { fontSize: 28 * size, lineHeight: 35 * size }]}
+                style={[styles.title, { fontSize: 28 * size }]}
                 maxFontSizeMultiplier={1.3}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
               >{copy.title}</Text>
             </View>
           </View>
@@ -110,7 +137,7 @@ export function RecordingOverlay(props: Props) {
             className="active:opacity-70"
             style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
-          {props.onSkip && (
+          {recording ? <RecordingElapsed elapsed={elapsed} /> : props.onSkip ? (
             <Pressable
               testID="recording-skip"
               onPress={props.onSkip}
@@ -125,7 +152,7 @@ export function RecordingOverlay(props: Props) {
                 {t.session.skip}
               </Text>
             </Pressable>
-          )}
+          ) : null}
           <View pointerEvents="none" style={styles.instructionBubble}>
             <Text style={styles.instruction} maxFontSizeMultiplier={1.35}>
               <Emphasis text={copy.instruction} />
@@ -222,8 +249,8 @@ const styles = StyleSheet.create({
   mirrored: { transform: [{ scaleX: -1 }] },
   chrome: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
-  titleRow: { alignItems: 'center', minHeight: 56, paddingHorizontal: 60 },
-  titleBubble: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 34, backgroundColor: '#1415168c' },
+  titleRow: { alignItems: 'center', minHeight: 56, paddingLeft: 52, paddingRight: 84 },
+  titleBubble: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 34, backgroundColor: '#1415168c' },
   title: { color: 'white', textAlign: 'center', fontWeight: '600', letterSpacing: 0.42 },
   instructionBubble: { alignSelf: 'center', maxWidth: '96%', marginTop: 13, paddingHorizontal: 21, paddingVertical: 14, borderRadius: 24, backgroundColor: '#1415168c' },
   instruction: { fontSize: 19, lineHeight: 27, fontWeight: '400', color: 'white', textAlign: 'center' },
@@ -239,6 +266,9 @@ const styles = StyleSheet.create({
   statusBadge: { color: 'white', fontSize: 14, fontWeight: '600', backgroundColor: '#1415168c', borderRadius: 18, overflow: 'hidden', paddingVertical: 5, paddingHorizontal: 12 },
   skip: { position: 'absolute', top: 8, right: 16, width: 64, height: 44, borderRadius: 22, backgroundColor: '#15171680', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   skipText: { color: 'white', fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  elapsedBadge: { position: 'absolute', top: 8, right: 16, width: 76, height: 44, borderRadius: 22, backgroundColor: '#15171680', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  recordingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef5751' },
+  elapsedText: { color: 'white', fontSize: 16, lineHeight: 22, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1 },
   metric: { color: 'white', textAlign: 'center', fontWeight: '700', letterSpacing: -1.5, fontVariant: ['tabular-nums'], textShadowColor: '#0005', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12, marginBottom: 12, alignSelf: 'stretch' },
   captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26 },
   zoom: { width: 58, height: 58 },

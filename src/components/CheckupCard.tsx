@@ -11,6 +11,7 @@ export function CheckupCard({ checkup, onPress }: { checkup: Checkup; onPress: (
       <View className="flex-1 gap-1">
         <Text className="text-[21px] font-semibold text-ink">{t.checkups.title}</Text>
         <Text className="text-[15px] text-ink-muted">{new Date(checkup.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
+        <Text className="text-[15px] font-medium text-ink">{t.checkups.recorded(checkup.recordings.length, checkup.expectedSteps)}</Text>
         <Text className="text-[14px] text-ink-muted">{t.checkups.available(checkup.overall.count, checkup.expectedSteps)}</Text>
       </View>
       <View className="items-end">

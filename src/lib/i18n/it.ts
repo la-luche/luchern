@@ -29,6 +29,7 @@ export const it: Dict = {
     walking: 'Camminata',
     standing: 'Alzarsi',
     outOfFour: 'su 4',
+    recorded: (count: number, total: number) => `${count} test registrati su ${total}`,
     available: (count: number, total: number) => `${count} risultati disponibili su ${total}`,
     scored: (count: number) => `${count} ${count === 1 ? 'risultato' : 'risultati'}`,
     noScore: 'Nessun punteggio disponibile',

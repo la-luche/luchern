@@ -160,6 +160,22 @@ it('shows a guest note and a visible Edit user action in history', async () => {
   act(() => button(en.people.editUser).props.onPress());
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/edit-user', params: { guestId: 'guest-1', section: 'checkups' } });
 });
+
+it.each(['draft', 'preparing', 'uploading', 'processing', 'failed', 'needs_retry', 'done'])(
+  'shows a one-test checkup in History while its recording is %s, after the session has ended', async status => {
+    mockParams = { guestId: 'guest-1', section: 'checkups' };
+    mockRecordings = [{ id: 'saved', guestId: 'guest-1', testId: 'gait', createdAt: 1, status,
+      evaluationRun: { id: 'partial-run', startedAt: 1, expectedSteps: 13 } }];
+    endSession();
+    await render(HistoryScreen);
+    const card = screen.root.findByType(CheckupCard);
+    expect(card.props.checkup.recordings.map(recording => recording.id)).toEqual(['saved']);
+    expect(visibleText()).toContain('1 of 13 tests recorded');
+    expect(visibleText()).not.toContain(en.checkups.emptyTitle);
+    act(() => card.props.onPress());
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/checkups/[id]', params: { id: 'partial-run', guestId: 'guest-1', patientId: '' } });
+  },
+);
 it('shows the Me note but no editor for a person shared with the account', async () => {
   mockParams = {};
   await render(HistoryScreen);

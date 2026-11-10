@@ -33,6 +33,7 @@ export const en = {
     walking: 'Walking',
     standing: 'Standing up',
     outOfFour: 'out of 4',
+    recorded: (count: number, total: number) => `${count} of ${total} tests recorded`,
     available: (count: number, total: number) => `${count} of ${total} results available`,
     scored: (count: number) => `${count} ${count === 1 ? 'result' : 'results'}`,
     noScore: 'No score yet',

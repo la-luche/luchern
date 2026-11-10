@@ -29,6 +29,7 @@ export const ru: Dict = {
     walking: 'Ходьба',
     standing: 'Вставание',
     outOfFour: 'из 4',
+    recorded: (count: number, total: number) => `Записано тестов: ${count} из ${total}`,
     available: (count: number, total: number) => `Доступно результатов: ${count} из ${total}`,
     scored: (count: number) => `Результатов: ${count}`,
     noScore: 'Пока нет оценки',

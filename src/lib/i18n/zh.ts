@@ -20,6 +20,7 @@ export const zh: Dict = {
     aboutA11y: '关于 Luche 和隐私',
   },
   checkups: {
+    recorded: (count: number, total: number) => `已录制 ${count}/${total} 项测试`,
     title: '综合测试',
     checkups: '综合测试',
     tests: '单项测试',

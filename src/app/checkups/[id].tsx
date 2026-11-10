@@ -89,6 +89,7 @@ function CheckupContents({ id, person, ownerName, recordings, loading, refreshin
         {failed && <View className="my-4 gap-3"><Text className="text-[16px] text-ink-muted">{t.resultsList.sharedLoadError}</Text><Button title={t.resultsList.tryAgain} variant="secondary" onPress={refresh} /></View>}
         {checkup ? <>
           <Text className="mt-1 text-[15px] text-ink-muted">{new Date(checkup.startedAt).toLocaleString()}</Text>
+          <Text className="mt-2 text-[17px] font-medium text-ink">{t.checkups.recorded(checkup.recordings.length, checkup.expectedSteps)}</Text>
           <View className="items-center py-8">
             <Text className="text-[21px] font-semibold text-ink">{t.checkups.overall}</Text>
             <Text accessibilityLabel={`${t.checkups.overall}: ${formatCheckupScore(checkup.overall.value)} ${t.checkups.outOfFour}`} className="mt-1 text-[72px] font-semibold leading-[86px] text-ink">{formatCheckupScore(checkup.overall.value)}</Text>

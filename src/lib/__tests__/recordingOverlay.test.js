@@ -36,25 +36,31 @@ it('counts timed tasks down without pretending to detect completed repetitions',
   expect(screen.root.findByProps({ testID: 'recording-target' }).props.children).toBe('30 taps');
 });
 
-it.each(Object.keys(RECORDING_TARGETS))('keeps the target without the elapsed badge for %s', (testId) => {
-  render({ testId, recording: true, elapsed: 7 });
-  expect(screen.root.findAllByProps({ testID: 'recording-elapsed' })).toHaveLength(0);
+it.each(Object.keys(RECORDING_TARGETS).flatMap(testId => [
+  [testId, 'standalone', undefined], [testId, 'checkup', noop],
+]))('shows elapsed recording time alongside the target for %s (%s)', (testId, _flow, onSkip) => {
+  render({ testId, onSkip, recording: true, elapsed: 7 });
+  expect(screen.root.findByProps({ testID: 'recording-elapsed-value' }).props.children).toBe('0:07');
+  expect(screen.root.findAllByProps({ testID: 'recording-dot' }).length).toBeGreaterThan(0);
   const target = RECORDING_TARGETS[testId];
   expect(screen.root.findByProps({ testID: 'recording-target' }).props.children)
     .toBe(en.record.target[target.unit](target.unit === 'seconds' ? target.count - 7 : target.count));
 });
 
-it('offers Skip for a checkup and disables it while recording', () => {
+it('offers Skip before a checkup recording and replaces it with the elapsed clock during capture', () => {
   const onSkip = jest.fn();
   render({ onSkip });
   const button = screen.root.findByProps({ testID: 'recording-skip' });
   expect(button.props.accessibilityLabel).toBe(en.session.skip);
   act(() => button.props.onPress());
   expect(onSkip).toHaveBeenCalledTimes(1);
-  act(() => screen.update(<RecordingOverlay {...defaults} onSkip={onSkip} recording />));
-  expect(screen.root.findByProps({ testID: 'recording-skip' }).props.disabled).toBe(true);
+  expect(screen.root.findAllByProps({ testID: 'recording-elapsed' })).toHaveLength(0);
+  act(() => screen.update(<RecordingOverlay {...defaults} onSkip={onSkip} recording elapsed={65} />));
+  expect(screen.root.findAllByProps({ testID: 'recording-skip' })).toHaveLength(0);
+  expect(screen.root.findByProps({ testID: 'recording-elapsed-value' }).props.children).toBe('1:05');
   act(() => screen.update(<RecordingOverlay {...defaults} />));
   expect(screen.root.findAllByProps({ testID: 'recording-skip' })).toHaveLength(0);
+  expect(screen.root.findAllByProps({ testID: 'recording-elapsed' })).toHaveLength(0);
 });
 
 it('uses the selected side for the guide while the record control remains available', () => {

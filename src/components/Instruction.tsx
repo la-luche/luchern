@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
@@ -60,7 +60,9 @@ export function DemoVideo({
 
   // Autoplay the loop — unless the OS "reduce motion" setting is on, in which
   // case hold the first frame still.
-  useEffect(() => {
+  // Layout cleanup runs before DemoVideoProvider's passive cleanup releases
+  // the native cache when the entire app/auth tree is unmounted.
+  useLayoutEffect(() => {
     if (player == null) return;
     if (reduceMotion) player.pause();
     else player.play();
