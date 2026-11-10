@@ -82,6 +82,8 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const stopCuePlayed = useRef(false);
+  const skippingRef = useRef(false);
+  const capturingRef = useRef(false);
   const [zoom, setZoom] = useState(0);
 
   // Opening the recording feature leads directly to the system permission
@@ -144,12 +146,34 @@ export default function RecordScreen() {
       : undefined;
   const evaluatedSide = test.sideSpecific ? (routeSide ?? sessionSide) : undefined;
   const sideLabel = formatEvaluatedSide(t, test, evaluatedSide);
+  const inSession = session.active && batteryReview !== '1' &&
+    session.current?.testId === test.id &&
+    (!routeSide || routeSide === session.current?.evaluatedSide);
+
+  const skip = () => {
+    if (!inSession || phase !== 'framing' || submittingRef.current || skippingRef.current || capturingRef.current) return;
+    skippingRef.current = true;
+    const next = advanceSession();
+    router.replace(next ? {
+      pathname: '/test/[id]',
+      params: {
+        id: next.testId,
+        ...(next.evaluatedSide ? { side: next.evaluatedSide } : {}),
+        ...(guestId ? { guestId } : {}),
+      },
+    } : {
+      pathname: '/battery-review',
+      params: { ...(guestId ? { guestId } : {}) },
+    });
+  };
 
   const beginRecording = async () => {
+    if (capturingRef.current || skippingRef.current) return;
     if (!cameraRef.current || !cameraReady) {
       setPhase('framing');
       return;
     }
+    capturingRef.current = true;
     let outputReceived = false;
     try {
       await ensureFreeRecordingSpace();
@@ -204,6 +228,8 @@ export default function RecordScreen() {
       setPhase('framing');
       recordDiagnostic('recording_failed', { testId: test.id, ...diagnosticErrorData(error) });
       Alert.alert(t.record.recordingFailedTitle, t.record.recordingFailedBody);
+    } finally {
+      capturingRef.current = false;
     }
   };
 
@@ -376,6 +402,7 @@ export default function RecordScreen() {
               torch={torch}
               zoom={zoom}
               onBack={() => router.back()}
+              onSkip={inSession ? skip : undefined}
               onFlash={() => setTorch((value) => !value)}
               onFlip={flip}
               onZoom={stepZoom}

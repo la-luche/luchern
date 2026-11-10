@@ -49,6 +49,7 @@ type Props = {
   torch: boolean;
   zoom: number;
   onBack: () => void;
+  onSkip?: () => void;
   onFlash: () => void;
   onFlip: () => void;
   onZoom: (delta: number) => void;
@@ -72,8 +73,6 @@ export function RecordingOverlay(props: Props) {
   const copy = t.record.guidance[testId];
   const target = RECORDING_TARGETS[testId];
   const metric = t.record.target[target.unit](recordingTargetCount(testId, recording ? elapsed : 0));
-  const clockSeconds = recording ? elapsed : 0;
-  const clock = `${Math.floor(clockSeconds / 60)}:${String(clockSeconds % 60).padStart(2, '0')}`;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -111,12 +110,22 @@ export function RecordingOverlay(props: Props) {
             className="active:opacity-70"
             style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
-          <View pointerEvents="none" testID="recording-elapsed" style={styles.elapsedBadge}>
-            <View style={[styles.recordingDot, !recording && styles.idleDot]} />
-            <Text testID="recording-elapsed-value" style={styles.elapsedText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
-              {clock}
-            </Text>
-          </View>
+          {props.onSkip && (
+            <Pressable
+              testID="recording-skip"
+              onPress={props.onSkip}
+              disabled={recording}
+              accessibilityRole="button"
+              accessibilityLabel={t.session.skip}
+              accessibilityState={{ disabled: recording }}
+              className="active:opacity-70"
+              style={[styles.skip, recording && styles.disabled]}
+            >
+              <Text style={styles.skipText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
+                {t.session.skip}
+              </Text>
+            </Pressable>
+          )}
           <View pointerEvents="none" style={styles.instructionBubble}>
             <Text style={styles.instruction} maxFontSizeMultiplier={1.35}>
               <Emphasis text={copy.instruction} />
@@ -228,10 +237,8 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 30, marginBottom: 5 },
   statusBadge: { color: 'white', fontSize: 14, fontWeight: '600', backgroundColor: '#1415168c', borderRadius: 18, overflow: 'hidden', paddingVertical: 5, paddingHorizontal: 12 },
-  elapsedBadge: { position: 'absolute', top: 8, right: 16, width: 64, height: 44, borderRadius: 22, backgroundColor: '#15171680', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 8 },
-  recordingDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#ef5751' },
-  idleDot: { backgroundColor: '#ffffff66' },
-  elapsedText: { color: 'white', fontSize: 16, lineHeight: 22, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1 },
+  skip: { position: 'absolute', top: 8, right: 16, width: 64, height: 44, borderRadius: 22, backgroundColor: '#15171680', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  skipText: { color: 'white', fontSize: 16, lineHeight: 22, fontWeight: '600' },
   metric: { color: 'white', textAlign: 'center', fontWeight: '700', letterSpacing: -1.5, fontVariant: ['tabular-nums'], textShadowColor: '#0005', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12, marginBottom: 12, alignSelf: 'stretch' },
   captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26 },
   zoom: { width: 58, height: 58 },
