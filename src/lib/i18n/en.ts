@@ -516,7 +516,7 @@ export const en = {
       setup: 'Use a firm chair and keep both feet flat on the floor.',
       steps: [
         'Sit in a firm chair, feet flat on the floor, with arms crossed over your chest.',
-        'Stand up once without using your hands.',
+        'Stand up once, arms still crossed.',
       ],
       goodTip: 'Keep your whole body and the chair in view.',
       avoidTip: 'Don’t uncross your arms, use your hands, or sit outside the frame.',
