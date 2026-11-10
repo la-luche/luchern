@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { ApiError, apiFetch } from './api';
 
 import { diagnosticErrorData, recordDiagnostic } from './diagnostics';
+import { validatedUploadUrl } from './edge';
 import { recoverConnection } from './networkRecovery';
 import type { CloudResult, EvaluationRunRef } from './types';
 import type { EvaluatedSide, TestId } from './tests';
@@ -123,6 +124,7 @@ export async function uploadRecording(
     signal,
   }, expectedAccountId);
   throwIfCancelled(signal);
+  const uploadUrl = validatedUploadUrl(req.upload_url);
   recordDiagnostic('upload_url_ready', {
     uploadId: req.upload_id,
     sizeBytes,
@@ -146,7 +148,7 @@ export async function uploadRecording(
       cancelUpload();
     }, 45_000);
   };
-  const task = FileSystem.createUploadTask(req.upload_url, videoUri, {
+  const task = FileSystem.createUploadTask(uploadUrl, videoUri, {
     httpMethod: 'PUT',
     uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
     sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
@@ -188,7 +190,7 @@ export async function uploadRecording(
       ...diagnosticErrorData(error),
     });
     if (signal?.aborted) throw new OperationCancelledError();
-    await recoverConnection(req.upload_url);
+    await recoverConnection(uploadUrl);
     if (stalled) throw new Error('upload stalled for 45 seconds');
     throw error;
   } finally {
@@ -197,7 +199,7 @@ export async function uploadRecording(
   if (stallTimer) clearWorkTimeout(stallTimer);
   if (!put) {
     if (signal?.aborted) throw new OperationCancelledError();
-    await recoverConnection(req.upload_url);
+    await recoverConnection(uploadUrl);
     throw new Error('upload interrupted');
   }
   if (put.status < 200 || put.status >= 300) {

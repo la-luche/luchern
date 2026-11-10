@@ -2,6 +2,23 @@ export const APP_ORIGIN = 'https://luche.ai';
 export const PRIMARY_API_BASE = `${APP_ORIGIN}/api`;
 export const CLERK_PROXY_URL = `${APP_ORIGIN}/__clerk`;
 
+/** Validate after API storage routing, before giving native code any video bytes. */
+export function validatedUploadUrl(value: unknown): string {
+  const invalid = () => new Error('untrusted upload destination');
+  if (typeof value !== 'string' || /[\s\\]/.test(value)) throw invalid();
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw invalid();
+  }
+  if (
+    url.origin !== APP_ORIGIN || url.username || url.password || url.hash ||
+    !url.pathname.startsWith('/r2/')
+  ) throw invalid();
+  return url.href;
+}
+
 /** Stable, non-sensitive labels for exported support logs. */
 export function apiBaseLabel(base: string | undefined): string {
   if (base === PRIMARY_API_BASE) return 'api';

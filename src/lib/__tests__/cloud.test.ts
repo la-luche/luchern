@@ -1,4 +1,13 @@
 import { PollTimeoutError } from '../uploadRetry';
+import * as FileSystem from 'expo-file-system/legacy';
+
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: jest.fn(),
+  createUploadTask: jest.fn(),
+  FileSystemUploadType: { BINARY_CONTENT: 0 },
+  FileSystemSessionType: { FOREGROUND: 1 },
+}));
+jest.mock('../networkRecovery', () => ({ recoverConnection: jest.fn() }));
 
 jest.mock('../api', () => ({
   ApiError: class ApiError extends Error {
@@ -15,7 +24,54 @@ jest.mock('../diagnostics', () => ({
   diagnosticErrorData: (error: Error) => ({ error: error.name, message: error.message }),
 }));
 import { apiFetch } from '../api';
-import { AnalysisNeedsRetryError, AnalysisNotRequestedError, createAnalysisTrial, pollResult } from '../cloud';
+import { AnalysisNeedsRetryError, AnalysisNotRequestedError, createAnalysisTrial, pollResult, uploadRecording } from '../cloud';
+import { routeStorageUrls } from '../edge';
+
+describe('upload destination', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: true, size: 100 });
+    (FileSystem.createUploadTask as jest.Mock).mockReturnValue({
+      uploadAsync: jest.fn().mockResolvedValue({ status: 200 }),
+      cancelAsync: jest.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('uploads a routed signed storage URL without changing its signature', async () => {
+    const response = routeStorageUrls({
+      upload_id: 'upload-1',
+      upload_url: 'https://account.r2.cloudflarestorage.com/bucket/a%20b.mp4?X-Amz-Signature=abc&x=one%2Ftwo',
+    });
+    (apiFetch as jest.Mock).mockResolvedValue(response);
+    await expect(uploadRecording('file:///clip.mp4', 'gait')).resolves.toEqual({ uploadId: 'upload-1' });
+    expect(FileSystem.createUploadTask).toHaveBeenCalledWith(
+      response.upload_url, 'file:///clip.mp4', expect.objectContaining({ httpMethod: 'PUT' }), expect.any(Function),
+    );
+  });
+
+  it.each([
+    'https://attacker.example/clip.mp4',
+    'https://luche.ai.attacker.example/r2/clip.mp4',
+    'https://sub.luche.ai/r2/clip.mp4',
+    'https://luche.ai@attacker.example/r2/clip.mp4',
+    'https://user:secret@luche.ai/r2/clip.mp4',
+    'https://luche.ai:444/r2/clip.mp4',
+    'http://luche.ai/r2/clip.mp4',
+    '//luche.ai/r2/clip.mp4',
+    'https://luche.ai/redirect?to=https://attacker.example',
+    'https://luche.ai/r2/../redirect',
+    'https://luche.ai/r2/clip.mp4#fragment',
+    'https://luche.ai\\@attacker.example/r2/clip.mp4',
+    'https://luche.ai\n/r2/clip.mp4',
+    'not a URL',
+    null,
+    undefined,
+  ])('rejects %p before creating any native upload', async (upload_url) => {
+    (apiFetch as jest.Mock).mockResolvedValue({ upload_id: 'upload-1', upload_url });
+    await expect(uploadRecording('file:///clip.mp4', 'gait')).rejects.toThrow('untrusted upload destination');
+    expect(FileSystem.createUploadTask).not.toHaveBeenCalled();
+  });
+});
 
 describe('createAnalysisTrial', () => {
   beforeEach(() => jest.clearAllMocks());
