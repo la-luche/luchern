@@ -61,7 +61,7 @@ const TESTS = [
     poster: 'ChairDemo.jpg',
     framing: { scale: 1, x: 0, y: 0 },
     steps: [
-      'Sit with feet flat and arms crossed.',
+      'Sit in a firm chair, feet flat on the floor, with arms crossed over your chest.',
       'Stand up once without using your hands.',
     ],
   },
