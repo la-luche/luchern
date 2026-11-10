@@ -71,8 +71,9 @@ export function RecordingOverlay(props: Props) {
   const size = Math.min(width / 390, 1.2);
   const copy = t.record.guidance[testId];
   const target = RECORDING_TARGETS[testId];
-  const timed = target.unit === 'seconds';
   const metric = t.record.target[target.unit](recordingTargetCount(testId, recording ? elapsed : 0));
+  const clockSeconds = recording ? elapsed : 0;
+  const clock = `${Math.floor(clockSeconds / 60)}:${String(clockSeconds % 60).padStart(2, '0')}`;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -110,19 +111,12 @@ export function RecordingOverlay(props: Props) {
             className="active:opacity-70"
             style={[styles.round, styles.back, recording && styles.disabled]}
           ><Ionicons name="chevron-back" size={27} color="white" /></Pressable>
-          {timed ? (
-            <View pointerEvents="none" style={[styles.round, styles.elapsedBadge]}>
-              <Text testID="recording-target" style={styles.elapsedText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
-                {metric}
-              </Text>
-            </View>
-          ) : recording ? (
-            <View pointerEvents="none" testID="recording-elapsed" style={[styles.round, styles.elapsedBadge]}>
-              <Text style={styles.elapsedText} maxFontSizeMultiplier={1.2}>
-                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-              </Text>
-            </View>
-          ) : null}
+          <View pointerEvents="none" testID="recording-elapsed" style={styles.elapsedBadge}>
+            <View style={[styles.recordingDot, !recording && styles.idleDot]} />
+            <Text testID="recording-elapsed-value" style={styles.elapsedText} maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit>
+              {clock}
+            </Text>
+          </View>
           <View pointerEvents="none" style={styles.instructionBubble}>
             <Text style={styles.instruction} maxFontSizeMultiplier={1.35}>
               <Emphasis text={copy.instruction} />
@@ -136,7 +130,7 @@ export function RecordingOverlay(props: Props) {
           <View pointerEvents="none" style={styles.statusRow}>
             {sideLabel ? <Text style={styles.statusBadge} maxFontSizeMultiplier={1.3}>{sideLabel}</Text> : null}
           </View>
-          {!timed ? <Text
+          <Text
             testID="recording-target"
             pointerEvents="none"
             style={[styles.metric, { fontSize: 59 * size, lineHeight: 68 * size }]}
@@ -144,7 +138,7 @@ export function RecordingOverlay(props: Props) {
             numberOfLines={1}
             minimumFontScale={0.6}
             maxFontSizeMultiplier={1.2}
-          >{metric}</Text> : null}
+          >{metric}</Text>
           <View style={styles.captureRow}>
             <Pressable
               onPress={() => props.onZoom(-0.1)}
@@ -234,8 +228,10 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 30, marginBottom: 5 },
   statusBadge: { color: 'white', fontSize: 14, fontWeight: '600', backgroundColor: '#1415168c', borderRadius: 18, overflow: 'hidden', paddingVertical: 5, paddingHorizontal: 12 },
-  elapsedBadge: { position: 'absolute', top: 8, right: 16, width: 56, height: 44 },
-  elapsedText: { color: 'white', fontSize: 17, lineHeight: 22, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  elapsedBadge: { position: 'absolute', top: 8, right: 16, width: 64, height: 44, borderRadius: 22, backgroundColor: '#15171680', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 8 },
+  recordingDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#ef5751' },
+  idleDot: { backgroundColor: '#ffffff66' },
+  elapsedText: { color: 'white', fontSize: 16, lineHeight: 22, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1 },
   metric: { color: 'white', textAlign: 'center', fontWeight: '700', letterSpacing: -1.5, fontVariant: ['tabular-nums'], textShadowColor: '#0005', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12, marginBottom: 12, alignSelf: 'stretch' },
   captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26 },
   zoom: { width: 58, height: 58 },

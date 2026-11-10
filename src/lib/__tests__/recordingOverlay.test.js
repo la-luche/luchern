@@ -2,6 +2,7 @@ const React = require('react');
 const { act, create } = require('react-test-renderer');
 const { RecordingOverlay } = require('../../components/RecordingOverlay');
 const { en } = require('../i18n/en');
+const { RECORDING_TARGETS } = require('../recordingGuide');
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicon' }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: ({ children }) => children }));
@@ -29,10 +30,21 @@ it('keeps the same regular flash glyph and disables camera changes during record
 it('counts timed tasks down without pretending to detect completed repetitions', () => {
   render({ testId: 'pronationSupination', recording: true, elapsed: 4 });
   expect(screen.root.findByProps({ testID: 'recording-target' }).props.children).toBe('6 sec');
+  expect(screen.root.findByProps({ testID: 'recording-elapsed-value' }).props.children).toBe('0:04');
   act(() => screen.update(<RecordingOverlay {...defaults} testId="restTremor" recording elapsed={25} />));
   expect(screen.root.findByProps({ testID: 'recording-target' }).props.children).toBe('0 sec');
   act(() => screen.update(<RecordingOverlay {...defaults} recording elapsed={4} />));
   expect(screen.root.findByProps({ testID: 'recording-target' }).props.children).toBe('30 taps');
+});
+
+it.each(Object.keys(RECORDING_TARGETS))('keeps elapsed time separate from the target for %s', (testId) => {
+  render({ testId });
+  expect(screen.root.findByProps({ testID: 'recording-elapsed-value' }).props.children).toBe('0:00');
+  act(() => screen.update(<RecordingOverlay {...defaults} testId={testId} recording elapsed={7} />));
+  expect(screen.root.findByProps({ testID: 'recording-elapsed-value' }).props.children).toBe('0:07');
+  const target = RECORDING_TARGETS[testId];
+  expect(screen.root.findByProps({ testID: 'recording-target' }).props.children)
+    .toBe(en.record.target[target.unit](target.unit === 'seconds' ? target.count - 7 : target.count));
 });
 
 it('uses the selected side for the guide while the record control remains available', () => {
