@@ -1,7 +1,7 @@
 {
-  "version": "1.0.8",
-  "buildNumber": 43,
-  "sourceHash": "d25c82d965018725ccd57cfe30c8fc32add59647e0047c4ee1ba4c42951990ab",
+  "version": "1.0.9",
+  "buildNumber": 44,
+  "sourceHash": "175f64f1ef84c103d93946debec7d66a7398ca5c29f105d9d1cc100fdb499956",
   "platforms": [
     "android"
   ]
