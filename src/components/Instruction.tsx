@@ -37,11 +37,11 @@ export function DemoVideo({
   fullScreen?: boolean;
   framing?: DemoFraming;
 }) {
-  const player = useDemoVideoPlayer(source);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const player = useDemoVideoPlayer(source, viewport.width > 0 && viewport.height > 0);
   const hasVideo = player != null;
   const [reduceMotion, setReduceMotion] = useState(false);
   const [renderedPlayer, setRenderedPlayer] = useState<VideoPlayer | null>(null);
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useEffect(() => {
     let active = true;
     AccessibilityInfo.isReduceMotionEnabled().then((v) => {

@@ -45,7 +45,7 @@ export function DemoVideoProvider({ children }: { children: ReactNode }) {
 }
 
 /** Returns the already-buffering player for a bundled instruction clip. */
-export function useDemoVideoPlayer(source: number | undefined): VideoPlayer | null {
+export function useDemoVideoPlayer(source: number | undefined, _viewReady = true): VideoPlayer | null {
   const players = useContext(DemoVideoContext);
   if (players == null) {
     throw new Error('useDemoVideoPlayer must be used inside DemoVideoProvider');
