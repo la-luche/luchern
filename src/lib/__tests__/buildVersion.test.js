@@ -57,11 +57,11 @@ test('stale native metadata is rejected by validation', () => {
   expect(() => checkBuild(directory)).toThrow('Version mismatch: android/app/build.gradle');
 });
 
-test('EAS archives can omit development files but must retain matching native versions', () => {
+test.each(['true', '1'])('EAS archives (%s) can omit development files but must retain matching native versions', (easBuild) => {
   prepareBuild(directory, 'all');
   fs.unlinkSync(path.join(directory, 'src/app.ts'));
   const previous = process.env.EAS_BUILD;
-  process.env.EAS_BUILD = 'true';
+  process.env.EAS_BUILD = easBuild;
   try {
     expect(checkBuild(directory).buildNumber).toBe(37);
     write('android/app/build.gradle', 'defaultConfig {\n versionCode 1\n versionName "1.0.1"\n}\n');

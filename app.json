@@ -2,7 +2,7 @@
   "expo": {
     "name": "Luche",
     "slug": "luche-rn",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/luche-app-icon.png",
     "scheme": "luche",
@@ -16,7 +16,7 @@
         "CFBundleDisplayName": "Luche",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "41"
+      "buildNumber": "42"
     },
     "android": {
       "package": "ai.getferal.luche",
@@ -31,7 +31,7 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
-      "versionCode": 41
+      "versionCode": 42
     },
     "web": {
       "output": "static",
