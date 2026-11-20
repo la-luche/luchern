@@ -19,6 +19,14 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "play": {
+      "distribution": "store",
+      "autoIncrement": false,
+      "credentialsSource": "local",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {

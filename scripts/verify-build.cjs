@@ -30,7 +30,17 @@ print(json.dumps({'version':d['CFBundleShortVersionString'],'buildNumber':str(d[
     const field = (key) => line?.match(new RegExp(`${key}='([^']*)'`))?.[1];
     return { version: field('versionName'), buildNumber: field('versionCode'), bundleId: field('name') };
   }
-  throw new Error('Verify a signed .app, .ipa, or .apk artifact');
+  if (file.endsWith('.aab')) {
+    const manifest = execFileSync('bundletool', ['dump', 'manifest', `--bundle=${file}`, '--module=base'], {
+      encoding: 'utf8',
+    });
+    const script = `import sys,json,xml.etree.ElementTree as ET
+root=ET.fromstring(sys.stdin.read())
+android='{http://schemas.android.com/apk/res/android}'
+print(json.dumps({'version':root.attrib[android+'versionName'],'buildNumber':root.attrib[android+'versionCode'],'bundleId':root.attrib['package']}))`;
+    return JSON.parse(execFileSync('python3', ['-c', script], { input: manifest, encoding: 'utf8' }));
+  }
+  throw new Error('Verify a signed .app, .ipa, .apk, or .aab artifact');
 }
 
 function verifyBuild(file, state = JSON.parse(fs.readFileSync(path.join(root, 'build-version.json')))) {
@@ -45,7 +55,7 @@ function verifyBuild(file, state = JSON.parse(fs.readFileSync(path.join(root, 'b
 
 if (require.main === module) {
   try {
-    if (process.argv.length !== 3) throw new Error('Usage: npm run build:verify -- <app, ipa, or apk>');
+    if (process.argv.length !== 3) throw new Error('Usage: npm run build:verify -- <app, ipa, apk, or aab>');
     const actual = verifyBuild(process.argv[2]);
     console.log(`Verified installed metadata: ${actual.version} (Build ${actual.buildNumber})`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }

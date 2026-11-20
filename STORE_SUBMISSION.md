@@ -68,17 +68,22 @@ identifiers, and that video leaves the device over encrypted transport.
 
 ---
 
-## Build & submit (EAS)
+## Local builds and store upload
 
 ```bash
-npm i -g eas-cli
-eas login
-eas build:configure
-eas build --platform ios       # → App Store Connect
-eas build --platform android   # → Play Console (.aab)
-eas submit -p ios
-eas submit -p android
+npm run build:ios
+npm run build:android -- --profile play --non-interactive
 ```
+
+The Android `play` profile creates a signed `.aab` for Google Play, using the
+existing keystore in local `credentials.json`. Install `bundletool` before the
+build so the final artifact's package name and native version can be verified.
+Upload the AAB directly from this Mac in Play Console. iOS uploads also remain
+local, using `xcrun altool`; do not use EAS cloud build or submit workers.
+
+`build-version.json` owns both platforms' versions. The npm build commands
+reserve a version and verify the finished artifact. Commit the resulting
+version files. Do not enable EAS remote versioning or auto-increment.
 
 ### Direct Android beta APK
 
@@ -87,16 +92,13 @@ The public Android beta is also available as a signed APK from
 profile:
 
 ```bash
-eas build --platform android --profile preview --local \
-  --output Luche-Android.apk
+npm run build:android -- --profile preview --non-interactive
 ```
 
-That profile explicitly selects `android.buildType: apk`, uses EAS internal
-distribution signing, and increments the remote Android `versionCode` on every
-build. Local builds are the default for this beta; they require JDK 17 and the
-Android SDK but still fetch the EAS-managed keystore and remote version. Omit
-`--local` only when a cloud worker is intentionally preferred. Keep using the
-same keystore so users can install each new APK over the previous release. The
+That profile explicitly selects `android.buildType: apk` and uses EAS internal
+distribution signing. Builds run locally with JDK 17 and the Android SDK, using
+the shared local version reservation. Keep using the same keystore so users
+can install each new APK over the previous release. The
 website repo README and the shared Pi runbook contain the verification and
 atomic publish commands for replacing the stable download.
 

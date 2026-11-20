@@ -20,7 +20,12 @@ try {
       ? [] : ['--profile', target === 'ios' ? 'production' : 'preview'];
     const commandArgs = mode === 'dev' ? ['expo', `run:${target}`, ...args]
       : ['build', '--local', '--platform', target, ...defaults, ...args];
-    const output = path.join(root, 'artifacts/builds', `Luche-${version.version}-${version.buildNumber}.${target === 'ios' ? 'ipa' : 'apk'}`);
+    const profileFlag = commandArgs.findIndex((arg) => arg === '--profile' || arg.startsWith('--profile='));
+    const profileName = profileFlag < 0 ? null : commandArgs[profileFlag].includes('=')
+      ? commandArgs[profileFlag].split('=')[1] : commandArgs[profileFlag + 1];
+    const profile = JSON.parse(fs.readFileSync(path.join(root, 'eas.json'), 'utf8')).build[profileName];
+    const extension = target === 'ios' ? 'ipa' : profile?.android?.buildType === 'app-bundle' ? 'aab' : 'apk';
+    const output = path.join(root, 'artifacts/builds', `Luche-${version.version}-${version.buildNumber}.${extension}`);
     if (mode === 'local') {
       fs.mkdirSync(path.dirname(output), { recursive: true });
       if (fs.existsSync(output)) throw new Error(`Artifact already exists: ${output}`);
